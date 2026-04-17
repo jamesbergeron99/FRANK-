@@ -10,12 +10,18 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(express.json());
 
-// Serve the HTML file from the main folder
+// --- THE FIX IS HERE ---
+// This tells Express to look for index.html in the SAME folder as server.js
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.sendFile(path.resolve(__dirname, 'index.html'), (err) => {
+        if (err) {
+            console.error("Could not find index.html:", err);
+            res.status(404).send("Frank can't find his desk (index.html is missing from the root folder).");
+        }
+    });
 });
 
-// Frank's Script Cleaning Logic
+// Logic to clean the script (No page numbers/parentheticals)
 function cleanScript(text) {
     if (!text) return "";
     return text.split('\n')
@@ -29,18 +35,14 @@ function cleanScript(text) {
 }
 
 app.post('/analyze', upload.single('script'), async (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ error: "Darling, I need the script." });
-    }
+    if (!req.file) return res.status(400).json({ error: "No script provided." });
 
     try {
         const data = await pdf(req.file.buffer);
         const cleanedText = cleanScript(data.text);
         
-        // This is the text Frank will speak
-        const frankFeedback = "I've reviewed your pages. The structure is fine, but the subtext is non-existent. It needs more flair, more soul!";
+        const frankFeedback = "Darling, I've seen some scripts in my time, but this... it needs work. Let's make it sparkle.";
 
-        // Initialize Inworld for the voice token
         let token = null;
         if (process.env.FRANK_VOICE_API_KEY && process.env.FRANK_VOICE_API_SECRET) {
             const client = new InworldClient()
@@ -56,14 +58,10 @@ app.post('/analyze', upload.single('script'), async (req, res) => {
             token: token ? token.token : null,
             characterId: "workspaces/default-oglabcjnetcklcq7rghmbw/characters/frank2"
         });
-
     } catch (err) {
-        console.error("Analysis Error:", err);
-        res.status(500).json({ error: "Frank had a bit too much gin. (PDF Error)" });
+        res.status(500).json({ error: "Analysis Error" });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Frank is holding court on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Frank is on port ${PORT}`));
