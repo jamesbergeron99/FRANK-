@@ -1,36 +1,126 @@
-const express = require('express');
-const multer = require('multer');
-const pdf = require('pdf-parse');
-const path = require('path');
-require('dotenv').config();
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>FRANK | Executive Script Doctor</title>
+    <style>
+        body { background: #0a0a0a; color: #d4af37; font-family: 'Georgia', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; }
+        .header { padding: 20px; border-bottom: 2px solid #d4af37; background: #111; text-align: center; }
+        #chat-window { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; background: #050505; }
+        .msg { max-width: 80%; padding: 15px; border-radius: 8px; line-height: 1.5; font-size: 1.1rem; }
+        .frank-msg { align-self: flex-start; background: #1a1a1a; border-left: 4px solid #d4af37; color: #eee; }
+        .user-msg { align-self: flex-end; background: #d4af37; color: #000; font-weight: bold; }
+        .controls { padding: 20px; background: #111; border-top: 2px solid #d4af37; display: flex; gap: 10px; align-items: center; }
+        input[type="text"] { flex-grow: 1; padding: 12px; background: #000; border: 1px solid #d4af37; color: #d4af37; font-size: 1rem; }
+        .btn { background: #d4af37; color: #000; padding: 10px 20px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; }
+        .mic-btn { background: #800; color: #fff; border-radius: 50%; width: 45px; height: 45px; cursor: pointer; border: none; font-size: 20px; display: flex; align-items: center; justify-content: center; }
+        .mic-active { background: #f00; box-shadow: 0 0 15px #f00; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>FRANK</h1>
+        <p><em>"Development is a blood sport, darling."</em></p>
+    </div>
 
-const app = express();
-const upload = multer({ storage: multer.memoryStorage() });
+    <div id="chat-window">
+        <div class="msg frank-msg">"Upload the pages, darling. I'm waiting."</div>
+    </div>
 
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+    <div class="controls">
+        <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadScript()">
+        <button class="btn" onclick="document.getElementById('scriptInput').click()">PDF UPLOAD</button>
+        <button class="mic-btn" id="micBtn" onclick="toggleDictation()">🎙️</button>
+        <input type="text" id="userInput" placeholder="Defend your genius..." onkeypress="if(event.key === 'Enter') sendChat()">
+        <button class="btn" onclick="sendChat()">Send</button>
+    </div>
 
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+    <script src="https://unpkg.com/@inworld/web-sdk"></script>
+    <script>
+        let recognition;
+        let inworldConnection;
+        const chatWindow = document.getElementById('chat-window');
 
-app.post('/analyze', upload.single('script'), async (req, res) => {
-    // Analysis logic...
-    res.json({
-        message: "I've reviewed the pages. Snappy dialogue, but the protagonist is a bore. Change my mind.",
-        apiKey: process.env.FRANK_VOICE_API_KEY,
-        characterId: "workspaces/default-oglabcjnetcklcq7rghmbw/characters/frank2"
-    });
-});
+        function addMessage(text, isFrank = true) {
+            const div = document.createElement('div');
+            div.className = `msg ${isFrank ? 'frank-msg' : 'user-msg'}`;
+            div.innerText = text;
+            chatWindow.appendChild(div);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
 
-// NEW CHAT ENDPOINT
-app.post('/chat', async (req, res) => {
-    const userMessage = req.body.message;
-    
-    // This is where the real Frank-brain will live. 
-    // For now, he responds with his characteristic sass.
-    const frankResponse = "Oh, darling, you're defending that scene? It's derivative, but I admire your passion. Tell me more.";
+        // --- Voice Dictation (Speech to Text) ---
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = false;
+            recognition.onresult = (event) => {
+                document.getElementById('userInput').value = event.results[0][0].transcript;
+                document.getElementById('micBtn').classList.remove('mic-active');
+            };
+        }
 
-    res.json({ message: frankResponse });
-});
+        function toggleDictation() {
+            document.getElementById('micBtn').classList.add('mic-active');
+            recognition.start();
+        }
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Frank's office is open.`));
+        // --- Frank's Voice Engine (Inworld Connection) ---
+        async function speak(text, apiKey, characterId) {
+            try {
+                // We create the connection if it doesn't exist
+                if (!inworldConnection) {
+                    inworldConnection = new Inworld.InworldConnectionService()
+                        .setApiKey(apiKey)
+                        .setScene(characterId)
+                        .build();
+                    await inworldConnection.open();
+                }
+                // Frank speaks the text
+                await inworldConnection.sendText(text);
+            } catch (err) {
+                console.error("Voice Error:", err);
+            }
+        }
+
+        async function uploadScript() {
+            const fileInput = document.getElementById('scriptInput');
+            addMessage("Lighting a cigarette and opening the file...", true);
+            
+            const formData = new FormData();
+            formData.append('script', fileInput.files[0]);
+
+            const response = await fetch('/analyze', { method: 'POST', body: formData });
+            const data = await response.json();
+            
+            addMessage(data.message, true);
+            // Trigger the voice
+            if (data.apiKey) {
+                speak(data.message, data.apiKey, data.characterId);
+            }
+        }
+
+        async function sendChat() {
+            const input = document.getElementById('userInput');
+            const text = input.value;
+            if (!text) return;
+
+            addMessage(text, false);
+            input.value = '';
+
+            const response = await fetch('/chat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ message: text })
+            });
+            const data = await response.json();
+            addMessage(data.message, true);
+            
+            // Trigger the voice for the chat response
+            // We use the same API key logic
+            const statusResponse = await fetch('/get-voice-info');
+            const voiceData = await statusResponse.json();
+            speak(data.message, voiceData.apiKey, voiceData.characterId);
+        }
+    </script>
+</body>
+</html>
