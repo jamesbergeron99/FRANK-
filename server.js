@@ -12,14 +12,13 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Frank's Persona Instructions
-const FRANK_PROMPT = `You are Frank, a film executive with 30 years of experience. 
-You are flamboyant, witty, and sassy (think Truman Capote). 
-You are collaborative but very direct. Never mean, but sharp.
-When analyzing: Provide Title Feedback, a Logline, a Synopsis, and a detailed breakdown.
-Cover Dialogue, Arcs, Marketability, Originality, and Improvements.
-Always quote the text directly to prove your points. 
-Ignore page numbers and parentheticals.`;
+// Frank's "Golden Rules" for his personality
+const FRANK_IDENTITY = `You are Frank, a flamboyant, sassy, and brilliant film executive. 
+You are collaborative and witty. 
+IMPORTANT: 
+1. If the user is just saying hello or asking if you are there, respond briefly and in character. Do NOT talk about scripts unless one was just uploaded.
+2. If a script is uploaded, provide a massive, deep executive breakdown with quotes.
+3. If the user is arguing or chatting about feedback, respond directly to their point like a human partner.`;
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
@@ -31,40 +30,28 @@ app.get('/get-voice-info', (req, res) => {
 });
 
 app.post('/analyze', upload.single('script'), async (req, res) => {
-    if (!req.file) return res.status(400).json({ error: "The pages, darling!" });
-
     try {
         const data = await pdf(req.file.buffer);
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-        const prompt = `${FRANK_PROMPT}\n\nHere is the script text:\n${data.text.substring(0, 30000)}`;
+        const prompt = `${FRANK_IDENTITY}\n\nNEW SCRIPT UPLOADED. Provide a deep, multi-page executive analysis of this text:\n${data.text.substring(0, 25000)}`;
         
         const result = await model.generateContent(prompt);
-        const response = await result.response;
-        
-        res.json({
-            message: response.text(),
-            apiKey: process.env.FRANK_VOICE_API_KEY,
-            characterId: "workspaces/default-oglabcjnetcklcq7rghmbw/characters/frank2"
-        });
+        res.json({ message: result.response.text() });
     } catch (err) {
-        res.status(500).json({ error: "Frank's brain stalled." });
+        res.status(500).json({ message: "Darling, the machine is acting up. Try again." });
     }
 });
 
 app.post('/chat', async (req, res) => {
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const chat = model.startChat({ history: [] }); // We can expand history later
-
-        const result = await chat.sendMessage(`${FRANK_PROMPT}\n\nThe writer says: ${req.body.message}`);
-        const response = await result.response;
-
-        res.json({ message: response.text() });
+        // We pass the user's message to Gemini with Frank's identity
+        const result = await model.generateContent(`${FRANK_IDENTITY}\n\nUser says: ${req.body.message}`);
+        res.json({ message: result.response.text() });
     } catch (err) {
-        res.status(500).json({ error: "Frank is lighting a cigar and couldn't hear you." });
+        res.status(500).json({ message: "I'm busy lighting a cigar. One moment." });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Frank is fully operational.`));
+app.listen(PORT, () => console.log(`Frank is in the office.`));
