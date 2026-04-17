@@ -10,26 +10,24 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(express.json());
 
-// --- THE FIX IS HERE ---
-// This tells Express to look for index.html in the SAME folder as server.js
+// This helps Frank find his desk even if Render is being difficult
+const indexPath = path.join(__dirname, 'index.html');
+
 app.get('/', (req, res) => {
-    res.sendFile(path.resolve(__dirname, 'index.html'), (err) => {
+    res.sendFile(indexPath, (err) => {
         if (err) {
-            console.error("Could not find index.html:", err);
-            res.status(404).send("Frank can't find his desk (index.html is missing from the root folder).");
+            console.error("Path error:", indexPath);
+            res.status(404).send("Frank is lost. He's looking for index.html at: " + indexPath);
         }
     });
 });
 
-// Logic to clean the script (No page numbers/parentheticals)
 function cleanScript(text) {
     if (!text) return "";
     return text.split('\n')
         .filter(line => {
             const trimmed = line.trim();
-            const isPageNumber = /^\d+$/.test(trimmed);
-            const isParenthetical = /^\(.*\)$/.test(trimmed);
-            return trimmed.length > 0 && !isPageNumber && !isParenthetical;
+            return trimmed.length > 0 && !/^\d+$/.test(trimmed) && !/^\(.*\)$/.test(trimmed);
         })
         .join('\n');
 }
@@ -41,7 +39,7 @@ app.post('/analyze', upload.single('script'), async (req, res) => {
         const data = await pdf(req.file.buffer);
         const cleanedText = cleanScript(data.text);
         
-        const frankFeedback = "Darling, I've seen some scripts in my time, but this... it needs work. Let's make it sparkle.";
+        const frankFeedback = "I've reviewed your pages. The concept is divine, but the dialogue is a bit... dusty. Let's sharpen those wits, shall we?";
 
         let token = null;
         if (process.env.FRANK_VOICE_API_KEY && process.env.FRANK_VOICE_API_SECRET) {
@@ -64,4 +62,4 @@ app.post('/analyze', upload.single('script'), async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Frank is on port ${PORT}`));
+app.listen(PORT, () => console.log(`Frank is live.`));
