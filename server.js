@@ -1,49 +1,69 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>FRANK | Executive Script Doctor</title>
-    <style>
-        body { background: #0f0f0f; color: #d4af37; font-family: 'Georgia', serif; display: flex; justify-content: center; padding: 40px; }
-        .office { width: 100%; max-width: 800px; border: 2px solid #d4af37; padding: 40px; background: #1a1a1a; }
-        h1 { font-style: italic; border-bottom: 1px solid #d4af37; }
-        #output { background: #000; color: #fff; padding: 20px; min-height: 200px; white-space: pre-wrap; margin-top: 20px; }
-        .btn { background: #d4af37; color: #000; padding: 10px 20px; border: none; cursor: pointer; font-weight: bold; margin-top: 10px; }
-    </style>
-</head>
-<body>
-    <div class="office">
-        <h1>Frank</h1>
-        <div id="output">"Ready for the next blockbuster, darling?"</div>
-        <input type="file" id="scriptInput" accept=".pdf" style="margin-top:20px;">
-        <br>
-        <button class="btn" onclick="startAnalysis()">Analyze & Listen</button>
-    </div>
+const express = require('express');
+const multer = require('multer');
+const pdf = require('pdf-parse');
+const path = require('path');
+const { InworldClient } = require('@inworld/nodejs-sdk');
+require('dotenv').config();
 
-    <script src="https://unpkg.com/@inworld/web-sdk"></script>
-    <script>
-        async function startAnalysis() {
-            const fileInput = document.getElementById('scriptInput');
-            const output = document.getElementById('output');
-            if (!fileInput.files[0]) return alert("Upload a script first.");
+const app = express();
+const upload = multer({ storage: multer.memoryStorage() });
 
-            output.innerText = "Frank is reviewing your pages...";
+app.use(express.json());
 
-            const formData = new FormData();
-            formData.append('script', fileInput.files[0]);
+// Serve the HTML file from the main folder
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
 
-            const response = await fetch('/analyze', { method: 'POST', body: formData });
-            const data = await response.json();
+// Frank's Script Cleaning Logic
+function cleanScript(text) {
+    if (!text) return "";
+    return text.split('\n')
+        .filter(line => {
+            const trimmed = line.trim();
+            const isPageNumber = /^\d+$/.test(trimmed);
+            const isParenthetical = /^\(.*\)$/.test(trimmed);
+            return trimmed.length > 0 && !isPageNumber && !isParenthetical;
+        })
+        .join('\n');
+}
 
-            output.innerText = data.message;
+app.post('/analyze', upload.single('script'), async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: "Darling, I need the script." });
+    }
 
-            // Voice Logic: This triggers the Inworld character to speak the message
-            if (data.characterId) {
-                console.log("Frank is clearing his throat...");
-                // Note: This requires the character to be set to 'vocal' in Inworld Studio
-                // We'll set up the 'InworldClient' here in the next step once you have the ID.
-            }
+    try {
+        const data = await pdf(req.file.buffer);
+        const cleanedText = cleanScript(data.text);
+        
+        // This is the text Frank will speak
+        const frankFeedback = "I've reviewed your pages. The structure is fine, but the subtext is non-existent. It needs more flair, more soul!";
+
+        // Initialize Inworld for the voice token
+        let token = null;
+        if (process.env.FRANK_VOICE_API_KEY && process.env.FRANK_VOICE_API_SECRET) {
+            const client = new InworldClient()
+                .setApiKey({
+                    key: process.env.FRANK_VOICE_API_KEY,
+                    secret: process.env.FRANK_VOICE_API_SECRET,
+                });
+            token = await client.generateSessionToken();
         }
-    </script>
-</body>
-</html>
+
+        res.json({
+            message: frankFeedback,
+            token: token ? token.token : null,
+            characterId: "workspaces/default-oglabcjnetcklcq7rghmbw/characters/frank2"
+        });
+
+    } catch (err) {
+        console.error("Analysis Error:", err);
+        res.status(500).json({ error: "Frank had a bit too much gin. (PDF Error)" });
+    }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Frank is holding court on port ${PORT}`);
+});
