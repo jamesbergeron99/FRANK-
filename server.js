@@ -8,22 +8,21 @@ require('dotenv').config();
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Check for the Gemini Key before starting
-if (!process.env.GEMINI_API_KEY) {
-    console.error("WARNING: GEMINI_API_KEY is missing from environment variables.");
-}
+// --- THE LOG CHECK ---
+// This will print to your Render Logs so you can see if the keys are loaded
+console.log("System Check: GEMINI_API_KEY is", process.env.GEMINI_API_KEY ? "LOADED" : "MISSING");
+console.log("System Check: FRANK_VOICE_API_KEY is", process.env.FRANK_VOICE_API_KEY ? "LOADED" : "MISSING");
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "dummy_key");
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 const FRANK_IDENTITY = `You are Frank, a flamboyant, witty, and sassy 30-year film executive. 
 You are collaborative but sharp. 
-- If the user says hello or "are you there", respond briefly as a person.
-- If a script is uploaded, provide a MASSIVE, deep executive breakdown with direct quotes from the script. 
-- Address marketability, character arcs, and dialogue snap.
-- Stay in character at all times.`;
+- If the user says hello or "are you there", respond briefly and sassily.
+- If a script is uploaded, provide a MASSIVE, deep executive breakdown with direct quotes.
+- Always stay in character.`;
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
@@ -32,38 +31,32 @@ app.get('/voice-settings', (req, res) => {
 });
 
 app.post('/analyze', upload.single('script'), async (req, res) => {
-    if (!req.file) return res.status(400).json({ message: "Darling, I need the pages." });
+    if (!req.file) return res.status(400).json({ message: "Darling, the pages!" });
 
     try {
-        // Parse the PDF
         const data = await pdf(req.file.buffer);
-        
-        // Clean the text slightly to avoid token bloat
-        const cleanedText = data.text.replace(/\n\s*\n/g, '\n').substring(0, 30000);
-
+        const cleanedText = data.text.substring(0, 25000);
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         
-        const prompt = `${FRANK_IDENTITY}\n\nHere is a new script for your review. Give me the full executive treatment:\n\n${cleanedText}`;
-        
-        const result = await model.generateContent(prompt);
-        const responseText = result.response.text();
-
-        res.json({ message: responseText });
+        const result = await model.generateContent(`${FRANK_IDENTITY}\n\nANALYSIS:\n${cleanedText}`);
+        const response = await result.response;
+        res.json({ message: response.text() });
     } catch (err) {
-        console.error("Gemini Error:", err);
-        res.status(500).json({ message: "Frank is lighting a cigar and got distracted. (Error parsing or sending to AI)" });
+        console.error("DEBUG ERROR:", err.message);
+        res.status(500).json({ message: "Frank is lighting a cigar and got distracted. (Gemini Error: " + err.message + ")" });
     }
 });
 
 app.post('/chat', async (req, res) => {
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const result = await model.generateContent(`${FRANK_IDENTITY}\n\nUser says: ${req.body.message}`);
-        res.json({ message: result.response.text() });
+        const result = await model.generateContent(`${FRANK_IDENTITY}\n\nUser: ${req.body.message}`);
+        const response = await result.response;
+        res.json({ message: response.text() });
     } catch (err) {
-        res.status(500).json({ message: "I'm busy, darling. Try again." });
+        res.status(500).json({ message: "I'm a bit tied up, darling." });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Frank is holding court on port ${PORT}`));
+app.listen(PORT, () => console.log(`Frank is on ${PORT}`));
