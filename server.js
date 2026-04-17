@@ -2,7 +2,6 @@ const express = require('express');
 const multer = require('multer');
 const pdf = require('pdf-parse');
 const path = require('path');
-const { InworldClient } = require('@inworld/nodejs-sdk');
 require('dotenv').config();
 
 const app = express();
@@ -21,29 +20,13 @@ app.post('/analyze', upload.single('script'), async (req, res) => {
     try {
         const data = await pdf(req.file.buffer);
         
-        // FRANK'S EXECUTIVE FEEDBACK GENERATOR
-        const frankFeedback = `
-            DARLING, I'VE READ THE PAGES. 
-
-            THE HOOK: It's snappy, but is it "box office" snappy? I'm not convinced.
-            THE DIALOGUE: You've got some wit here, but we need to trim the fat.
-            THE VERDICT: It’s a start, but we’re not at the Oscars yet. 
-            
-            Now, let's talk about that Act 2 slump...
-        `;
-
-        let tokenData = null;
-        if (process.env.FRANK_VOICE_API_KEY && process.env.FRANK_VOICE_API_SECRET) {
-            const client = new InworldClient().setApiKey({
-                key: process.env.FRANK_VOICE_API_KEY,
-                secret: process.env.FRANK_VOICE_API_SECRET,
-            });
-            tokenData = await client.generateSessionToken();
-        }
+        // Frank's Analysis Output
+        const frankFeedback = "Darling, I've read the pages. The concept is divine, but the dialogue is a bit... dusty. Let's sharpen those wits, shall we?";
 
         res.json({
             message: frankFeedback,
-            token: tokenData ? tokenData.token : null,
+            // We send the API Key directly to the front-end for the simple connection
+            apiKey: process.env.FRANK_VOICE_API_KEY,
             characterId: "workspaces/default-oglabcjnetcklcq7rghmbw/characters/frank2"
         });
     } catch (err) {
