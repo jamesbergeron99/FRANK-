@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Frank | Executive Script Doctor</title>
+    <style>
+        body { background: #1a1a1a; color: #f0f0f0; font-family: 'Georgia', serif; padding: 50px; }
+        .container { max-width: 800px; margin: auto; border: 1px solid #d4af37; padding: 30px; border-radius: 8px; }
+        h1 { color: #d4af37; text-align: center; font-style: italic; }
+        button { background: #d4af37; border: none; padding: 10px 20px; cursor: pointer; font-weight: bold; }
+        #chat { margin-top: 20px; border-top: 1px solid #333; padding-top: 20px; min-height: 200px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Frank</h1>
+        <p><em>"Don't just write a movie, darling. Write a masterpiece."</em></p>
+        <input type="file" id="scriptFile" accept=".pdf">
+        <button onclick="uploadScript()">Submit to Frank</button>
+        <div id="chat">Frank is waiting for your pages...</div>
+    </div>
+
+    <script>
+        async function uploadScript() {
+            const fileInput = document.getElementById('scriptFile');
+            const chat = document.getElementById('chat');
+            if (!fileInput.files[0]) return alert("Upload a script first!");
+
+            const formData = new FormData();
+            formData.append('script', fileInput.files[0]);
+
+            chat.innerText = "Frank is putting on his glasses...";
+
+            const response = await fetch('/analyze', { method: 'POST', body: formData });
+            const data = await response.json();
+            chat.innerText = data.message;
+        }
+    </script>
+</body>
+</html>
