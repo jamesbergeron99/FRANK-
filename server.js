@@ -7,10 +7,11 @@ require('dotenv').config();
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-app.use(express.static('public'));
+// This line tells the server to look in the 'public' folder for your HTML
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// Frank's strict cleaning logic: No page numbers, no parentheticals.
+// Frank's cleaning logic: No page numbers, no parentheticals.
 function cleanScript(text) {
     return text.split('\n')
         .filter(line => {
@@ -21,6 +22,11 @@ function cleanScript(text) {
         .join('\n');
 }
 
+// Explicitly send the index.html file if someone hits the home page
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 app.post('/analyze', upload.single('script'), async (req, res) => {
     if (!req.file) return res.status(400).send('Darling, I need a file to work with.');
 
@@ -28,8 +34,8 @@ app.post('/analyze', upload.single('script'), async (req, res) => {
         const data = await pdf(req.file.buffer);
         const cleanedText = cleanScript(data.text);
         
-        // This is where Frank would talk to the LLM and the Voice API
-        console.log("Frank is reading...");
+        // Frank's receipt log
+        console.log("Frank is reviewing the pages...");
         
         res.json({
             message: "Frank has received the script. He's pouring a drink and beginning the breakdown.",
@@ -41,4 +47,6 @@ app.post('/analyze', upload.single('script'), async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Frank is holding court on port ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`Frank is holding court on port ${PORT}`);
+});
