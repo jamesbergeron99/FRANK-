@@ -10,29 +10,27 @@ const upload = multer({ storage: multer.memoryStorage() });
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.post('/analyze', upload.single('script'), async (req, res) => {
-    if (!req.file) return res.status(400).json({ error: "No script provided." });
+    // Analysis logic...
+    res.json({
+        message: "I've reviewed the pages. Snappy dialogue, but the protagonist is a bore. Change my mind.",
+        apiKey: process.env.FRANK_VOICE_API_KEY,
+        characterId: "workspaces/default-oglabcjnetcklcq7rghmbw/characters/frank2"
+    });
+});
 
-    try {
-        const data = await pdf(req.file.buffer);
-        
-        // Frank's Analysis Output
-        const frankFeedback = "Darling, I've read the pages. The concept is divine, but the dialogue is a bit... dusty. Let's sharpen those wits, shall we?";
+// NEW CHAT ENDPOINT
+app.post('/chat', async (req, res) => {
+    const userMessage = req.body.message;
+    
+    // This is where the real Frank-brain will live. 
+    // For now, he responds with his characteristic sass.
+    const frankResponse = "Oh, darling, you're defending that scene? It's derivative, but I admire your passion. Tell me more.";
 
-        res.json({
-            message: frankFeedback,
-            // We send the API Key directly to the front-end for the simple connection
-            apiKey: process.env.FRANK_VOICE_API_KEY,
-            characterId: "workspaces/default-oglabcjnetcklcq7rghmbw/characters/frank2"
-        });
-    } catch (err) {
-        res.status(500).json({ error: "Analysis Error" });
-    }
+    res.json({ message: frankResponse });
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Frank is holding court.`));
+app.listen(PORT, () => console.log(`Frank's office is open.`));
