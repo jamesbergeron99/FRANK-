@@ -1,38 +1,68 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>Frank | Executive Script Doctor</title>
+    <meta charset="UTF-8">
+    <title>FRANK | Executive Script Doctor</title>
     <style>
-        body { background: #1a1a1a; color: #f0f0f0; font-family: 'Georgia', serif; padding: 50px; }
-        .container { max-width: 800px; margin: auto; border: 1px solid #d4af37; padding: 30px; border-radius: 8px; }
-        h1 { color: #d4af37; text-align: center; font-style: italic; }
-        button { background: #d4af37; border: none; padding: 10px 20px; cursor: pointer; font-weight: bold; }
-        #chat { margin-top: 20px; border-top: 1px solid #333; padding-top: 20px; min-height: 200px; }
+        body { background: #0a0a0a; color: #d4af37; font-family: 'Georgia', serif; text-align: center; padding: 50px; }
+        .office { max-width: 800px; margin: auto; border: 2px solid #d4af37; padding: 40px; background: #111; box-shadow: 0 0 30px rgba(212, 175, 55, 0.1); }
+        h1 { font-style: italic; letter-spacing: 3px; border-bottom: 1px solid #d4af37; padding-bottom: 10px; }
+        #output { background: #000; color: #eee; padding: 25px; min-height: 200px; margin-top: 25px; text-align: left; line-height: 1.6; border-left: 5px solid #d4af37; white-space: pre-line; }
+        .btn { background: #d4af37; color: #000; padding: 15px 30px; border: none; font-weight: bold; cursor: pointer; margin-top: 25px; text-transform: uppercase; }
+        .btn:disabled { background: #444; color: #888; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Frank</h1>
-        <p><em>"Don't just write a movie, darling. Write a masterpiece."</em></p>
-        <input type="file" id="scriptFile" accept=".pdf">
-        <button onclick="uploadScript()">Submit to Frank</button>
-        <div id="chat">Frank is waiting for your pages...</div>
+    <div class="office">
+        <h1>FRANK</h1>
+        <p><em>"Development is a blood sport, darling."</em></p>
+        
+        <div id="output">Upload your script. Frank is waiting with a martini.</div>
+        
+        <input type="file" id="scriptInput" accept=".pdf" style="display:none;">
+        <button class="btn" onclick="document.getElementById('scriptInput').click()">Pick Script</button>
+        <button class="btn" id="analyzeBtn" onclick="startAnalysis()">Analyze & Listen</button>
     </div>
 
+    <script src="https://unpkg.com/@inworld/web-sdk"></script>
     <script>
-        async function uploadScript() {
-            const fileInput = document.getElementById('scriptFile');
-            const chat = document.getElementById('chat');
-            if (!fileInput.files[0]) return alert("Upload a script first!");
+        let connection;
+
+        async function startAnalysis() {
+            const fileInput = document.getElementById('scriptInput');
+            const output = document.getElementById('output');
+            const btn = document.getElementById('analyzeBtn');
+
+            if (!fileInput.files[0]) return alert("Darling, the file?");
+
+            btn.disabled = true;
+            output.innerText = "Frank is putting on his reading glasses...";
 
             const formData = new FormData();
             formData.append('script', fileInput.files[0]);
 
-            chat.innerText = "Frank is putting on his glasses...";
+            try {
+                const response = await fetch('/analyze', { method: 'POST', body: formData });
+                const data = await response.json();
 
-            const response = await fetch('/analyze', { method: 'POST', body: formData });
-            const data = await response.json();
-            chat.innerText = data.message;
+                output.innerText = data.message;
+
+                // TRIGGER THE VOICE
+                if (data.token) {
+                    connection = new Inworld.InworldConnectionService()
+                        .setToken(data.token)
+                        .setScene(data.characterId)
+                        .build();
+
+                    await connection.open();
+                    // This sends the analysis text to the Inworld Character to speak it
+                    await connection.sendText(data.message);
+                }
+            } catch (err) {
+                output.innerText = "The server stalled. Frank is annoyed.";
+            } finally {
+                btn.disabled = false;
+            }
         }
     </script>
 </body>
