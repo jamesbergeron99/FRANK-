@@ -19,21 +19,21 @@
     </style>
 </head>
 <body>
-    <div class="header">
+    <div class="header" onclick="handleFirstInteraction()">
         <h1>FRANK</h1>
         <p><em>"Development is a blood sport, darling."</em></p>
     </div>
 
-    <div id="chat-window">
+    <div id="chat-window" onclick="handleFirstInteraction()">
         <div class="msg frank-msg">"I'm here, darling. Upload the pages and let's see if you have what it takes."</div>
     </div>
 
     <div class="controls">
         <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadScript()">
-        <button class="btn" onclick="document.getElementById('scriptInput').click()">PDF UPLOAD</button>
-        <button class="mic-btn" id="micBtn" onclick="toggleDictation()">🎙️</button>
-        <input type="text" id="userInput" placeholder="Defend your choices..." onkeypress="if(event.key === 'Enter') sendChat()">
-        <button class="btn" onclick="sendChat()">Send</button>
+        <button class="btn" onclick="document.getElementById('scriptInput').click(); handleFirstInteraction();">PDF UPLOAD</button>
+        <button class="mic-btn" id="micBtn" onclick="toggleDictation(); handleFirstInteraction();">🎙️</button>
+        <input type="text" id="userInput" placeholder="Defend your choices..." onkeypress="if(event.key === 'Enter') { sendChat(); handleFirstInteraction(); }">
+        <button class="btn" onclick="sendChat(); handleFirstInteraction();">Send</button>
     </div>
 
     <script>
@@ -43,6 +43,7 @@
         let audioBuffers = {};
         let nextToPlay = 0;
         let isPlaying = false;
+        let hasGreeted = false;
         let recognition = ('webkitSpeechRecognition' in window) ? new webkitSpeechRecognition() : null;
 
         function addMessage(text, isFrank = true) {
@@ -53,7 +54,6 @@
             chatWindow.scrollTop = chatWindow.scrollHeight;
         }
 
-        // --- UPDATED PHONETIC DICTIONARY ---
         function cleanForSpeech(text) {
             return text
                 .replace(/\bExecutive Analysis\b/gi, "Ex-eck-yuh-tiv An-al-ih-sis")
@@ -67,9 +67,19 @@
                 .trim();
         }
 
+        // --- NEW GREETING LOGIC ---
+        async function handleFirstInteraction() {
+            if (hasGreeted) return;
+            hasGreeted = true;
+            
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+            
+            const greeting = "Hi there. I'm Frank. Not just in name, but in spirit. If you're looking for honest, direct feedback on your screenplays, then you've come to the right place.";
+            speak(greeting);
+        }
+
         async function speak(fullText) {
             const settings = await fetch('/voice-settings').then(r => r.json());
-            // Split into sentences for the buffer
             const sentences = fullText.match(/[^.!?]+[.!?]+/g) || [fullText];
             
             audioBuffers = {};
