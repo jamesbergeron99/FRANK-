@@ -56,7 +56,47 @@
         let currentSource = null;
         let hasGreeted = false;
         let totalSentences = 0;
-        let recognition = ('webkitSpeechRecognition' in window) ? new webkitSpeechRecognition() : null;
+        
+        // --- IMPROVED CONTINUOUS DICTATION ---
+        let recognition = null;
+        let isDictating = false;
+
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = true; // STAYS ON UNTIL YOU STOP IT
+            recognition.interimResults = true; // SHOWS TEXT AS YOU TALK
+            
+            recognition.onresult = (e) => {
+                let finalTranscript = '';
+                for (let i = e.resultIndex; i < e.results.length; ++i) {
+                    if (e.results[i].isFinal) {
+                        finalTranscript += e.results[i][0].transcript;
+                    }
+                }
+                if (finalTranscript) {
+                    document.getElementById('userInput').value += finalTranscript + ' ';
+                }
+            };
+
+            recognition.onend = () => {
+                if (isDictating) recognition.start(); // AUTO-RESTART IF CUT OFF BY BROWSER
+            };
+        }
+
+        function toggleDictation() {
+            if (!recognition) return alert("Speech recognition not supported.");
+            const micBtn = document.getElementById('micBtn');
+            
+            if (!isDictating) {
+                isDictating = true;
+                micBtn.classList.add('mic-active');
+                recognition.start();
+            } else {
+                isDictating = false;
+                micBtn.classList.remove('mic-active');
+                recognition.stop();
+            }
+        }
 
         function addMessage(text, isFrank = true) {
             const div = document.createElement('div');
@@ -107,12 +147,9 @@
         }
 
         async function speak(fullText) {
-            // STOP any current audio immediately before starting a new speech block
             stopCurrentAudio();
-            
             const settings = await fetch('/voice-settings').then(r => r.json());
             const sentences = fullText.match(/[^.!?]+[.!?]+/g) || [fullText];
-            
             audioBuffers = {};
             nextToPlay = 0;
             totalSentences = sentences.length;
@@ -131,7 +168,6 @@
                     const data = await response.json();
                     const audioData = Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer;
                     audioBuffers[index] = await audioCtx.decodeAudioData(audioData);
-                    
                     if (!isPlaying && index === nextToPlay) playSequentially();
                 } catch (e) { console.error("Audio failed: ", e); }
             });
@@ -143,16 +179,13 @@
                 document.getElementById('playPauseBtn').innerText = "PAUSE";
                 return;
             }
-
             if (audioBuffers[nextToPlay]) {
                 isPlaying = true;
                 document.getElementById('playPauseBtn').innerText = "PAUSE";
-                
                 currentSource = audioCtx.createBufferSource();
                 currentSource.buffer = audioBuffers[nextToPlay];
                 currentSource.connect(audioCtx.destination);
                 currentSource.onended = () => {
-                    // Only trigger the next one if isPlaying is still true
                     if (isPlaying) {
                         nextToPlay++;
                         playSequentially();
@@ -160,10 +193,7 @@
                 };
                 currentSource.start();
             } else {
-                // Wait for buffer to load if it's not ready yet
-                setTimeout(() => {
-                    if (isPlaying || nextToPlay === 0) playSequentially();
-                }, 100);
+                setTimeout(() => { if (isPlaying || nextToPlay === 0) playSequentially(); }, 100);
             }
         }
 
@@ -172,7 +202,7 @@
             if (currentSource) {
                 try {
                     currentSource.stop();
-                    currentSource.onended = null; // Prevent onended from triggering the next track
+                    currentSource.onended = null;
                 } catch (e) {}
                 currentSource = null;
             }
@@ -227,19 +257,6 @@
             } catch (err) {
                 addMessage("I'm a bit tied up right now.", true);
             }
-        }
-
-        if (recognition) {
-            recognition.onresult = (e) => {
-                document.getElementById('userInput').value = e.results[0][0].transcript;
-                document.getElementById('micBtn').classList.remove('mic-active');
-            };
-        }
-
-        function toggleDictation() {
-            if (!recognition) return alert("Speech recognition not supported.");
-            document.getElementById('micBtn').classList.add('mic-active');
-            recognition.start();
         }
     </script>
 </body>
