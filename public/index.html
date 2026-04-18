@@ -43,7 +43,7 @@
     </div>
 
     <div id="chat-window">
-        <div class="msg frank-msg">"Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a PDF to begin. It takes less than a minute to process. I'm like, really smart."</div>
+        <div class="msg frank-msg">"Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a PDF to begin. It takes less than a minute to process."</div>
     </div>
 
     <div class="media-bar">
@@ -116,7 +116,7 @@
             if (hasGreeted) return;
             hasGreeted = true;
             if (audioCtx.state === 'suspended') await audioCtx.resume();
-            speak("Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a PDF to begin. It takes less than a minute to process. I'm like, really smart.");
+            speak("Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a PDF to begin. It takes less than a minute to process.");
         }
 
         async function speak(fullText) {
@@ -142,14 +142,7 @@
 
         function playSequentially() {
             if (nextToPlay >= totalSentences) { isPlaying = false; return; }
-            
-            // If the sentence failed to load, skip it and move on
-            if (audioBuffers[nextToPlay] === "FAILED") {
-                nextToPlay++;
-                playSequentially();
-                return;
-            }
-
+            if (audioBuffers[nextToPlay] === "FAILED") { nextToPlay++; playSequentially(); return; }
             if (audioBuffers[nextToPlay]) {
                 isPlaying = true; document.getElementById('playPauseBtn').innerText = "PAUSE";
                 currentSource = audioCtx.createBufferSource();
@@ -157,10 +150,7 @@
                 currentSource.connect(audioCtx.destination);
                 currentSource.onended = () => { if (isPlaying) { nextToPlay++; playSequentially(); } };
                 currentSource.start();
-            } else { 
-                // Wait, but don't wait forever
-                setTimeout(() => { if (isPlaying || nextToPlay === 0) playSequentially(); }, 150); 
-            }
+            } else { setTimeout(() => { if (isPlaying || nextToPlay === 0) playSequentially(); }, 150); }
         }
 
         function stopCurrentAudio() {
