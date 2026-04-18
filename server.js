@@ -6,10 +6,7 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 require('dotenv').config();
 
 const app = express();
-// Allow larger payloads for those 120-page scripts
-app.use(express.json({limit: '50mb'}));
-app.use(express.urlencoded({limit: '50mb', extended: true}));
-
+app.use(express.json({limit: '50mb'})); 
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
@@ -35,13 +32,17 @@ app.post('/analyze', upload.single('script'), async (req, res) => {
     if (!req.file) return res.status(400).json({ message: "Darling, the pages!" });
     try {
         const data = await pdf(req.file.buffer);
+        
+        // SWITCHED BACK TO FLASH FOR STABILITY
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-pro", 
+            model: "gemini-1.5-flash", 
             systemInstruction: FRANK_IDENTITY 
         });
 
-        // No character limit - read the whole thing
-        const result = await model.generateContent(`Here is the full script. Give me the Coverage:\n\n${data.text}`);
+        // Bumping the limit to 100,000 characters to cover ~90-100 pages without crashing the API
+        const scriptText = data.text.substring(0, 100000);
+
+        const result = await model.generateContent(`Here is the full script. Give me the Coverage:\n\n${scriptText}`);
         res.json({ message: result.response.text() });
     } catch (err) {
         console.error(err);
@@ -51,13 +52,13 @@ app.post('/analyze', upload.single('script'), async (req, res) => {
 
 app.post('/chat', async (req, res) => {
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro", systemInstruction: FRANK_IDENTITY });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", systemInstruction: FRANK_IDENTITY });
         const result = await model.generateContent(req.body.message);
         res.json({ message: result.response.text() });
     } catch (err) {
         res.status(500).json({ message: "Busy, darling." });
     }
-} );
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Frank is Live.`));
