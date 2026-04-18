@@ -6,29 +6,27 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 require('dotenv').config();
 
 const app = express();
+// Increased limit for feature-length script uploads
+app.use(express.json({limit: '50mb'})); 
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-// THE REFINED EXECUTIVE CONTRACT
-const FRANK_IDENTITY = `You are Frank, a 30-year veteran film executive with a flamboyant, Truman Capote-esque personality. 
-You are one of the girls—witty, funny, and collaborative, but never mean. 
+const FRANK_IDENTITY = `You are Frank, a 30-year veteran film executive with a flamboyant, Truman Capote-esque personality. You are a witty, supportive collaborator.
 
-STRICT OUTPUT CONTRACT (Must follow this order):
-1. FORMATTING & SPAG: Rigorous check of industry standard formatting, spelling, and grammar.
-2. TITLE ANALYSIS: Evaluate the title. Offer better suggestions if it doesn't pop.
-3. LOGLINE: One punchy, commercial sentence.
-4. BRIEF SYNOPSIS: The narrative engine and stakes.
+STRICT EXECUTIVE PROTOCOL:
+1. FORMATTING & SPAG: Detailed check.
+2. TITLE ANALYSIS: Commercial viability and suggestions.
+3. LOGLINE: One punchy sentence.
+4. BRIEF SYNOPSIS: Narrative engine and stakes.
 5. EXECUTIVE FEEDBACK:
    - PACING: (Use text examples)
-   - CHARACTERS & ARCS: (Deep dive into Protagonist vs Antagonist)
-   - STORY BEATS: (Breakdown of A-Story, B-Story, and C-Story)
-   - DIALOGUE & SUBTEXT: (Identify on-the-nose dialogue vs subtext with text examples)
-   - ORIGINALITY: (How it stands out)
-   - COMPS: (Compare to existing films)
-6. THE VERDICT: End with "GREEN LIGHT", "CONSIDER", or "PASS". 
-   - If CONSIDER or PASS, give a detailed, text-justified reason why.
+   - CHARACTERS & ARCS: (Deep dive into all major leads)
+   - STORY BEATS: (Breakdown of A, B, and C Stories)
+   - DIALOGUE & SUBTEXT: (Quantify with quotes)
+   - ORIGINALITY & COMPS.
+6. THE VERDICT: GREEN LIGHT, CONSIDER, or PASS with a detailed, text-justified reason.
 
-MANDATORY: Quantify every critique with direct quotes or specific scene references from the text.`;
+IMPORTANT: You are reading a FULL-LENGTH screenplay. Analyze the entire narrative arc from beginning to end. Use specific examples from the later acts to prove you've read the whole thing.`;
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
@@ -37,33 +35,38 @@ app.get('/voice-settings', (req, res) => {
 });
 
 app.post('/analyze', upload.single('script'), async (req, res) => {
-    if (!req.file) return res.status(400).json({ message: "Darling, I need the pages." });
+    if (!req.file) return res.status(400).json({ message: "Darling, I need the pages!" });
+    
     try {
         const data = await pdf(req.file.buffer);
+        // We are removing the .substring limit entirely to allow for 120+ pages
+        const fullScriptText = data.text; 
+        
+        // Using Gemini 1.5 Pro for massive context handling
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-3-flash-preview",
+            model: "gemini-1.5-pro", 
             systemInstruction: FRANK_IDENTITY 
         });
-        
-        const result = await model.generateContent(`Here is the script. Follow the Executive Contract exactly:\n\n${data.text.substring(0, 30000)}`);
-        res.json({ message: result.response.text() });
+
+        const result = await model.generateContent(`Here is the FULL screenplay. Provide a rigorous executive analysis following the protocol:\n\n${fullScriptText}`);
+        const response = await result.response;
+        res.json({ message: response.text() });
     } catch (err) {
-        res.status(500).json({ message: "Frank is indisposed. Error: " + err.message });
+        console.error("Server Error:", err);
+        res.status(500).json({ message: "Frank had a bit of a spill. (Error: " + err.message + ")" });
     }
 });
 
 app.post('/chat', async (req, res) => {
     try {
-        const model = genAI.getGenerativeModel({ 
-            model: "gemini-3-flash-preview", 
-            systemInstruction: FRANK_IDENTITY 
-        });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro", systemInstruction: FRANK_IDENTITY });
         const result = await model.generateContent(req.body.message);
-        res.json({ message: result.response.text() });
+        const response = await result.response;
+        res.json({ message: response.text() });
     } catch (err) {
-        res.status(500).json({ message: "I'm a bit tied up, darling." });
+        res.status(500).json({ message: "I'm a bit overwhelmed, darling." });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Frank is Live.`));
+app.listen(PORT, () => console.log(`Frank is ready for the big screen.`));
