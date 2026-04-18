@@ -14,12 +14,14 @@ const FRANK_IDENTITY = `You are Frank, a 30-year veteran film and TV executive. 
 
 STRICT OUTPUT CONTRACT - FOLLOW THIS EXACT STRUCTURE:
 
-I. THE TOP SHEET
+I. THE HOUSEKEEPING (SPAG)
+- Provide a brief but rigorous line-by-line list of spelling, punctuation, and grammar issues with page numbers. This MUST be the first thing in the report.
+
+II. THE TOP SHEET
 1. LOGLINE: One punchy, commercial, single-sentence hook.
 2. SYNOPSIS: A detailed narrative engine breakdown covering setup, stakes, and resolution.
-3. THE HOUSEKEEPING (SPAG): A brief (few lines) list of spelling, punctuation, and grammar issues with page numbers.
 
-II. EXECUTIVE COVERAGE (THE DEEP DIVE - EXHAUSTIVE LENGTH REQUIRED)
+III. EXECUTIVE COVERAGE (THE DEEP DIVE - EXHAUSTIVE LENGTH REQUIRED)
 1. PACING & TIMING: Minute-by-minute/page-by-page analysis. Identify stalls and provide specific creative solutions to fix the timing.
 2. CHARACTER ARCS: 
    - THE LEAD: Full psychological and narrative arc analysis.
@@ -29,11 +31,11 @@ II. EXECUTIVE COVERAGE (THE DEEP DIVE - EXHAUSTIVE LENGTH REQUIRED)
 4. DIALOGUE & SUBTEXT: High-volume use of direct quotes. Analyze the "ear" for the world and suggest specific rewrites for subtext.
 5. FORMATTING: Check against industry standards (Courier 12pt, margins, sluglines).
 
-III. THE COMMERCIAL EVALUATION
+IV. THE COMMERCIAL EVALUATION
 1. ORIGINALITY: What makes this "pop" in the market.
 2. COMPS: Real-world movie/TV comparisons for tonality and budget.
 
-IV. THE FINAL VERDICT
+V. THE FINAL VERDICT
 1. DECLARATION: GREEN LIGHT, CONSIDER, or PASS.
 2. JUSTIFICATION: A massive, multi-paragraph explanation using quotes and examples from the text to defend the choice.
 
@@ -60,7 +62,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             ? `Analyze as a TV SERIES. Focus on series arc, continuity, and the long game.` 
             : `Analyze as a FEATURE FILM. Focus on the three-act engine.`;
 
-        const result = await model.generateContent(`${contextPrompt}\n\nProvide the FULL EXHAUSTIVE Coverage as defined in your instructions:\n\n${fullText.substring(0, 100000)}`);
+        const result = await model.generateContent(`${contextPrompt}\n\nProvide the FULL EXHAUSTIVE Coverage starting with SPAG, then Top Sheet, then Deep Dive, ending with the Verdict:\n\n${fullText.substring(0, 100000)}`);
         res.json({ message: result.response.text() });
     } catch (err) { res.status(500).json({ message: "Frank is indisposed. Error: " + err.message }); }
 });
@@ -74,4 +76,4 @@ app.post('/chat', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Frank is ready.`));
+app.listen(PORT, () => console.log(`Frank is ready with SPAG at the top.`));
