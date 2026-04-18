@@ -20,7 +20,7 @@ STRICT OUTPUT CONTRACT:
 5. EXECUTIVE COVERAGE: Pacing, Characters, A/B/C Stories, Dialogue (with quotes).
 6. THE FINAL VERDICT: GREEN LIGHT, CONSIDER, or PASS.
 
-MANDATORY: Never use "Analysis", "Protagonist", or "Antagonist". Use "Coverage", "Lead", and "Opponent". Quantify everything with text from the script.`;
+MANDATORY: Never use the words "Analysis", "Protagonist", or "Antagonist". Use "Coverage", "Lead", and "Opponent" instead. Quantify everything with text from the script.`;
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -33,16 +33,16 @@ app.post('/analyze', upload.single('script'), async (req, res) => {
     try {
         const data = await pdf(req.file.buffer);
         
-        // SWITCHED BACK TO FLASH FOR STABILITY
+        // STABLE GEMINI 3 ENGINE
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash", 
+            model: "gemini-3-flash-preview", 
             systemInstruction: FRANK_IDENTITY 
         });
 
-        // Bumping the limit to 100,000 characters to cover ~90-100 pages without crashing the API
+        // 100,000 characters is plenty for a 120-page script
         const scriptText = data.text.substring(0, 100000);
 
-        const result = await model.generateContent(`Here is the full script. Give me the Coverage:\n\n${scriptText}`);
+        const result = await model.generateContent(`Here is the script. Give me the Coverage:\n\n${scriptText}`);
         res.json({ message: result.response.text() });
     } catch (err) {
         console.error(err);
@@ -52,7 +52,7 @@ app.post('/analyze', upload.single('script'), async (req, res) => {
 
 app.post('/chat', async (req, res) => {
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", systemInstruction: FRANK_IDENTITY });
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview", systemInstruction: FRANK_IDENTITY });
         const result = await model.generateContent(req.body.message);
         res.json({ message: result.response.text() });
     } catch (err) {
@@ -61,4 +61,4 @@ app.post('/chat', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Frank is Live.`));
+app.listen(PORT, () => console.log(`Frank is back in the stable lane.`));
