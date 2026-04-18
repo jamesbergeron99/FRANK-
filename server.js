@@ -30,7 +30,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
-    const mode = req.body.mode || 'Feature'; // Detects the toggle from the front end
+    const mode = req.body.mode || 'Feature';
     if (!req.files || req.files.length === 0) return res.status(400).json({ message: "Where are the pages, darling?" });
     
     try {
@@ -42,7 +42,6 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview", systemInstruction: FRANK_IDENTITY });
         
-        // Customizing the prompt based on the Toggle
         const contextPrompt = mode === 'TV Series' 
             ? `Analyze this as a TV SERIES. Track character evolution and narrative continuity across the episodes provided.` 
             : `Analyze this as a FEATURE FILM. Focus on the three-act structure and a contained character arc.`;
@@ -63,4 +62,4 @@ app.post('/chat', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Frank is ready for ${PORT}`));
+app.listen(PORT, () => console.log(`Frank is ready.`));
