@@ -7,16 +7,24 @@
         body { background: #0a0a0a; color: #d4af37; font-family: 'Georgia', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
         .header { padding: 15px; border-bottom: 2px solid #d4af37; background: #111; text-align: center; shrink-0; cursor: pointer; }
         h1 { margin: 0; font-style: italic; letter-spacing: 3px; text-transform: uppercase; }
+        
         #chat-window { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; background: #050505; scroll-behavior: smooth; padding-bottom: 100px; }
+        
         .msg { max-width: 85%; padding: 15px; border-radius: 8px; line-height: 1.5; font-size: 1.1rem; white-space: pre-wrap; transition: all 0.3s ease; position: relative; }
         .frank-msg { align-self: flex-start; background: #1a1a1a; border-left: 4px solid #d4af37; color: #eee; }
         .user-msg { align-self: flex-end; background: #d4af37; color: #000; font-weight: bold; }
+        
+        /* Download Button Styles */
         .download-btn { display: block; margin-top: 10px; font-size: 0.8rem; color: #d4af37; text-decoration: underline; cursor: pointer; background: none; border: none; padding: 0; }
+        
         .controls { padding: 15px; background: #111; border-top: 2px solid #d4af37; display: flex; gap: 10px; align-items: center; shrink-0; }
         input[type="text"] { flex-grow: 1; padding: 12px; background: #000; border: 1px solid #d4af37; color: #d4af37; font-size: 1rem; }
+        
+        /* Media Player Bar */
         .media-bar { background: #1a1a1a; border-top: 1px solid #333; padding: 10px; display: flex; justify-content: center; gap: 20px; align-items: center; }
         .media-btn { background: none; border: 1px solid #d4af37; color: #d4af37; padding: 5px 15px; cursor: pointer; font-family: serif; font-size: 0.9rem; }
         .media-btn:hover { background: #d4af37; color: #000; }
+        
         .btn { background: #d4af37; color: #000; padding: 10px 20px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; }
         .mic-btn { background: #800; color: #fff; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center; }
         .mic-active { background: #f00; box-shadow: 0 0 15px #f00; }
@@ -29,7 +37,7 @@
     </div>
 
     <div id="chat-window">
-        <div class="msg frank-msg">"I'm here, darling. Upload the pages and let's see if you've written a masterpiece or a doorstop."</div>
+        <div class="msg frank-msg">"Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a PDF to begin. It takes less than a minute to process. I'm like, really smart."</div>
     </div>
 
     <div class="media-bar">
@@ -42,13 +50,14 @@
         <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadScript()">
         <button class="btn" onclick="document.getElementById('scriptInput').click()">PDF UPLOAD</button>
         <button class="mic-btn" id="micBtn" onclick="toggleDictation()">🎙️</button>
-        <input type="text" id="userInput" placeholder="Defend your genius..." onkeypress="if(event.key === 'Enter') sendChat()">
+        <input type="text" id="userInput" placeholder="Defend your choices..." onkeypress="if(event.key === 'Enter') sendChat()">
         <button class="btn" onclick="sendChat()">Send</button>
     </div>
 
     <script>
         const chatWindow = document.getElementById('chat-window');
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        
         let audioBuffers = {};
         let nextToPlay = 0;
         let isPlaying = false;
@@ -61,6 +70,7 @@
             const div = document.createElement('div');
             div.className = `msg ${isFrank ? 'frank-msg' : 'user-msg'}`;
             div.innerText = text;
+            
             if (isFrank) {
                 const dl = document.createElement('button');
                 dl.className = 'download-btn';
@@ -68,6 +78,7 @@
                 dl.onclick = () => downloadReport(text);
                 div.appendChild(dl);
             }
+
             chatWindow.appendChild(div);
             chatWindow.scrollTop = chatWindow.scrollHeight;
         }
@@ -77,14 +88,18 @@
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Frank_Notes.txt`;
+            a.download = `Frank_Script_Report_${new Date().getTime()}.txt`;
             a.click();
         }
 
-        // --- SIMPLIFIED DICTIONARY ---
         function cleanForSpeech(text) {
             return text
                 .replace(/\bPDF\b/gi, "P.D.F.")
+                .replace(/\bExecutive Analysis\b/gi, "Executive Coverage")
+                .replace(/\bAnalysis\b/gi, "Coverage")
+                .replace(/\bProtagonist\b/gi, "Lead")
+                .replace(/\bAntagonist\b/gi, "Opponent")
+                .replace(/\bSynopsis\b/gi, "Sin-op-sis")
                 .replace(/\bLogline\b/gi, "Log-line")
                 .replace(/\bVerdict\b/gi, "Ver-dict")
                 .replace(/\bA-Story\b/gi, "Ay story")
@@ -98,12 +113,15 @@
             if (hasGreeted) return;
             hasGreeted = true;
             if (audioCtx.state === 'suspended') await audioCtx.resume();
-            speak("Hey there, I'm Frank. If you're looking for honest feedback on your screenplays, you've come to the right place. Upload a P.D.F to begin. I'm like, really smart.");
+            
+            const greeting = "Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a PDF to begin. It takes less than a minute to process. I'm like, really smart.";
+            speak(greeting);
         }
 
         async function speak(fullText) {
             const settings = await fetch('/voice-settings').then(r => r.json());
             const sentences = fullText.match(/[^.!?]+[.!?]+/g) || [fullText];
+            
             audioBuffers = {};
             nextToPlay = 0;
             totalSentences = sentences.length;
@@ -115,28 +133,43 @@
                         headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
                         body: JSON.stringify({ 
                             text: cleanForSpeech(sentence), 
-                            voiceId: "Simon", 
+                            voiceId: "default-oglabcjnetcklcq7rghmbw__frank", 
                             modelId: "inworld-tts-1.5-max" 
                         })
                     });
                     const data = await response.json();
                     const audioData = Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer;
                     audioBuffers[index] = await audioCtx.decodeAudioData(audioData);
+                    
                     if (!isPlaying && index === nextToPlay) playSequentially();
-                } catch (e) { console.error(e); }
+                } catch (e) { console.error("Audio failed: ", e); }
             });
         }
 
         function playSequentially() {
-            if (nextToPlay >= totalSentences) { isPlaying = false; return; }
+            if (nextToPlay >= totalSentences) {
+                isPlaying = false;
+                document.getElementById('playPauseBtn').innerText = "PAUSE";
+                return;
+            }
+
             if (audioBuffers[nextToPlay]) {
                 isPlaying = true;
+                document.getElementById('playPauseBtn').innerText = "PAUSE";
+                
                 currentSource = audioCtx.createBufferSource();
                 currentSource.buffer = audioBuffers[nextToPlay];
                 currentSource.connect(audioCtx.destination);
-                currentSource.onended = () => { if (isPlaying) { nextToPlay++; playSequentially(); } };
+                currentSource.onended = () => {
+                    if (isPlaying) {
+                        nextToPlay++;
+                        playSequentially();
+                    }
+                };
                 currentSource.start();
-            } else { setTimeout(playSequentially, 100); }
+            } else {
+                setTimeout(playSequentially, 100);
+            }
         }
 
         function togglePlayback() {
@@ -144,7 +177,9 @@
                 isPlaying = false;
                 if (currentSource) currentSource.stop();
                 document.getElementById('playPauseBtn').innerText = "PLAY";
-            } else { playSequentially(); document.getElementById('playPauseBtn').innerText = "PAUSE"; }
+            } else {
+                playSequentially();
+            }
         }
 
         function skipAudio(direction) {
@@ -156,13 +191,17 @@
         async function uploadScript() {
             const fileInput = document.getElementById('scriptInput');
             if (!fileInput.files[0]) return;
-            addMessage("Frank is settling in with your script... hold your breath, darling.", true);
+            addMessage("Frank is reviewing your script...", true);
             const formData = new FormData();
             formData.append('script', fileInput.files[0]);
-            const response = await fetch('/analyze', { method: 'POST', body: formData });
-            const data = await response.json();
-            addMessage(data.message, true);
-            speak(data.message);
+            try {
+                const response = await fetch('/analyze', { method: 'POST', body: formData });
+                const data = await response.json();
+                addMessage(data.message, true);
+                speak(data.message);
+            } catch (err) {
+                addMessage("Frank is indisposed. Try again, darling.", true);
+            }
         }
 
         async function sendChat() {
@@ -171,14 +210,18 @@
             if (!text) return;
             addMessage(text, false);
             input.value = '';
-            const response = await fetch('/chat', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ message: text })
-            });
-            const data = await response.json();
-            addMessage(data.message, true);
-            speak(data.message);
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ message: text })
+                });
+                const data = await response.json();
+                addMessage(data.message, true);
+                speak(data.message);
+            } catch (err) {
+                addMessage("I'm a bit tied up right now.", true);
+            }
         }
 
         if (recognition) {
@@ -187,7 +230,9 @@
                 document.getElementById('micBtn').classList.remove('mic-active');
             };
         }
+
         function toggleDictation() {
+            if (!recognition) return alert("Speech recognition not supported.");
             document.getElementById('micBtn').classList.add('mic-active');
             recognition.start();
         }
