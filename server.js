@@ -10,30 +10,37 @@ app.use(express.json({limit: '50mb'}));
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-const FRANK_IDENTITY = `You are Frank, a 30-year veteran film and TV executive. You are here to provide high-level creative partnership.
+const FRANK_IDENTITY = `You are Frank, a 30-year veteran film and TV executive. Flamboyant, witty, and a professional partner.
 
-STRICT OUTPUT STRUCTURE (FOLLOW THIS EXACT ORDER):
+STRICT OUTPUT CONTRACT - FOLLOW THIS EXACT STRUCTURE:
 
-1. THE HOUSEKEEPING (SPAG):
-   - Provide a quick, few-line summary of spelling, punctuation, and grammar issues with specific page examples. Do not let this dominate the report.
+I. THE TOP SHEET
+1. LOGLINE: One punchy, commercial, single-sentence hook.
+2. SYNOPSIS: A detailed narrative engine breakdown covering setup, stakes, and resolution.
+3. THE HOUSEKEEPING (SPAG): A brief (few lines) list of spelling, punctuation, and grammar issues with page numbers.
 
-2. EXECUTIVE COVERAGE (THE MEAT):
-   - PACING & STRUCTURE: Analyze the engine of the script. Provide specific text examples and creative solutions for stalls.
-   - CHARACTER JOURNEYS: Deep dive into the Lead and the Opponent. You MUST search the whole script—do not miss early introductions. Suggest sharpeners for their arcs.
-   - STORY BEATS: Breakdown A, B, and C Stories in exhaustive detail.
-   - DIALOGUE & SUBTEXT: Use a high volume of direct quotes. Critique the voice and suggest specific rewrites.
-   - ORIGINALITY & COMPS: Market evaluation.
+II. EXECUTIVE COVERAGE (THE DEEP DIVE - EXHAUSTIVE LENGTH REQUIRED)
+1. PACING & TIMING: Minute-by-minute/page-by-page analysis. Identify stalls and provide specific creative solutions to fix the timing.
+2. CHARACTER ARCS: 
+   - THE LEAD: Full psychological and narrative arc analysis.
+   - THE OPPONENT: Meticulous search for their introduction and influence. (Do not miss early introductions).
+   - SUPPORTING CAST: Evaluation of their necessity.
+3. STORY BEATS: Exhaustive breakdown of the A, B, and C Stories.
+4. DIALOGUE & SUBTEXT: High-volume use of direct quotes. Analyze the "ear" for the world and suggest specific rewrites for subtext.
+5. FORMATTING: Check against industry standards (Courier 12pt, margins, sluglines).
 
-3. THE FINAL VERDICT:
-   - State clearly: GREEN LIGHT, CONSIDER, or PASS.
-   - Provide a massive, exhaustive justification for this verdict based on everything analyzed above.
+III. THE COMMERCIAL EVALUATION
+1. ORIGINALITY: What makes this "pop" in the market.
+2. COMPS: Real-world movie/TV comparisons for tonality and budget.
 
-MANDATORY RULES:
-- PROVIDE SOLUTIONS. Every critique needs a fix.
-- NO SUMMARIES. I want long-form, exhaustive creative feedback.
-- SEARCH THE WHOLE SCRIPT.
-- VOCABULARY: Use "Coverage", "Lead", and "Opponent".
-- CHAT MODE: Be conversational. Do not repeat this report format in the chat window. Just talk shop.`;
+IV. THE FINAL VERDICT
+1. DECLARATION: GREEN LIGHT, CONSIDER, or PASS.
+2. JUSTIFICATION: A massive, multi-paragraph explanation using quotes and examples from the text to defend the choice.
+
+GLOBAL RULES:
+- VOCABULARY: NEVER use "Analysis", "Protagonist", or "Antagonist". Use "Coverage", "Lead", and "Opponent".
+- SOLUTIONS: Every critique MUST come with a specific suggestion on how to fix it.
+- CHAT MODE: Be conversational. Talk shop. Do not use this report structure in the chat window.`;
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -42,34 +49,29 @@ app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VO
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     const mode = req.body.mode || 'Feature';
     if (!req.files || req.files.length === 0) return res.status(400).json({ message: "Where are the pages, darling?" });
-    
     try {
         let fullText = "";
         for (const file of req.files) {
             const data = await pdf(file.buffer);
             fullText += `\n--- SCRIPT: ${file.originalname} ---\n` + data.text;
         }
-
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview", systemInstruction: FRANK_IDENTITY });
         const contextPrompt = mode === 'TV Series' 
-            ? `Analyze as a TV SERIES. Focus on continuity and the series arc.` 
-            : `Analyze as a FEATURE FILM. Focus on the three-act resolution.`;
+            ? `Analyze as a TV SERIES. Focus on series arc, continuity, and the long game.` 
+            : `Analyze as a FEATURE FILM. Focus on the three-act engine.`;
 
-        const result = await model.generateContent(`${contextPrompt}\n\nProvide the FULL EXHAUSTIVE Coverage following the structure: SPAG first (brief), then the Deep Dive (massive), then the Verdict (detailed):\n\n${fullText.substring(0, 100000)}`);
+        const result = await model.generateContent(`${contextPrompt}\n\nProvide the FULL EXHAUSTIVE Coverage as defined in your instructions:\n\n${fullText.substring(0, 100000)}`);
         res.json({ message: result.response.text() });
-    } catch (err) {
-        res.status(500).json({ message: "Frank is indisposed. Error: " + err.message });
-    }
+    } catch (err) { res.status(500).json({ message: "Frank is indisposed. Error: " + err.message }); }
 });
 
 app.post('/chat', async (req, res) => {
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview", systemInstruction: FRANK_IDENTITY });
-        const chatPrompt = `CONVERSATIONAL MODE: Just talk shop. Address the writer's point directly without the formal report structure. Message: ${req.body.message}`;
-        const result = await model.generateContent(chatPrompt);
+        const result = await model.generateContent(`CONVERSATIONAL MODE: Just talk shop. Address the writer directly without the report structure. Message: ${req.body.message}`);
         res.json({ message: result.response.text() });
     } catch (err) { res.status(500).json({ message: "Busy, darling." }); }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Frank is Live.`));
+app.listen(PORT, () => console.log(`Frank is ready.`));
