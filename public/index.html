@@ -70,17 +70,12 @@
             recognition = new webkitSpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = true;
-            
             recognition.onresult = (e) => {
-                let currentTranscript = '';
+                let finalTranscript = '';
                 for (let i = e.resultIndex; i < e.results.length; ++i) {
-                    if (e.results[i].isFinal) {
-                        currentTranscript += e.results[i][0].transcript;
-                    }
+                    if (e.results[i].isFinal) finalTranscript += e.results[i][0].transcript;
                 }
-                if (currentTranscript) {
-                    document.getElementById('userInput').value += currentTranscript + ' ';
-                }
+                if (finalTranscript) document.getElementById('userInput').value += finalTranscript + ' ';
             };
             recognition.onend = () => { if (isDictating) recognition.start(); };
         }
@@ -88,15 +83,8 @@
         function toggleDictation() {
             if (!recognition) return;
             const micBtn = document.getElementById('micBtn');
-            if (!isDictating) { 
-                isDictating = true; 
-                micBtn.classList.add('mic-active'); 
-                recognition.start(); 
-            } else { 
-                isDictating = false; 
-                micBtn.classList.remove('mic-active'); 
-                recognition.stop(); 
-            }
+            if (!isDictating) { isDictating = true; micBtn.classList.add('mic-active'); recognition.start(); }
+            else { isDictating = false; micBtn.classList.remove('mic-active'); recognition.stop(); }
         }
 
         function addMessage(text, isFrank = true) {
@@ -117,7 +105,7 @@
             const blob = new Blob([text], { type: 'text/plain' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url; a.download = `Frank_Notes.txt`; a.click();
+            a.href = url; a.download = `Frank_Report.txt`; a.click();
         }
 
         function cleanForSpeech(text) {
