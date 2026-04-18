@@ -53,23 +53,25 @@
             chatWindow.scrollTop = chatWindow.scrollHeight;
         }
 
-        // --- THE SCRIPT DOCTOR DICTIONARY ---
+        // --- UPDATED PHONETIC DICTIONARY ---
         function cleanForSpeech(text) {
             return text
                 .replace(/\bExecutive Analysis\b/gi, "Ex-eck-yuh-tiv An-al-ih-sis")
                 .replace(/\bExecutive\b/gi, "Ex-eck-yuh-tiv")
+                .replace(/\bAnalysis\b/gi, "An-al-ih-sis")
                 .replace(/\bSynopsis\b/gi, "Sin-op-sis")
                 .replace(/\bLogline\b/gi, "Log-line")
                 .replace(/\bProtagonist\b/gi, "Pro-tag-on-ist")
+                .replace(/\bAntagonist\b/gi, "An-tag-on-ist")
                 .replace(/[*#]/g, "")
                 .trim();
         }
 
         async function speak(fullText) {
             const settings = await fetch('/voice-settings').then(r => r.json());
+            // Split into sentences for the buffer
             const sentences = fullText.match(/[^.!?]+[.!?]+/g) || [fullText];
             
-            // Reset for new response
             audioBuffers = {};
             nextToPlay = 0;
 
