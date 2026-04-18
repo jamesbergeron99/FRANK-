@@ -29,7 +29,7 @@
     </div>
 
     <div id="chat-window">
-        <div class="msg frank-msg">"Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a PDF to begin. It takes less than a minute to process. I'm like, really smart."</div>
+        <div class="msg frank-msg">"I'm here, darling. Upload the pages and let's see if you've written a masterpiece or a doorstop."</div>
     </div>
 
     <div class="media-bar">
@@ -42,7 +42,7 @@
         <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadScript()">
         <button class="btn" onclick="document.getElementById('scriptInput').click()">PDF UPLOAD</button>
         <button class="mic-btn" id="micBtn" onclick="toggleDictation()">🎙️</button>
-        <input type="text" id="userInput" placeholder="Defend your choices..." onkeypress="if(event.key === 'Enter') sendChat()">
+        <input type="text" id="userInput" placeholder="Defend your genius..." onkeypress="if(event.key === 'Enter') sendChat()">
         <button class="btn" onclick="sendChat()">Send</button>
     </div>
 
@@ -77,17 +77,19 @@
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Frank_Script_Report.txt`;
+            a.download = `Frank_Notes.txt`;
             a.click();
         }
 
+        // --- SIMPLIFIED DICTIONARY ---
         function cleanForSpeech(text) {
             return text
                 .replace(/\bPDF\b/gi, "P.D.F.")
-                .replace(/\bExecutive Analysis\b/gi, "Ex-eck-yuh-tiv An-al-ih-sis")
-                .replace(/\bAnalysis\b/gi, "An-al-uh-sis")
-                .replace(/\bProtagonist\b/gi, "Pro-tag-on-ist")
-                .replace(/\bAntagonist\b/gi, "An-tag-on-ist")
+                .replace(/\bLogline\b/gi, "Log-line")
+                .replace(/\bVerdict\b/gi, "Ver-dict")
+                .replace(/\bA-Story\b/gi, "Ay story")
+                .replace(/\bB-Story\b/gi, "Bee story")
+                .replace(/\bC-Story\b/gi, "See story")
                 .replace(/[*#]/g, "")
                 .trim();
         }
@@ -96,7 +98,7 @@
             if (hasGreeted) return;
             hasGreeted = true;
             if (audioCtx.state === 'suspended') await audioCtx.resume();
-            speak("Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a PDF to begin. I'm like, really smart.");
+            speak("Hey there, I'm Frank. If you're looking for honest feedback on your screenplays, you've come to the right place. Upload a P.D.F to begin. I'm like, really smart.");
         }
 
         async function speak(fullText) {
@@ -154,7 +156,7 @@
         async function uploadScript() {
             const fileInput = document.getElementById('scriptInput');
             if (!fileInput.files[0]) return;
-            addMessage("Frank is settling in with your feature... this may take a moment, darling.", true);
+            addMessage("Frank is settling in with your script... hold your breath, darling.", true);
             const formData = new FormData();
             formData.append('script', fileInput.files[0]);
             const response = await fetch('/analyze', { method: 'POST', body: formData });
