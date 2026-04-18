@@ -5,7 +5,7 @@
     <title>FRANK | Executive Script Doctor</title>
     <style>
         body { background: #0a0a0a; color: #d4af37; font-family: 'Georgia', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
-        .header { padding: 15px; border-bottom: 2px solid #d4af37; background: #111; text-align: center; shrink-0; }
+        .header { padding: 15px; border-bottom: 2px solid #d4af37; background: #111; text-align: center; shrink-0; cursor: pointer; }
         h1 { margin: 0; font-style: italic; letter-spacing: 3px; text-transform: uppercase; }
         #chat-window { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; background: #050505; scroll-behavior: smooth; }
         .msg { max-width: 85%; padding: 15px; border-radius: 8px; line-height: 1.5; font-size: 1.1rem; white-space: pre-wrap; transition: all 0.3s ease; }
@@ -18,22 +18,22 @@
         .mic-active { background: #f00; box-shadow: 0 0 15px #f00; }
     </style>
 </head>
-<body>
-    <div class="header" onclick="handleFirstInteraction()">
+<body onclick="handleFirstInteraction()">
+    <div class="header">
         <h1>FRANK</h1>
         <p><em>"Development is a blood sport, darling."</em></p>
     </div>
 
-    <div id="chat-window" onclick="handleFirstInteraction()">
+    <div id="chat-window">
         <div class="msg frank-msg">"I'm here, darling. Upload the pages and let's see if you have what it takes."</div>
     </div>
 
     <div class="controls">
         <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadScript()">
-        <button class="btn" onclick="document.getElementById('scriptInput').click(); handleFirstInteraction();">PDF UPLOAD</button>
-        <button class="mic-btn" id="micBtn" onclick="toggleDictation(); handleFirstInteraction();">🎙️</button>
-        <input type="text" id="userInput" placeholder="Defend your choices..." onkeypress="if(event.key === 'Enter') { sendChat(); handleFirstInteraction(); }">
-        <button class="btn" onclick="sendChat(); handleFirstInteraction();">Send</button>
+        <button class="btn" onclick="document.getElementById('scriptInput').click()">PDF UPLOAD</button>
+        <button class="mic-btn" id="micBtn" onclick="toggleDictation()">🎙️</button>
+        <input type="text" id="userInput" placeholder="Defend your choices..." onkeypress="if(event.key === 'Enter') sendChat()">
+        <button class="btn" onclick="sendChat()">Send</button>
     </div>
 
     <script>
@@ -54,6 +54,7 @@
             chatWindow.scrollTop = chatWindow.scrollHeight;
         }
 
+        // --- THE SCRIPT DOCTOR DICTIONARY ---
         function cleanForSpeech(text) {
             return text
                 .replace(/\bExecutive Analysis\b/gi, "Ex-eck-yuh-tiv An-al-ih-sis")
@@ -63,18 +64,22 @@
                 .replace(/\bLogline\b/gi, "Log-line")
                 .replace(/\bProtagonist\b/gi, "Pro-tag-on-ist")
                 .replace(/\bAntagonist\b/gi, "An-tag-on-ist")
+                .replace(/\bVerdict\b/gi, "Ver-dict")
+                .replace(/\bA-Story\b/gi, "Ay story")
+                .replace(/\bB-Story\b/gi, "Bee story")
+                .replace(/\bC-Story\b/gi, "See story")
                 .replace(/[*#]/g, "")
                 .trim();
         }
 
-        // --- NEW GREETING LOGIC ---
+        // --- AUTO-GREETING ON FIRST CLICK ---
         async function handleFirstInteraction() {
             if (hasGreeted) return;
             hasGreeted = true;
             
             if (audioCtx.state === 'suspended') await audioCtx.resume();
             
-            const greeting = "Hi there. I'm Frank. Not just in name, but in spirit. If you're looking for honest, direct feedback on your screenplays, then you've come to the right place. Upload a PDF to begin.";
+            const greeting = "Hi there. I'm Frank. Not just in name, but in spirit. If you're looking for honest, direct feedback on your screenplays, then you've come to the right place.";
             speak(greeting);
         }
 
