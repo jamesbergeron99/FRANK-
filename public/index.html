@@ -70,12 +70,17 @@
             recognition = new webkitSpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = true;
+            
             recognition.onresult = (e) => {
-                let finalTranscript = '';
+                let currentTranscript = '';
                 for (let i = e.resultIndex; i < e.results.length; ++i) {
-                    if (e.results[i].isFinal) finalTranscript += e.results[i][0].transcript;
+                    if (e.results[i].isFinal) {
+                        currentTranscript += e.results[i][0].transcript;
+                    }
                 }
-                if (finalTranscript) document.getElementById('userInput').value += finalTranscript + ' ';
+                if (currentTranscript) {
+                    document.getElementById('userInput').value += currentTranscript + ' ';
+                }
             };
             recognition.onend = () => { if (isDictating) recognition.start(); };
         }
@@ -83,8 +88,15 @@
         function toggleDictation() {
             if (!recognition) return;
             const micBtn = document.getElementById('micBtn');
-            if (!isDictating) { isDictating = true; micBtn.classList.add('mic-active'); recognition.start(); }
-            else { isDictating = false; micBtn.classList.remove('mic-active'); recognition.stop(); }
+            if (!isDictating) { 
+                isDictating = true; 
+                micBtn.classList.add('mic-active'); 
+                recognition.start(); 
+            } else { 
+                isDictating = false; 
+                micBtn.classList.remove('mic-active'); 
+                recognition.stop(); 
+            }
         }
 
         function addMessage(text, isFrank = true) {
