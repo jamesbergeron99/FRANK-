@@ -54,17 +54,17 @@
             chatWindow.scrollTop = chatWindow.scrollHeight;
         }
 
-        // --- THE SCRIPT DOCTOR DICTIONARY ---
+        // --- IMPROVED PHONETIC DICTIONARY ---
         function cleanForSpeech(text) {
             return text
-                .replace(/\bPDF\b/gi, "P.D.F.") // Fix for PDF pronunciation
+                .replace(/\bPDF\b/gi, "P.D.F.")
                 .replace(/\bExecutive Analysis\b/gi, "Ex-eck-yuh-tiv An-al-ih-sis")
                 .replace(/\bExecutive\b/gi, "Ex-eck-yuh-tiv")
-                .replace(/\bAnalysis\b/gi, "An-al-ih-sis")
+                .replace(/\bAnalysis\b/gi, "An-al-uh-sis") // Changed to 'uh' to avoid the 'ih-sis' slur
                 .replace(/\bSynopsis\b/gi, "Sin-op-sis")
                 .replace(/\bLogline\b/gi, "Log-line")
-                .replace(/\bProtagonist\b/gi, "Pro-tag-on-ist")
-                .replace(/\bAntagonist\b/gi, "An-tag-on-ist")
+                .replace(/\bProtagonist\b/gi, "Pro-tag-on-ist") // Hard 'ist'
+                .replace(/\bAntagonist\b/gi, "An-tag-on-ist")   // Hard 'ist'
                 .replace(/\bVerdict\b/gi, "Ver-dict")
                 .replace(/\bA-Story\b/gi, "Ay story")
                 .replace(/\bB-Story\b/gi, "Bee story")
@@ -78,7 +78,7 @@
             hasGreeted = true;
             if (audioCtx.state === 'suspended') await audioCtx.resume();
             
-            const greeting = "Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a script to begin. It takes less than a minute to process. I'm like, really smart.";
+            const greeting = "Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a P.D.F to begin. It takes less than a minute to process. I'm like, really smart.";
             speak(greeting);
         }
 
@@ -96,7 +96,7 @@
                         headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
                         body: JSON.stringify({ 
                             text: cleanForSpeech(sentence), 
-                            voiceId: "Simon", // SWITCHED TO SEBASTIAN
+                            voiceId: "Simon", // YOUR MANUALLY SELECTED VOICE
                             modelId: "inworld-tts-1.5-max" 
                         })
                     });
