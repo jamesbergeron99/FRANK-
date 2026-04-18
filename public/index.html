@@ -76,7 +76,7 @@
             hasGreeted = true;
             if (audioCtx.state === 'suspended') await audioCtx.resume();
             
-            const greeting = "Hi there. I'm Frank. Not just in name, but in spirit. If you're looking for honest, direct feedback on your screenplays, then you've come to the right place. Upload a PDF to begin.";
+            const greeting = "Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a P.D.F to begin. It takes less than a minute to process. I'm like, really smart.";
             speak(greeting);
         }
 
@@ -94,17 +94,22 @@
                         headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
                         body: JSON.stringify({ 
                             text: cleanForSpeech(sentence), 
-                            voiceId: "levi", // SWITCHED TO LEVI
+                            voiceId: "Levi", // CORRECTED ID
                             modelId: "inworld-tts-1.5-max" 
                         })
                     });
+                    
                     const data = await response.json();
+                    if (!data.audioContent) throw new Error("No audio content");
+
                     const audioData = Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer;
                     const buffer = await audioCtx.decodeAudioData(audioData);
                     
                     audioBuffers[index] = buffer;
                     if (!isPlaying && index === nextToPlay) playSequentially(sentences.length);
-                } catch (e) { console.error("Voice Fetch Error:", e); }
+                } catch (e) { 
+                    console.error("Audio failed: ", e);
+                }
             });
         }
 
