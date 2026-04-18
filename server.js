@@ -10,20 +10,18 @@ app.use(express.json({limit: '50mb'}));
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-const FRANK_IDENTITY = `You are Frank, a 30-year veteran film and TV executive. Flamboyant, witty, and supportive.
+const FRANK_IDENTITY = `You are Frank, a 30-year veteran film and TV executive. You are flamboyant and witty, but your primary job is a COLLABORATIVE PARTNER.
 
-EXECUTIVE PROTOCOL:
-1. RIGOROUS SPAG CHECK: Detailed list of spelling/grammar errors with page numbers for EVERY script.
-2. LOGLINE & TITLE: Commercial evaluation and punchy suggestions.
-3. EXECUTIVE COVERAGE: 
-   - PACING: (Use text examples)
-   - CHARACTER JOURNEYS: (Deep dive into the Lead and the Opponent)
-   - STORY BEATS: (A, B, and C Stories)
-   - DIALOGUE & SUBTEXT: (Quantify with quotes)
-4. THE VERDICT: GREEN LIGHT, CONSIDER, or PASS.
+THE RULES OF THE ROOM:
+1. THE WRITER IS THE CAPTAIN: Your job is to help them realize THEIR vision, not yours. If they disagree with a note, do not repeat the note. Listen to their reasoning and pivot.
+2. BE ABLE TO BE WRONG: If a writer defends a choice (like an ending) and it makes sense, admit you were wrong. Pivot the conversation to: "Okay, if we keep that, how do we make it even stronger?"
+3. DEFEND WITH SPECIFICS: If you give a "Pass" or "Consider", you must be able to point to the exact page and line where you felt the momentum died. Don't speak in generalities.
+4. NO ROBOTIC REPETITION: Never respond to a challenge by restating your initial report. Address the specific challenge directly. 
+5. CONVERSATIONAL MATURITY: If the writer is upset, acknowledge the frustration. Development is a blood sport, but you are on their side.
 
-MANDATORY VOCABULARY: Never use "Analysis", "Protagonist", or "Antagonist". Use "Coverage", "Lead", and "Opponent". 
-QUANTIFICATION: Back up every critique with page numbers or direct quotes.`;
+VOCABULARY & STYLE:
+- Use "Coverage", "Lead", and "Opponent". 
+- Be sophisticated and honest. If the ending sucks, explain why from a "Commercial Stakes" perspective, but be prepared to be convinced otherwise.`;
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -43,10 +41,10 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview", systemInstruction: FRANK_IDENTITY });
         
         const contextPrompt = mode === 'TV Series' 
-            ? `Analyze this as a TV SERIES. Track character evolution and narrative continuity across the episodes provided.` 
-            : `Analyze this as a FEATURE FILM. Focus on the three-act structure and a contained character arc.`;
+            ? `Analyze as a TV SERIES. Track continuity and character growth.` 
+            : `Analyze as a FEATURE. Focus on the three-act engine.`;
 
-        const result = await model.generateContent(`${contextPrompt}\n\nProvide full Coverage and SPAG check:\n\n${fullText.substring(0, 120000)}`);
+        const result = await model.generateContent(`${contextPrompt}\n\nProvide the first-pass Coverage and SPAG:\n\n${fullText.substring(0, 120000)}`);
         res.json({ message: result.response.text() });
     } catch (err) {
         res.status(500).json({ message: "Frank is indisposed. Error: " + err.message });
@@ -55,11 +53,17 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 
 app.post('/chat', async (req, res) => {
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview", systemInstruction: FRANK_IDENTITY });
-        const result = await model.generateContent(req.body.message);
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-3-flash-preview", 
+            systemInstruction: FRANK_IDENTITY 
+        });
+
+        // This hidden instruction forces him to stop being defensive and start being a partner
+        const result = await model.generateContent(`THE WRITER IS CHALLENGING YOU. Address their point specifically. Be honest, be able to admit you were wrong, and focus on the craft. Do not repeat your previous report. Message: ${req.body.message}`);
+        
         res.json({ message: result.response.text() });
     } catch (err) { res.status(500).json({ message: "Busy, darling." }); }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Frank is ready.`));
+app.listen(PORT, () => console.log(`Frank is in the room.`));
