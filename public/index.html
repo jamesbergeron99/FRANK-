@@ -29,7 +29,7 @@
     </div>
 
     <div id="chat-window">
-        <div class="msg frank-msg">"Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a PDF to begin. It takes less than a minute to process."</div>
+        <div class="msg frank-msg">"Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a PDF to begin. It takes less than a minute to process. I'm like, really smart."</div>
     </div>
 
     <div class="media-bar">
@@ -39,8 +39,8 @@
     </div>
 
     <div class="controls">
-        <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadScript()">
-        <button class="btn" onclick="document.getElementById('scriptInput').click()">PDF UPLOAD</button>
+        <input type="file" id="scriptInput" accept=".pdf" style="display:none;" multiple onchange="uploadScripts()">
+        <button class="btn" onclick="document.getElementById('scriptInput').click()">UPLOAD SERIES (PDFs)</button>
         <button class="mic-btn" id="micBtn" onclick="toggleDictation()">🎙️</button>
         <input type="text" id="userInput" placeholder="Defend your choices..." onkeypress="if(event.key === 'Enter') sendChat()">
         <button class="btn" onclick="sendChat()">Send</button>
@@ -56,37 +56,30 @@
         let currentSource = null;
         let hasGreeted = false;
         let totalSentences = 0;
-        
-        // --- IMPROVED CONTINUOUS DICTATION ---
+
+        // --- CONTINUOUS DICTATION LOGIC ---
         let recognition = null;
         let isDictating = false;
 
         if ('webkitSpeechRecognition' in window) {
             recognition = new webkitSpeechRecognition();
-            recognition.continuous = true; // STAYS ON UNTIL YOU STOP IT
-            recognition.interimResults = true; // SHOWS TEXT AS YOU TALK
+            recognition.continuous = true;
+            recognition.interimResults = true;
             
             recognition.onresult = (e) => {
                 let finalTranscript = '';
                 for (let i = e.resultIndex; i < e.results.length; ++i) {
-                    if (e.results[i].isFinal) {
-                        finalTranscript += e.results[i][0].transcript;
-                    }
+                    if (e.results[i].isFinal) finalTranscript += e.results[i][0].transcript;
                 }
-                if (finalTranscript) {
-                    document.getElementById('userInput').value += finalTranscript + ' ';
-                }
+                if (finalTranscript) document.getElementById('userInput').value += finalTranscript + ' ';
             };
 
-            recognition.onend = () => {
-                if (isDictating) recognition.start(); // AUTO-RESTART IF CUT OFF BY BROWSER
-            };
+            recognition.onend = () => { if (isDictating) recognition.start(); };
         }
 
         function toggleDictation() {
             if (!recognition) return alert("Speech recognition not supported.");
             const micBtn = document.getElementById('micBtn');
-            
             if (!isDictating) {
                 isDictating = true;
                 micBtn.classList.add('mic-active');
@@ -143,7 +136,7 @@
             if (hasGreeted) return;
             hasGreeted = true;
             if (audioCtx.state === 'suspended') await audioCtx.resume();
-            speak("Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a PDF to begin. It takes less than a minute to process.");
+            speak("Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a PDF to begin. It takes less than a minute to process. I'm like, really smart.");
         }
 
         async function speak(fullText) {
@@ -185,12 +178,7 @@
                 currentSource = audioCtx.createBufferSource();
                 currentSource.buffer = audioBuffers[nextToPlay];
                 currentSource.connect(audioCtx.destination);
-                currentSource.onended = () => {
-                    if (isPlaying) {
-                        nextToPlay++;
-                        playSequentially();
-                    }
-                };
+                currentSource.onended = () => { if (isPlaying) { nextToPlay++; playSequentially(); } };
                 currentSource.start();
             } else {
                 setTimeout(() => { if (isPlaying || nextToPlay === 0) playSequentially(); }, 100);
@@ -223,12 +211,12 @@
             playSequentially();
         }
 
-        async function uploadScript() {
+        async function uploadScripts() {
             const fileInput = document.getElementById('scriptInput');
-            if (!fileInput.files[0]) return;
-            addMessage("Frank is reviewing your script...", true);
+            if (fileInput.files.length === 0) return;
+            addMessage(`Frank is reviewing ${fileInput.files.length} episodes... settle in, darling.`, true);
             const formData = new FormData();
-            formData.append('script', fileInput.files[0]);
+            for (let i = 0; i < fileInput.files.length; i++) formData.append('scripts', fileInput.files[i]);
             try {
                 const response = await fetch('/analyze', { method: 'POST', body: formData });
                 const data = await response.json();
