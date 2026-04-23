@@ -2,12 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>FRANK | Executive Script Doctor</title>
+    <title>FRANK | The $5 Narrative Autopsy</title>
     <style>
         body { background: #0a0a0a; color: #d4af37; font-family: 'Georgia', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
         .header { padding: 15px; border-bottom: 2px solid #d4af37; background: #111; text-align: center; shrink-0; position: relative; }
         h1 { margin: 0; font-style: italic; letter-spacing: 3px; text-transform: uppercase; }
-        .toggle-container { margin-top: 10px; display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 0.9rem; font-weight: bold; }
+        .tagline { color: #eee; font-size: 0.9rem; margin-top: 5px; opacity: 0.8; }
+        .toggle-container { margin-top: 10px; display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 0.8rem; font-weight: bold; }
         .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 24px; border: 1px solid #d4af37; }
@@ -20,18 +21,19 @@
         .user-msg { align-self: flex-end; background: #d4af37; color: #000; font-weight: bold; }
         .download-btn { display: block; margin-top: 10px; font-size: 0.8rem; color: #d4af37; text-decoration: underline; cursor: pointer; background: none; border: none; padding: 0; }
         .controls { padding: 15px; background: #111; border-top: 2px solid #d4af37; display: flex; gap: 10px; align-items: center; shrink-0; }
-        input[type="text"] { flex-grow: 1; padding: 12px; background: #000; border: 1px solid #d4af37; color: #d4af37; font-size: 1rem; }
+        input[type="text"] { flex-grow: 1; padding: 12px; background: #000; border: 1px solid #d4af37; color: #d4af37; font-size: 1rem; outline: none; }
         .media-bar { background: #1a1a1a; border-top: 1px solid #333; padding: 10px; display: flex; justify-content: center; gap: 20px; align-items: center; }
-        .media-btn { background: none; border: 1px solid #d4af37; color: #d4af37; padding: 5px 15px; cursor: pointer; font-family: serif; font-size: 0.9rem; }
-        .btn { background: #d4af37; color: #000; padding: 10px 20px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; }
-        .mic-btn { background: #800; color: #fff; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center; }
+        .media-btn { background: none; border: 1px solid #d4af37; color: #d4af37; padding: 5px 15px; cursor: pointer; font-family: serif; font-size: 0.8rem; text-transform: uppercase; }
+        .btn { background: #d4af37; color: #000; padding: 10px 20px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; transition: 0.3s; }
+        .btn:hover { background: #fff; }
+        .mic-btn { background: #800; color: #fff; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center; transition: 0.3s; }
         .mic-active { background: #f00; box-shadow: 0 0 15px #f00; }
     </style>
 </head>
 <body onclick="handleFirstInteraction()">
     <div class="header">
         <h1>FRANK</h1>
-        <p><em>"Development is a blood sport, darling."</em></p>
+        <p class="tagline"><em>"The $5 Narrative Autopsy, darling."</em></p>
         <div class="toggle-container">
             <span>FEATURE FILM</span>
             <label class="switch">
@@ -43,7 +45,7 @@
     </div>
 
     <div id="chat-window">
-        <div class="msg frank-msg">"Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a PDF to begin. It takes less than a minute to process."</div>
+        <div class="msg frank-msg">"Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per script, I will cross-reference your pages against the history of successful narrative archetypes to find where you’re soaring and where you’re stalling. Upload your PDF to begin—if it's a series, we'll take it episode by episode."</div>
     </div>
 
     <div class="media-bar">
@@ -66,6 +68,7 @@
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, hasGreeted = false, totalSentences = 0;
         let recognition = null, isDictating = false, finalTranscript = '';
 
+        // REAL-TIME DICTATION SETUP
         if ('webkitSpeechRecognition' in window) {
             recognition = new webkitSpeechRecognition();
             recognition.continuous = true;
@@ -82,11 +85,12 @@
                 }
                 document.getElementById('userInput').value = finalTranscript + interimTranscript;
             };
+            recognition.onerror = (e) => console.error("Mic error:", e.error);
             recognition.onend = () => { if (isDictating) recognition.start(); };
         }
 
         function toggleDictation() {
-            if (!recognition) return;
+            if (!recognition) { alert("Speech recognition not supported in this browser."); return; }
             const micBtn = document.getElementById('micBtn');
             if (!isDictating) {
                 isDictating = true;
@@ -125,7 +129,9 @@
             if (hasGreeted) return;
             hasGreeted = true;
             if (audioCtx.state === 'suspended') await audioCtx.resume();
-            speak("Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a PDF to begin. It takes less than a minute to process.");
+            
+            const greeting = "Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per script, I will cross-reference your pages against the history of successful narrative archetypes to find where you’re soaring and where you’re stalling. Upload a PDF to begin. If you're working on a series, we will audit it episode by episode to track your continuity.";
+            speak(greeting);
         }
 
         async function speak(fullText) {
@@ -165,7 +171,7 @@
             isPlaying = false;
             if (currentSource) { 
                 try { 
-                    currentSource.onended = null; // Prevent it from triggering the 'next' buffer
+                    currentSource.onended = null; 
                     currentSource.stop(); 
                 } catch (e) {} 
                 currentSource = null; 
@@ -178,16 +184,16 @@
         }
 
         function skipAudio(direction) {
-            stopCurrentAudio(); // Kills the current overlapping stream
+            stopCurrentAudio();
             nextToPlay = Math.max(0, Math.min(totalSentences - 1, nextToPlay + direction));
-            playSequentially(); // Starts the fresh one
+            playSequentially();
         }
 
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
             const mode = document.getElementById('modeToggle').checked ? 'TV Series' : 'Feature';
             if (fileInput.files.length === 0) return;
-            addMessage(`Frank is reviewing as a ${mode}...`, true);
+            addMessage(`Frank is initiating a ${mode} scan...`, true);
             const formData = new FormData();
             formData.append('mode', mode);
             for (let i = 0; i < fileInput.files.length; i++) formData.append('scripts', fileInput.files[i]);
