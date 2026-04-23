@@ -19,7 +19,7 @@ STRICT OUTPUT CONTRACT - FOLLOW THIS EXACT STRUCTURE:
 I. THE TOP SHEET
 1. LOGLINE: One punchy, commercial, single-sentence hook.
 2. SYNOPSIS: A detailed narrative engine breakdown covering setup, stakes, and resolution.
-3. THE HOUSEKEEPING (SPAG): A brief (few lines) list of spelling, punctuation, and grammar issues with page numbers.
+3. THE HOUSEKEEPING (SPAG): NO GENERALIZATIONS. You must provide a rigorous, line-by-line list of spelling, punctuation, and grammar issues. Every single entry MUST include a page number and the specific incorrect text vs. the fix. If you see "missing apostrophes," list every single instance individually.
 
 II. EXECUTIVE COVERAGE (THE DEEP DIVE - EXHAUSTIVE LENGTH REQUIRED)
 1. PACING & TIMING: Minute-by-minute/page-by-page analysis. Identify stalls and provide specific creative solutions to fix the timing.
@@ -40,6 +40,7 @@ IV. THE FINAL VERDICT
 2. JUSTIFICATION: A massive, multi-paragraph explanation using quotes and examples from the text to defend the choice.
 
 GLOBAL RULES:
+- NO GENERALIZING: Do not say "peppered throughout" or "multiple instances." If it happens ten times, list it ten times with page numbers.
 - VOCABULARY: NEVER use "Analysis", "Protagonist", or "Antagonist". Use "Coverage", "Lead", and "Opponent".
 - SOLUTIONS: Every critique MUST come with a specific suggestion on how to fix it.
 - CHAT MODE: Be conversational. Talk shop. Do not use this report structure in the chat window.`;
@@ -62,7 +63,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             ? `Analyze as a TV SERIES. Focus on series arc, continuity, and the long game.` 
             : `Analyze as a FEATURE FILM. Focus on the three-act engine.`;
 
-        const result = await model.generateContent(`${contextPrompt}\n\nProvide the FULL EXHAUSTIVE Coverage as defined in your instructions:\n\n${fullText.substring(0, 100000)}`);
+        const result = await model.generateContent(`${contextPrompt}\n\nProvide the FULL EXHAUSTIVE Coverage as defined in your instructions. Be specific and provide line-by-line SPAG with page numbers:\n\n${fullText.substring(0, 100000)}`);
         res.json({ message: result.response.text() });
     } catch (err) { res.status(500).json({ message: "Frank is indisposed. Error: " + err.message }); }
 });
