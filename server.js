@@ -57,7 +57,8 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             const data = await pdf(file.buffer);
             fullText += `\n--- SCRIPT: ${file.originalname} ---\n` + data.text;
         }
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview", systemInstruction: FRANK_IDENTITY });
+        // REVERTED TO THE PROVEN MODEL NAME: gemini-pro
+        const model = genAI.getGenerativeModel({ model: "gemini-pro", systemInstruction: FRANK_IDENTITY });
         const contextPrompt = mode === 'TV Series' 
             ? `Analyze as a TV SERIES. Focus on series arc, continuity, and the long game.` 
             : `Analyze as a FEATURE FILM. Focus on the three-act engine.`;
@@ -69,7 +70,8 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 
 app.post('/chat', async (req, res) => {
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview", systemInstruction: FRANK_IDENTITY });
+        // REVERTED TO THE PROVEN MODEL NAME: gemini-pro
+        const model = genAI.getGenerativeModel({ model: "gemini-pro", systemInstruction: FRANK_IDENTITY });
         const result = await model.generateContent(`CONVERSATIONAL MODE: Just talk shop. Address the writer directly without the report structure. Message: ${req.body.message}`);
         res.json({ message: result.response.text() });
     } catch (err) { res.status(500).json({ message: "Busy, darling." }); }
