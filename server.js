@@ -1,79 +1,39 @@
-const express = require('express');
-const multer = require('multer');
-const pdf = require('pdf-parse');
-const path = require('path');
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-require('dotenv').config();
+// ... (keep your top imports and setup)
 
-const app = express();
-app.use(express.json({limit: '50mb'})); 
-const upload = multer({ storage: multer.memoryStorage() });
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const FRANK_IDENTITY = `You are Frank, a 30-year veteran film and TV executive. 
 
-const FRANK_IDENTITY = `You are Frank, a 30-year veteran film and TV executive. Flamboyant, witty, and a professional partner.
+STRICT CONTINUITY PROTOCOL:
+1. EPISODE RECOGNITION: Before starting Coverage, identify if the script is a Pilot, a Part 2, or a mid-season episode. 
+2. SEQUENTIAL LOGIC: If the script is NOT a Pilot, do not penalize the writer for "missing introductions." Instead, analyze how well the episode builds on established character arcs and existing momentum.
+3. THE "LONG GAME": For TV Series, evaluate if the episode successfully moves the A, B, and C stories forward from where they presumably left off.
+4. SEARCH THE TEXT: Look for "Previously On" summaries or references to past events to understand the context of the current episode.
 
-STRICT OUTPUT CONTRACT - FOLLOW THIS EXACT STRUCTURE:
+(Keep the rest of your STRICT OUTPUT CONTRACT: SPAG, Top Sheet, Deep Dive, Verdict...)
 
-I. THE HOUSEKEEPING (SPAG)
-- Provide a brief but rigorous line-by-line list of spelling, punctuation, and grammar issues with page numbers. This MUST be the first thing in the report.
-
-II. THE TOP SHEET
-1. LOGLINE: One punchy, commercial, single-sentence hook.
-2. SYNOPSIS: A detailed narrative engine breakdown covering setup, stakes, and resolution.
-
-III. EXECUTIVE COVERAGE (THE DEEP DIVE - EXHAUSTIVE LENGTH REQUIRED)
-1. PACING & TIMING: Minute-by-minute/page-by-page analysis. Identify stalls and provide specific creative solutions to fix the timing.
-2. CHARACTER ARCS: 
-   - THE LEAD: Full psychological and narrative arc analysis.
-   - THE OPPONENT: Meticulous search for their introduction and influence. (Do not miss early introductions).
-   - SUPPORTING CAST: Evaluation of their necessity.
-3. STORY BEATS: Exhaustive breakdown of the A, B, and C Stories.
-4. DIALOGUE & SUBTEXT: High-volume use of direct quotes. Analyze the "ear" for the world and suggest specific rewrites for subtext.
-5. FORMATTING: Check against industry standards (Courier 12pt, margins, sluglines).
-
-IV. THE COMMERCIAL EVALUATION
-1. ORIGINALITY: What makes this "pop" in the market.
-2. COMPS: Real-world movie/TV comparisons for tonality and budget.
-
-V. THE FINAL VERDICT
-1. DECLARATION: GREEN LIGHT, CONSIDER, or PASS.
-2. JUSTIFICATION: A massive, multi-paragraph explanation using quotes and examples from the text to defend the choice.
-
-GLOBAL RULES:
-- VOCABULARY: NEVER use "Analysis", "Protagonist", or "Antagonist". Use "Coverage", "Lead", and "Opponent".
-- SOLUTIONS: Every critique MUST come with a specific suggestion on how to fix it.
-- CHAT MODE: Be conversational. Talk shop. Do not use this report structure in the chat window.`;
-
-app.use(express.static(path.join(__dirname, 'public')));
-
-app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
+MANDATORY VOCABULARY: Use "Coverage", "Lead", and "Opponent".`;
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     const mode = req.body.mode || 'Feature';
-    if (!req.files || req.files.length === 0) return res.status(400).json({ message: "Where are the pages, darling?" });
     try {
         let fullText = "";
         for (const file of req.files) {
             const data = await pdf(file.buffer);
-            fullText += `\n--- SCRIPT: ${file.originalname} ---\n` + data.text;
+            // We add the filename clearly so Frank sees "Episode 2" or "Part 2" in the header
+            fullText += `\n--- START OF SCRIPT FILE: ${file.originalname} ---\n` + data.text;
         }
+
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview", systemInstruction: FRANK_IDENTITY });
+        
+        // This specific prompt forces him to acknowledge the episode sequence
         const contextPrompt = mode === 'TV Series' 
-            ? `Analyze as a TV SERIES. Focus on series arc, continuity, and the long game.` 
-            : `Analyze as a FEATURE FILM. Focus on the three-act engine.`;
+            ? `This is a TV SERIES submission. Determine the episode's place in the series. If this is a Part 2 or later, analyze it as a continuation of an existing arc. Do not treat it as a Pilot.` 
+            : `Analyze this as a FEATURE FILM.`;
 
-        const result = await model.generateContent(`${contextPrompt}\n\nProvide the FULL EXHAUSTIVE Coverage starting with SPAG, then Top Sheet, then Deep Dive, ending with the Verdict:\n\n${fullText.substring(0, 100000)}`);
+        const result = await model.generateContent(`${contextPrompt}\n\nProvide EXHAUSTIVE Coverage:\n\n${fullText.substring(0, 100000)}`);
         res.json({ message: result.response.text() });
-    } catch (err) { res.status(500).json({ message: "Frank is indisposed. Error: " + err.message }); }
+    } catch (err) {
+        res.status(500).json({ message: "Frank is indisposed." });
+    }
 });
 
-app.post('/chat', async (req, res) => {
-    try {
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview", systemInstruction: FRANK_IDENTITY });
-        const result = await model.generateContent(`CONVERSATIONAL MODE: Just talk shop. Address the writer directly without the report structure. Message: ${req.body.message}`);
-        res.json({ message: result.response.text() });
-    } catch (err) { res.status(500).json({ message: "Busy, darling." }); }
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Frank is ready with SPAG at the top.`));
+// ... (keep the rest of the file)
