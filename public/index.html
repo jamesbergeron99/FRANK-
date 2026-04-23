@@ -3,8 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>FRANK | The $5 Narrative Autopsy</title>
-    <script src="https://www.paypal.com/sdk/js?client-id=BAAK4FNNEoRhK_jriVX-V3QO-iWVuGEuUdAmvgVHX6pluidxESAwHaGB_fm7WGrOSxe-6VcmE6xZvnvdjU&components=hosted-buttons&disable-funding=venmo&currency=CAD"></script>
-    
     <style>
         body { background: #0a0a0a; color: #d4af37; font-family: 'Georgia', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
         .header { padding: 15px; border-bottom: 2px solid #d4af37; background: #111; text-align: center; shrink-0; position: relative; }
@@ -19,7 +17,10 @@
             text-align: center; color: #d4af37;
         }
         #paywall-overlay h2 { font-style: italic; margin-bottom: 10px; max-width: 80%; }
-        #paywall-overlay p { color: #eee; margin-bottom: 20px; font-size: 0.9rem; }
+        #paywall-overlay p { color: #eee; margin-bottom: 30px; font-size: 0.9rem; }
+
+        /* PAYPAL BUTTON STYLING FROM YOUR CODE */
+        .pp-NUT3KZBHA2Q74{text-align:center;border:none;border-radius:0.25rem;min-width:11.625rem;padding:0 2rem;height:2.625rem;font-weight:bold;background-color:#FFD140;color:#000000;font-family:"Helvetica Neue",Arial,sans-serif;font-size:1rem;line-height:1.25rem;cursor:pointer;}
 
         .toggle-container { margin-top: 10px; display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 0.8rem; font-weight: bold; }
         .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
@@ -47,8 +48,15 @@
 
     <div id="paywall-overlay">
         <h2>"Quality costs, darling. Five dollars for the full autopsy."</h2>
-        <p>After payment, you will be redirected to upload your script.</p>
-        <div id="paypal-container-NUT3KZBHA2Q74"></div>
+        <p>After payment, return here to upload your PDF.</p>
+        
+        <div>
+          <form action="https://www.paypal.com/ncp/payment/NUT3KZBHA2Q74" method="post" target="_blank" style="display:inline-grid;justify-items:center;align-content:start;gap:0.5rem;">
+            <input class="pp-NUT3KZBHA2Q74" type="submit" value="Buy Now" />
+            <img src="https://www.paypalobjects.com/images/Debit_Credit_APM.svg" alt="cards" />
+            <section style="font-size: 0.75rem;"> Powered by <img src="https://www.paypalobjects.com/paypal-ui/logos/svg/paypal-wordmark-color.svg" alt="paypal" style="height:0.875rem;vertical-align:middle;"/></section>
+          </form>
+        </div>
     </div>
 
     <div class="header">
@@ -88,9 +96,6 @@
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, hasGreeted = false, totalSentences = 0;
         let recognition = null, isDictating = false, finalTranscript = '';
 
-        // RENDER PAYPAL BUTTON IMMEDIATELY BUT HIDDEN
-        paypal.HostedButtons({ hostedButtonId: "NUT3KZBHA2Q74" }).render("#paypal-container-NUT3KZBHA2Q74");
-
         const FULL_GREETING = "Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per feedback, I perform a comprehensive narrative autopsy. I provide a rigorous spelling and grammar check, a strict formatting audit, a punchy logline, and a detailed synopsis. Then, I dive deep into your character arcs, pacing, and originality. If you're working on a series, I track multiple storylines and trajectories across every episode to ensure your continuity is flawless. Click anywhere again to proceed to payment and let's get to work.";
 
         function handleInteraction() {
@@ -101,6 +106,7 @@
                 speak(FULL_GREETING);
             } else {
                 const overlay = document.getElementById('paywall-overlay');
+                // Ensure overlay only appears if user isn't already paying
                 if (overlay.style.display === 'none' || overlay.style.display === '') {
                     stopCurrentAudio();
                     overlay.style.display = 'flex';
@@ -108,7 +114,7 @@
             }
         }
 
-        // --- CORE LOGIC ---
+        // --- DICTATION & CHAT LOGIC ---
         if ('webkitSpeechRecognition' in window) {
             recognition = new webkitSpeechRecognition();
             recognition.continuous = true;
@@ -162,7 +168,7 @@
         function playSequentially() {
             if (nextToPlay >= totalSentences) { isPlaying = false; document.getElementById('playPauseBtn').innerText = "PLAY"; return; }
             if (audioBuffers[nextToPlay]) {
-                isPlaying = true;
+                isPlaying = true; document.getElementById('playPauseBtn').innerText = "PAUSE";
                 currentSource = audioCtx.createBufferSource();
                 currentSource.buffer = audioBuffers[nextToPlay];
                 currentSource.connect(audioCtx.destination);
@@ -191,7 +197,7 @@
             const fileInput = document.getElementById('scriptInput');
             const mode = document.getElementById('modeToggle').checked ? 'TV Series' : 'Feature';
             if (fileInput.files.length === 0) return;
-            addMessage(`Frank is reviewing as a ${mode}...`, true);
+            addMessage(`Frank is initiating a ${mode} scan...`, true);
             const formData = new FormData();
             formData.append('mode', mode);
             for (let i = 0; i < fileInput.files.length; i++) formData.append('scripts', fileInput.files[i]);
