@@ -3,11 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <title>FRANK | The $5 Narrative Autopsy</title>
+    <script src="https://www.paypal.com/sdk/js?client-id=BAAK4FNNEoRhK_jriVX-V3QO-iWVuGEuUdAmvgVHX6pluidxESAwHaGB_fm7WGrOSxe-6VcmE6xZvnvdjU&components=hosted-buttons&disable-funding=venmo&currency=CAD"></script>
+    
     <style>
         body { background: #0a0a0a; color: #d4af37; font-family: 'Georgia', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
         .header { padding: 15px; border-bottom: 2px solid #d4af37; background: #111; text-align: center; shrink-0; position: relative; }
         h1 { margin: 0; font-style: italic; letter-spacing: 3px; text-transform: uppercase; }
         .tagline { color: #eee; font-size: 0.9rem; margin-top: 5px; opacity: 0.8; }
+        
+        /* PAYWALL OVERLAY */
+        #paywall-overlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.9); z-index: 9999; 
+            display: none; flex-direction: column; justify-content: center; align-items: center; 
+            text-align: center;
+        }
+        #paywall-overlay h2 { font-style: italic; margin-bottom: 20px; }
+
         .toggle-container { margin-top: 10px; display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 0.8rem; font-weight: bold; }
         .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
         .switch input { opacity: 0; width: 0; height: 0; }
@@ -15,22 +27,28 @@
         .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 3px; background-color: #d4af37; transition: .4s; border-radius: 50%; }
         input:checked + .slider { background-color: #d4af37; }
         input:checked + .slider:before { transform: translateX(24px); background-color: #000; }
+
         #chat-window { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; background: #050505; scroll-behavior: smooth; padding-bottom: 120px; }
         .msg { max-width: 85%; padding: 15px; border-radius: 8px; line-height: 1.5; font-size: 1.1rem; white-space: pre-wrap; position: relative; }
         .frank-msg { align-self: flex-start; background: #1a1a1a; border-left: 4px solid #d4af37; color: #eee; }
         .user-msg { align-self: flex-end; background: #d4af37; color: #000; font-weight: bold; }
-        .download-btn { display: block; margin-top: 10px; font-size: 0.8rem; color: #d4af37; text-decoration: underline; cursor: pointer; background: none; border: none; padding: 0; }
+        
         .controls { padding: 15px; background: #111; border-top: 2px solid #d4af37; display: flex; gap: 10px; align-items: center; shrink-0; }
         input[type="text"] { flex-grow: 1; padding: 12px; background: #000; border: 1px solid #d4af37; color: #d4af37; font-size: 1rem; outline: none; }
         .media-bar { background: #1a1a1a; border-top: 1px solid #333; padding: 10px; display: flex; justify-content: center; gap: 20px; align-items: center; }
         .media-btn { background: none; border: 1px solid #d4af37; color: #d4af37; padding: 5px 15px; cursor: pointer; font-family: serif; font-size: 0.8rem; text-transform: uppercase; }
-        .btn { background: #d4af37; color: #000; padding: 10px 20px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; transition: 0.3s; }
-        .btn:hover { background: #fff; }
-        .mic-btn { background: #800; color: #fff; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center; transition: 0.3s; }
+        .btn { background: #d4af37; color: #000; padding: 10px 20px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; }
+        .mic-btn { background: #800; color: #fff; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center; }
         .mic-active { background: #f00; box-shadow: 0 0 15px #f00; }
     </style>
 </head>
-<body onclick="handleFirstInteraction()">
+<body onclick="handleInteraction()">
+
+    <div id="paywall-overlay">
+        <h2>"Quality costs, darling. $5 for the autopsy."</h2>
+        <div id="paypal-container-NUT3KZBHA2Q74"></div>
+    </div>
+
     <div class="header">
         <h1>FRANK</h1>
         <p class="tagline"><em>"The $5 Narrative Autopsy, darling."</em></p>
@@ -45,7 +63,7 @@
     </div>
 
     <div id="chat-window">
-        <div class="msg frank-msg">"Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per script, I will cross-reference your pages against the history of successful narrative archetypes to find where you’re soaring and where you’re stalling. Upload your PDF to begin—if it's a series, we'll take it episode by episode."</div>
+        <div class="msg frank-msg">"Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per script, I will cross-reference your pages against the history of successful narrative archetypes. Click anywhere to proceed to payment."</div>
     </div>
 
     <div class="media-bar">
@@ -68,29 +86,42 @@
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, hasGreeted = false, totalSentences = 0;
         let recognition = null, isDictating = false, finalTranscript = '';
 
-        // REAL-TIME DICTATION SETUP
+        // RENDER PAYPAL BUTTON
+        paypal.HostedButtons({ hostedButtonId: "NUT3KZBHA2Q74" }).render("#paypal-container-NUT3KZBHA2Q74");
+
+        function handleInteraction() {
+            if (!hasGreeted) {
+                // FIRST CLICK: Start Greeting
+                hasGreeted = true;
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const greeting = "Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per script, I will cross-reference your pages against the history of successful narrative archetypes. Click anywhere to proceed to payment.";
+                speak(greeting);
+            } else {
+                // SECOND CLICK: Show PayPal Overlay
+                const overlay = document.getElementById('paywall-overlay');
+                if (overlay.style.display === 'none' || overlay.style.display === '') {
+                    overlay.style.display = 'flex';
+                }
+            }
+        }
+
+        // Rest of your working logic (Dictation, Audio, Upload)
         if ('webkitSpeechRecognition' in window) {
             recognition = new webkitSpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = true; 
-
             recognition.onresult = (event) => {
                 let interimTranscript = '';
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        finalTranscript += event.results[i][0].transcript + ' ';
-                    } else {
-                        interimTranscript += event.results[i][0].transcript;
-                    }
+                    if (event.results[i].isFinal) { finalTranscript += event.results[i][0].transcript + ' '; }
+                    else { interimTranscript += event.results[i][0].transcript; }
                 }
                 document.getElementById('userInput').value = finalTranscript + interimTranscript;
             };
-            recognition.onerror = (e) => console.error("Mic error:", e.error);
             recognition.onend = () => { if (isDictating) recognition.start(); };
         }
 
         function toggleDictation() {
-            if (!recognition) { alert("Speech recognition not supported in this browser."); return; }
             const micBtn = document.getElementById('micBtn');
             if (!isDictating) {
                 isDictating = true;
@@ -102,36 +133,6 @@
                 micBtn.classList.remove('mic-active');
                 recognition.stop();
             }
-        }
-
-        function addMessage(text, isFrank = true) {
-            const div = document.createElement('div');
-            div.className = `msg ${isFrank ? 'frank-msg' : 'user-msg'}`;
-            div.innerText = text;
-            if (isFrank) {
-                const dl = document.createElement('button');
-                dl.className = 'download-btn'; dl.innerText = "↓ SAVE THIS REPORT";
-                dl.onclick = () => downloadReport(text);
-                div.appendChild(dl);
-            }
-            chatWindow.appendChild(div);
-            chatWindow.scrollTop = chatWindow.scrollHeight;
-        }
-
-        function downloadReport(text) {
-            const blob = new Blob([text], { type: 'text/plain' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = `Frank_Report.txt`; a.click();
-        }
-
-        async function handleFirstInteraction() {
-            if (hasGreeted) return;
-            hasGreeted = true;
-            if (audioCtx.state === 'suspended') await audioCtx.resume();
-            
-            const greeting = "Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per script, I will cross-reference your pages against the history of successful narrative archetypes to find where you’re soaring and where you’re stalling. Upload a PDF to begin. If you're working on a series, we will audit it episode by episode to track your continuity.";
-            speak(greeting);
         }
 
         async function speak(fullText) {
@@ -158,7 +159,7 @@
         function playSequentially() {
             if (nextToPlay >= totalSentences) { isPlaying = false; document.getElementById('playPauseBtn').innerText = "PLAY"; return; }
             if (audioBuffers[nextToPlay]) {
-                isPlaying = true; document.getElementById('playPauseBtn').innerText = "PAUSE";
+                isPlaying = true;
                 currentSource = audioCtx.createBufferSource();
                 currentSource.buffer = audioBuffers[nextToPlay];
                 currentSource.connect(audioCtx.destination);
@@ -169,18 +170,12 @@
 
         function stopCurrentAudio() {
             isPlaying = false;
-            if (currentSource) { 
-                try { 
-                    currentSource.onended = null; 
-                    currentSource.stop(); 
-                } catch (e) {} 
-                currentSource = null; 
-            }
+            if (currentSource) { try { currentSource.stop(); } catch (e) {} currentSource = null; }
         }
 
         function togglePlayback() {
             if (isPlaying) { stopCurrentAudio(); document.getElementById('playPauseBtn').innerText = "PLAY"; }
-            else { playSequentially(); document.getElementById('playPauseBtn').innerText = "PAUSE"; }
+            else { playSequentially(); }
         }
 
         function skipAudio(direction) {
@@ -193,23 +188,29 @@
             const fileInput = document.getElementById('scriptInput');
             const mode = document.getElementById('modeToggle').checked ? 'TV Series' : 'Feature';
             if (fileInput.files.length === 0) return;
-            addMessage(`Frank is initiating a ${mode} scan...`, true);
             const formData = new FormData();
             formData.append('mode', mode);
             for (let i = 0; i < fileInput.files.length; i++) formData.append('scripts', fileInput.files[i]);
             const response = await fetch('/analyze', { method: 'POST', body: formData });
             const data = await response.json();
-            addMessage(data.message, true); speak(data.message);
+            addMessage(data.message); speak(data.message);
         }
 
         async function sendChat() {
             const input = document.getElementById('userInput');
             const text = input.value; if (!text) return;
-            addMessage(text, false); 
-            input.value = ''; finalTranscript = ''; 
+            addMessage(text, false); input.value = '';
             const response = await fetch('/chat', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message: text }) });
             const data = await response.json();
-            addMessage(data.message, true); speak(data.message);
+            addMessage(data.message); speak(data.message);
+        }
+
+        function addMessage(text, isFrank = true) {
+            const div = document.createElement('div');
+            div.className = `msg ${isFrank ? 'frank-msg' : 'user-msg'}`;
+            div.innerText = text;
+            chatWindow.appendChild(div);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
         }
     </script>
 </body>
