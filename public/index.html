@@ -150,7 +150,7 @@
         }
 
         function playSequentially() {
-            if (nextToPlay >= totalSentences) { isPlaying = false; return; }
+            if (nextToPlay >= totalSentences) { isPlaying = false; document.getElementById('playPauseBtn').innerText = "PLAY"; return; }
             if (audioBuffers[nextToPlay]) {
                 isPlaying = true; document.getElementById('playPauseBtn').innerText = "PAUSE";
                 currentSource = audioCtx.createBufferSource();
@@ -163,7 +163,13 @@
 
         function stopCurrentAudio() {
             isPlaying = false;
-            if (currentSource) { try { currentSource.stop(); } catch (e) {} currentSource = null; }
+            if (currentSource) { 
+                try { 
+                    currentSource.onended = null; // Prevent it from triggering the 'next' buffer
+                    currentSource.stop(); 
+                } catch (e) {} 
+                currentSource = null; 
+            }
         }
 
         function togglePlayback() {
@@ -172,9 +178,9 @@
         }
 
         function skipAudio(direction) {
-            stopCurrentAudio();
+            stopCurrentAudio(); // Kills the current overlapping stream
             nextToPlay = Math.max(0, Math.min(totalSentences - 1, nextToPlay + direction));
-            playSequentially();
+            playSequentially(); // Starts the fresh one
         }
 
         async function uploadFiles() {
