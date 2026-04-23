@@ -43,7 +43,7 @@
     </div>
 
     <div id="chat-window">
-        <div class="msg frank-msg">"Hey there, I'm Frank. Upload your pages, and let's see if you've actually got a story or just a collection of scenes. I'm ready when you are."</div>
+        <div class="msg frank-msg">"Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a PDF to begin. It takes less than a minute to process."</div>
     </div>
 
     <div class="media-bar">
@@ -66,7 +66,6 @@
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, hasGreeted = false, totalSentences = 0;
         let recognition = null, isDictating = false, finalTranscript = '';
 
-        // REAL-TIME DICTATION LOGIC
         if ('webkitSpeechRecognition' in window) {
             recognition = new webkitSpeechRecognition();
             recognition.continuous = true;
@@ -83,8 +82,6 @@
                 }
                 document.getElementById('userInput').value = finalTranscript + interimTranscript;
             };
-
-            recognition.onerror = (e) => console.error("Mic error:", e.error);
             recognition.onend = () => { if (isDictating) recognition.start(); };
         }
 
@@ -128,6 +125,7 @@
             if (hasGreeted) return;
             hasGreeted = true;
             if (audioCtx.state === 'suspended') await audioCtx.resume();
+            speak("Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a PDF to begin. It takes less than a minute to process.");
         }
 
         async function speak(fullText) {
@@ -136,8 +134,8 @@
             audioBuffers = {}; nextToPlay = 0; totalSentences = sentences.length;
             sentences.forEach(async (sentence, index) => {
                 try {
-                    const response = await fetch('/voice-settings');
-                    const settings = await response.json();
+                    const settingsResp = await fetch('/voice-settings');
+                    const settings = await settingsResp.json();
                     const ttsResponse = await fetch("https://api.inworld.ai/tts/v1/voice", {
                         method: "POST",
                         headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
@@ -196,7 +194,7 @@
             const input = document.getElementById('userInput');
             const text = input.value; if (!text) return;
             addMessage(text, false); 
-            input.value = ''; finalTranscript = ''; // Reset dictation state
+            input.value = ''; finalTranscript = ''; 
             const response = await fetch('/chat', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message: text }) });
             const data = await response.json();
             addMessage(data.message, true); speak(data.message);
