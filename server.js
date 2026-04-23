@@ -2,12 +2,10 @@ const express = require('express');
 const multer = require('multer');
 const pdf = require('pdf-parse');
 const path = require('path');
-const cors = require('cors'); 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 require('dotenv').config();
 
 const app = express();
-app.use(cors()); 
 app.use(express.json({limit: '50mb'})); 
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
@@ -57,8 +55,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             const data = await pdf(file.buffer);
             fullText += `\n--- SCRIPT: ${file.originalname} ---\n` + data.text;
         }
-        // REVERTED TO THE PROVEN MODEL NAME: gemini-pro
-        const model = genAI.getGenerativeModel({ model: "gemini-pro", systemInstruction: FRANK_IDENTITY });
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview", systemInstruction: FRANK_IDENTITY });
         const contextPrompt = mode === 'TV Series' 
             ? `Analyze as a TV SERIES. Focus on series arc, continuity, and the long game.` 
             : `Analyze as a FEATURE FILM. Focus on the three-act engine.`;
@@ -70,12 +67,11 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 
 app.post('/chat', async (req, res) => {
     try {
-        // REVERTED TO THE PROVEN MODEL NAME: gemini-pro
-        const model = genAI.getGenerativeModel({ model: "gemini-pro", systemInstruction: FRANK_IDENTITY });
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview", systemInstruction: FRANK_IDENTITY });
         const result = await model.generateContent(`CONVERSATIONAL MODE: Just talk shop. Address the writer directly without the report structure. Message: ${req.body.message}`);
         res.json({ message: result.response.text() });
     } catch (err) { res.status(500).json({ message: "Busy, darling." }); }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => console.log(`Frank is ready.`));
+app.listen(PORT, () => console.log(`Frank is ready.`));
