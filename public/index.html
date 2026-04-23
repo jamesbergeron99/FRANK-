@@ -14,11 +14,12 @@
         /* PAYWALL OVERLAY */
         #paywall-overlay { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(0,0,0,0.9); z-index: 9999; 
+            background: rgba(0,0,0,0.95); z-index: 9999; 
             display: none; flex-direction: column; justify-content: center; align-items: center; 
-            text-align: center;
+            text-align: center; color: #d4af37;
         }
-        #paywall-overlay h2 { font-style: italic; margin-bottom: 20px; }
+        #paywall-overlay h2 { font-style: italic; margin-bottom: 10px; max-width: 80%; }
+        #paywall-overlay p { color: #eee; margin-bottom: 20px; font-size: 0.9rem; }
 
         .toggle-container { margin-top: 10px; display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 0.8rem; font-weight: bold; }
         .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
@@ -45,7 +46,8 @@
 <body onclick="handleInteraction()">
 
     <div id="paywall-overlay">
-        <h2>"Quality costs, darling. $5 for the autopsy."</h2>
+        <h2>"Quality costs, darling. Five dollars for the full autopsy."</h2>
+        <p>After payment, you will be redirected to upload your script.</p>
         <div id="paypal-container-NUT3KZBHA2Q74"></div>
     </div>
 
@@ -63,7 +65,7 @@
     </div>
 
     <div id="chat-window">
-        <div class="msg frank-msg">"Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per script, I will cross-reference your pages against the history of successful narrative archetypes. Click anywhere to proceed to payment."</div>
+        <div class="msg frank-msg" id="intro-msg">"Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. Click anywhere to hear what I can do for you."</div>
     </div>
 
     <div class="media-bar">
@@ -86,26 +88,27 @@
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, hasGreeted = false, totalSentences = 0;
         let recognition = null, isDictating = false, finalTranscript = '';
 
-        // RENDER PAYPAL BUTTON
+        // RENDER PAYPAL BUTTON IMMEDIATELY BUT HIDDEN
         paypal.HostedButtons({ hostedButtonId: "NUT3KZBHA2Q74" }).render("#paypal-container-NUT3KZBHA2Q74");
+
+        const FULL_GREETING = "Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per feedback, I perform a comprehensive narrative autopsy. I provide a rigorous spelling and grammar check, a strict formatting audit, a punchy logline, and a detailed synopsis. Then, I dive deep into your character arcs, pacing, and originality. If you're working on a series, I track multiple storylines and trajectories across every episode to ensure your continuity is flawless. Click anywhere again to proceed to payment and let's get to work.";
 
         function handleInteraction() {
             if (!hasGreeted) {
-                // FIRST CLICK: Start Greeting
                 hasGreeted = true;
                 if (audioCtx.state === 'suspended') audioCtx.resume();
-                const greeting = "Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per script, I will cross-reference your pages against the history of successful narrative archetypes. Click anywhere to proceed to payment.";
-                speak(greeting);
+                document.getElementById('intro-msg').innerText = FULL_GREETING;
+                speak(FULL_GREETING);
             } else {
-                // SECOND CLICK: Show PayPal Overlay
                 const overlay = document.getElementById('paywall-overlay');
                 if (overlay.style.display === 'none' || overlay.style.display === '') {
+                    stopCurrentAudio();
                     overlay.style.display = 'flex';
                 }
             }
         }
 
-        // Rest of your working logic (Dictation, Audio, Upload)
+        // --- CORE LOGIC ---
         if ('webkitSpeechRecognition' in window) {
             recognition = new webkitSpeechRecognition();
             recognition.continuous = true;
@@ -188,6 +191,7 @@
             const fileInput = document.getElementById('scriptInput');
             const mode = document.getElementById('modeToggle').checked ? 'TV Series' : 'Feature';
             if (fileInput.files.length === 0) return;
+            addMessage(`Frank is reviewing as a ${mode}...`, true);
             const formData = new FormData();
             formData.append('mode', mode);
             for (let i = 0; i < fileInput.files.length; i++) formData.append('scripts', fileInput.files[i]);
