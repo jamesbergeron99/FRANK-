@@ -43,7 +43,7 @@
     </div>
 
     <div id="chat-window">
-        <div class="msg frank-msg">"Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a PDF to begin. It takes less than a minute to process."</div>
+        <div class="msg frank-msg">"Hey there, I'm Frank. Upload your pages, and let's see if you've actually got a story or just a collection of scenes. I'm ready when you are."</div>
     </div>
 
     <div class="media-bar">
@@ -64,27 +64,43 @@
         const chatWindow = document.getElementById('chat-window');
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, hasGreeted = false, totalSentences = 0;
+        let recognition = null, isDictating = false, finalTranscript = '';
 
-        let recognition = null, isDictating = false;
+        // REAL-TIME DICTATION LOGIC
         if ('webkitSpeechRecognition' in window) {
             recognition = new webkitSpeechRecognition();
             recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.onresult = (e) => {
-                let finalTranscript = '';
-                for (let i = e.resultIndex; i < e.results.length; ++i) {
-                    if (e.results[i].isFinal) finalTranscript += e.results[i][0].transcript;
+            recognition.interimResults = true; 
+
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript + ' ';
+                    } else {
+                        interimTranscript += event.results[i][0].transcript;
+                    }
                 }
-                if (finalTranscript) document.getElementById('userInput').value += finalTranscript + ' ';
+                document.getElementById('userInput').value = finalTranscript + interimTranscript;
             };
+
+            recognition.onerror = (e) => console.error("Mic error:", e.error);
             recognition.onend = () => { if (isDictating) recognition.start(); };
         }
 
         function toggleDictation() {
             if (!recognition) return;
             const micBtn = document.getElementById('micBtn');
-            if (!isDictating) { isDictating = true; micBtn.classList.add('mic-active'); recognition.start(); }
-            else { isDictating = false; micBtn.classList.remove('mic-active'); recognition.stop(); }
+            if (!isDictating) {
+                isDictating = true;
+                finalTranscript = document.getElementById('userInput').value; 
+                micBtn.classList.add('mic-active');
+                recognition.start();
+            } else {
+                isDictating = false;
+                micBtn.classList.remove('mic-active');
+                recognition.stop();
+            }
         }
 
         function addMessage(text, isFrank = true) {
@@ -108,41 +124,35 @@
             a.href = url; a.download = `Frank_Report.txt`; a.click();
         }
 
-        function cleanForSpeech(text) {
-            return text.replace(/\bPDF\b/gi, "P.D.F.").replace(/\bExecutive Analysis\b/gi, "Executive Coverage").replace(/\bAnalysis\b/gi, "Coverage").replace(/\bProtagonist\b/gi, "Lead").replace(/\bAntagonist\b/gi, "Opponent").replace(/[*#]/g, "").trim();
-        }
-
         async function handleFirstInteraction() {
             if (hasGreeted) return;
             hasGreeted = true;
             if (audioCtx.state === 'suspended') await audioCtx.resume();
-            speak("Hey there, I'm Frank, not just in name, but in spirit. If you're looking for honest feedback on your screenplays, then you've come to the right place. Upload a PDF to begin. It takes less than a minute to process.");
         }
 
         async function speak(fullText) {
             stopCurrentAudio();
-            const settings = await fetch('/voice-settings').then(r => r.json());
             const sentences = fullText.match(/[^.!?]+[.!?]+/g) || [fullText];
             audioBuffers = {}; nextToPlay = 0; totalSentences = sentences.length;
             sentences.forEach(async (sentence, index) => {
                 try {
-                    const response = await fetch("https://api.inworld.ai/tts/v1/voice", {
+                    const response = await fetch('/voice-settings');
+                    const settings = await response.json();
+                    const ttsResponse = await fetch("https://api.inworld.ai/tts/v1/voice", {
                         method: "POST",
                         headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: cleanForSpeech(sentence), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                        body: JSON.stringify({ text: sentence, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                     });
-                    const data = await response.json();
-                    if (!data.audioContent) { audioBuffers[index] = "FAILED"; return; }
+                    const data = await ttsResponse.json();
                     const audioData = Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer;
                     audioBuffers[index] = await audioCtx.decodeAudioData(audioData);
                     if (!isPlaying && index === nextToPlay) playSequentially();
-                } catch (e) { audioBuffers[index] = "FAILED"; console.error(e); }
+                } catch (e) { console.error(e); }
             });
         }
 
         function playSequentially() {
             if (nextToPlay >= totalSentences) { isPlaying = false; return; }
-            if (audioBuffers[nextToPlay] === "FAILED") { nextToPlay++; playSequentially(); return; }
             if (audioBuffers[nextToPlay]) {
                 isPlaying = true; document.getElementById('playPauseBtn').innerText = "PAUSE";
                 currentSource = audioCtx.createBufferSource();
@@ -150,12 +160,12 @@
                 currentSource.connect(audioCtx.destination);
                 currentSource.onended = () => { if (isPlaying) { nextToPlay++; playSequentially(); } };
                 currentSource.start();
-            } else { setTimeout(() => { if (isPlaying || nextToPlay === 0) playSequentially(); }, 150); }
+            } else { setTimeout(playSequentially, 150); }
         }
 
         function stopCurrentAudio() {
             isPlaying = false;
-            if (currentSource) { try { currentSource.stop(); currentSource.onended = null; } catch (e) {} currentSource = null; }
+            if (currentSource) { try { currentSource.stop(); } catch (e) {} currentSource = null; }
         }
 
         function togglePlayback() {
@@ -185,7 +195,8 @@
         async function sendChat() {
             const input = document.getElementById('userInput');
             const text = input.value; if (!text) return;
-            addMessage(text, false); input.value = '';
+            addMessage(text, false); 
+            input.value = ''; finalTranscript = ''; // Reset dictation state
             const response = await fetch('/chat', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message: text }) });
             const data = await response.json();
             addMessage(data.message, true); speak(data.message);
