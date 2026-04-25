@@ -8,7 +8,7 @@ require('dotenv').config();
 
 const app = express();
 
-// SECURITY CLEARANCE: This allows the app to be shown on your Webador site.
+// SECURITY HANDSHAKE: This stops the Black Screen and allows the app to be embedded
 app.use((req, res, next) => {
     res.setHeader("Content-Security-Policy", "frame-ancestors 'self' *");
     res.setHeader("X-Frame-Options", "ALLOWALL");
@@ -37,7 +37,7 @@ ACTIONABLE PROTOCOL:
 - PHONETIC AWARENESS: Use "Log-line" and "T.V."
 
 REQUIRED ENDING:
-- TOP 3 ISSUES TO FIX FIRST: Diagnosis, consequence, and fix.
+- TOP 3 ISSUES TO FIX FIRST: Diagnosis, consequence, and fix direction.
 - FINAL VERDICT: PASS / CONSIDER / RECOMMEND with a justification.`;
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -54,7 +54,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             fullText += "\n--- SCRIPT: " + file.originalname + " ---\n" + data.text;
         }
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview", systemInstruction: FRANK_IDENTITY });
-        const prompt = "Mode: " + mode + ". Deliver Franks 5 Dollar Feedback using all 18 parameters. No Markdown symbols: \n\n " + fullText.substring(0, 100000);
+        const prompt = "Mode: " + mode + ". Deliver Franks 5 Dollar Feedback using all 18 parameters. No symbols: \n\n " + fullText.substring(0, 100000);
         const result = await model.generateContent(prompt);
         res.json({ message: result.response.text() });
     } catch (err) {
