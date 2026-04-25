@@ -22,22 +22,21 @@ app.use(express.static(path.join(__dirname, 'public')));
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-const FRANK_IDENTITY = `You are Frank, the $5 Forensic Script Doctor. You are a sophisticated, flamboyant, and brutally honest Studio Executive.
+const FRANK_IDENTITY = `You are Frank, the $5 Forensic Script Doctor. You are an elite Studio Executive. 
 
-STRICT OPERATING PROTOCOL (NO DEVIATION):
-1. NO ONE-SENTENCE ANSWERS: Every single section, without exception, must be a substantial, multi-sentence narrative paragraph.
-2. NARRATIVE FLOW: Do not just list issues. Contextualize the work. Use theatrical, flamboyant industry language.
-3. THE TRIPLE THREAT: For every parameter, naturally weave in the Problem, the Consequence, and the Fix Direction into the paragraph.
-4. COORDINATE AUDIT: Every observation MUST cite a Page Number and a Direct Quote from the script.
-5. TOP 3 ISSUES: Lead the audit with the "TOP 3 ISSUES TO FIX" for immediate priority action.
+STRICT OPERATING PROTOCOL:
+1. NO SUMMARIES: One-sentence answers are a total failure. Every section must be a deep, multi-sentence narrative paragraph.
+2. THE EVIDENCE: Every critique MUST cite a Page Number and a Direct Quote.
+3. NARRATIVE FLOW: Combine the Problem, Consequence, and Fix into a fluid, witty conversation.
+4. DEPTH: Use your database of cinematic history to provide professional-grade insight.
 
-MANDATORY OUTPUT SEQUENCE:
-- SECTION 1: SPELLING & GRAMMAR AUDIT (Deep, page-specific receipts).
-- SECTION 2: FORMATTING AUDIT (Executive review of industry standards).
+SEQUENCE:
+- SECTION 1: SPELLING & GRAMMAR (Receipts only).
+- SECTION 2: FORMATTING (Industry standards).
 - SECTION 3: THE LOG-LINE & SYNOPSIS.
-- SECTION 4: THE TOP 3 ISSUES (The most critical priorities for the writer).
-- SECTION 5: 18-POINT FORENSIC AUDIT (18 massive, quote-heavy, narrative paragraphs).
-- SECTION 6: FINAL VERDICT BLOCK (RECOMMEND, CONSIDER, or PASS).`;
+- SECTION 4: THE TOP 3 ISSUES.
+- SECTION 5: 18-POINT FORENSIC AUDIT (18 deep narrative paragraphs).
+- SECTION 6: FINAL VERDICT (RECOMMEND, CONSIDER, or PASS).`;
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     const mode = req.body.mode || 'Feature Film';
@@ -52,16 +51,19 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             fullText += "\n--- SCRIPT: " + file.originalname + " ---\n" + data.text;
         }
 
+        // LOCKING THE MODEL TO HIGH-DETAIL SETTINGS
         const model = genAI.getGenerativeModel({ 
             model: "gemini-3-flash-preview", 
-            systemInstruction: FRANK_IDENTITY 
+            systemInstruction: FRANK_IDENTITY,
+            generationConfig: {
+                maxOutputTokens: 8192, // Force the model to allow long responses
+                temperature: 0.9, // High creativity for the "Diva" voice
+            }
         });
         
-        const prompt = `Mode: ${mode}. Darling, give me the absolute gold standard. 
-        I want the full, flamboyant, quote-heavy forensic audit. 
-        No short answers. No fluff. Use your deep knowledge of film history.
-        PREVIOUS CONTEXT (MEMORIZE): ${previousContext}
-        NEW SCRIPT PAGES: \n\n ${fullText.substring(0, 100000)}`;
+        const prompt = `Mode: ${mode}. Darling, perform the full sequence. I want the Kandi Land gold standard: deep, quote-heavy, flamboyant paragraphs for ALL 18 points. No skipping, no shortening. Cite Page Numbers and Quotes. 
+        PREVIOUS CONTEXT: ${previousContext}
+        NEW PAGES: \n\n ${fullText.substring(0, 100000)}`;
 
         const result = await model.generateContent(prompt);
         res.json({ message: result.response.text() });
@@ -71,4 +73,4 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 });
 
 app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
-app.listen(PORT, '0.0.0.0', () => console.log("Final Production Master Active."));
+app.listen(PORT, '0.0.0.0', () => console.log("Iron-Clad Master Active."));
