@@ -8,12 +8,18 @@ require('dotenv').config();
 
 const app = express();
 app.use(cors()); 
+
+// Ensure limits are high enough for large scripts
 app.use(express.json({limit: '100mb'})); 
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ 
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 50 * 1024 * 1024 } // 50MB
+});
+
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-const FRANK_IDENTITY = `You are Frank, a flamboyant, sophisticated, and Truman Capote-esque Studio Executive. You are delivering Frank's $5 Feedback based on the 18 Industry Standard Parameters.
+const FRANK_IDENTITY = `You are Frank, a sophisticated, flamboyant, and Truman Capote-esque Studio Executive. You are delivering Frank's $5 Feedback based on the 18 Industry Standard Parameters.
 
 THE 18 PARAMETERS OF FORENSIC ANALYSIS:
 1. LOGLINE AND CONCEPT: Evaluate clarity, hook, and market positioning.
@@ -43,47 +49,61 @@ STRICT RULES:
 OUTPUT STRUCTURE:
 
 THE TECHNICAL HOUSEKEEPING
-(Covering Parameters 10 and 11)
+(Focus on Parameters 10 and 11)
 
 THE TOP SHEET
-(Covering Parameters 1, 12, and 13)
+(Focus on Parameters 1, 12, and 13)
 - LOGLINE: Commercial version.
 - SYNOPSIS: Dense 500-word structural map.
 
-FRANK'S $5 FEEDBACK DEEP DIVE
-(Covering Parameters 2 through 9, and 14)
+FRANKS $5 FEEDBACK DEEP DIVE
+(Focus on Parameters 2 through 9, and 14)
 - An exhaustive, professional interrogation using all metrics. 
 
 THE REWRITE STRATEGY AND X FACTOR
-(Covering Parameters 16, 17, and 18)
+(Focus on Parameters 16, 17, and 18)
 
 THE FINAL VERDICT
-(Parameter 15)
+(Focus on Parameter 15)
 - DECLARATION: GREEN LIGHT, CONSIDER, or PASS.
 - NUMERICAL SCORE: 1 to 10.
 - JUSTIFICATION: Massive closing argument using narrative data.`;
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
+app.get('/voice-settings', (req, res) => {
+    res.json({ apiKey: process.env.FRANK_VOICE_API_KEY });
+});
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     const mode = req.body.mode || 'Feature Film';
-    if (!req.files || req.files.length === 0) return res.status(400).json({ message: "No pages, darling." });
+    if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ message: "No pages found, darling." });
+    }
+    
     try {
         let fullText = "";
         for (const file of req.files) {
             const data = await pdf(file.buffer);
             fullText += `\n--- SCRIPT: ${file.originalname} ---\n` + data.text;
         }
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview", systemInstruction: FRANK_IDENTITY });
-        const prompt = `Mode: ${mode}. Deliver Frank's $5 Feedback using all 18 parameters. No Markdown symbols. Professional flow only: \n\n ${fullText.substring(0, 100000)}`;
+
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-3-flash-preview", 
+            systemInstruction: FRANK_IDENTITY 
+        });
+        
+        const prompt = `Mode: ${mode}. Deliver Frank's $5 Feedback using all 18 parameters. No Markdown symbols. Professional flow only. Cite specific page numbers: \n\n ${fullText.substring(0, 100000)}`;
+
         const result = await model.generateContent(prompt);
-        res.json({ message: result.response.text() });
+        const responseText = result.response.text();
+        
+        res.json({ message: responseText });
     } catch (err) {
-        res.status(500).json({ message: "Frank is indisposed." });
+        console.error("FRANK ANALYSIS ERROR:", err);
+        res.status(500).json({ message: "Frank is indisposed. Check your server logs." });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => console.log(\`Frank active.\`));
+app.listen(PORT, '0.0.0.0', () => console.log(`Frank is active on port ${PORT}`));
