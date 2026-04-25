@@ -8,14 +8,12 @@ require('dotenv').config();
 
 const app = express();
 
-// 1. THE SECURITY OVERRIDE (Stops the Black Screen)
+// 1. THE "NO-BLOCK" MIDDLEWARE
+// This removes the headers that cause the "Black Screen" before they even reach the browser.
 app.use((req, res, next) => {
-    // Allows your Webador site to see the app
+    res.removeHeader("X-Frame-Options");
     res.setHeader("Content-Security-Policy", "frame-ancestors 'self' *");
-    res.setHeader("X-Frame-Options", "ALLOWALL");
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
     next();
 });
 
@@ -25,11 +23,11 @@ app.use(express.json({limit: '100mb'}));
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-const FRANK_IDENTITY = `You are Frank, a flamboyant, sophisticated, and Truman Capote-esque Studio Executive. You are delivering Franks 5 Dollar Feedback.
-- VOICE: Witty, theatrical, and personable. 
+const FRANK_IDENTITY = `You are Frank, a sophisticated, flamboyant, and Truman Capote-esque Studio Executive delivering Franks 5 Dollar Feedback. 
+- VOICE: Witty, theatrical, and charismatic. 
 - PHONETIC: Use "Log-line" and "T.V." 
 - NO SYMBOLS: No hashtags or asterisks.
-- PROTOCOL: Interrogate all 18 parameters with authority. No soft language. Include Top 3 Issues and a Final Verdict.`;
+- PROTOCOL: 18 Parameters, authoritative tone, Top 3 Issues, and Final Verdict.`;
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -45,7 +43,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             fullText += "\n--- SCRIPT: " + file.originalname + " ---\n" + data.text;
         }
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview", systemInstruction: FRANK_IDENTITY });
-        const prompt = "Mode: " + mode + ". Deliver Franks 5 Dollar Feedback. All 18 parameters. No symbols: \n\n " + fullText.substring(0, 100000);
+        const prompt = "Mode: " + mode + ". Deliver Franks 5 Dollar Feedback. All 18 points. No symbols: \n\n " + fullText.substring(0, 100000);
         const result = await model.generateContent(prompt);
         res.json({ message: result.response.text() });
     } catch (err) {
