@@ -17,6 +17,8 @@
         }
         #paywall-overlay h2 { font-style: italic; margin-bottom: 10px; max-width: 80%; }
         #paywall-overlay p { color: #eee; margin-bottom: 30px; font-size: 0.9rem; }
+        
+        /* PayPal Button Styling */
         .pp-NUT3KZBHA2Q74{text-align:center;border:none;border-radius:0.25rem;min-width:11.625rem;padding:0 2rem;height:2.625rem;font-weight:bold;background-color:#FFD140;color:#000000;font-family:"Helvetica Neue",Arial,sans-serif;font-size:1rem;line-height:1.25rem;cursor:pointer;}
 
         .toggle-container { margin-top: 10px; display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 0.8rem; font-weight: bold; }
@@ -28,17 +30,16 @@
         input:checked + .slider:before { transform: translateX(24px); background-color: #000; }
 
         #chat-window { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; background: #050505; scroll-behavior: smooth; padding-bottom: 120px; }
-        .msg { max-width: 85%; padding: 15px; border-radius: 8px; line-height: 1.5; font-size: 1.1rem; white-space: pre-wrap; position: relative; }
+        .msg { max-width: 90%; padding: 20px; border-radius: 8px; line-height: 1.6; font-size: 1.1rem; white-space: pre-wrap; position: relative; }
         .frank-msg { align-self: flex-start; background: #1a1a1a; border-left: 4px solid #d4af37; color: #eee; }
-        .user-msg { align-self: flex-end; background: #d4af37; color: #000; font-weight: bold; }
         
-        .controls { padding: 15px; background: #111; border-top: 2px solid #d4af37; display: flex; gap: 10px; align-items: center; shrink-0; }
-        input[type="text"] { flex-grow: 1; padding: 12px; background: #000; border: 1px solid #d4af37; color: #d4af37; font-size: 1rem; outline: none; }
+        .download-btn { display: inline-block; margin-top: 20px; padding: 10px 15px; background: #d4af37; color: #000; font-weight: bold; font-size: 0.8rem; text-decoration: none; cursor: pointer; border: none; text-transform: uppercase; }
+        .download-btn:hover { background: #fff; }
+
+        .controls { padding: 20px; background: #111; border-top: 2px solid #d4af37; display: flex; justify-content: center; shrink-0; }
         .media-bar { background: #1a1a1a; border-top: 1px solid #333; padding: 10px; display: flex; justify-content: center; gap: 20px; align-items: center; }
         .media-btn { background: none; border: 1px solid #d4af37; color: #d4af37; padding: 5px 15px; cursor: pointer; font-family: serif; font-size: 0.8rem; text-transform: uppercase; }
-        .btn { background: #d4af37; color: #000; padding: 10px 20px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; }
-        .mic-btn { background: #800; color: #fff; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center; }
-        .mic-active { background: #f00; box-shadow: 0 0 15px #f00; }
+        .btn { background: #d4af37; color: #000; padding: 15px 40px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 1.1rem; letter-spacing: 1px; }
     </style>
 </head>
 <body onclick="handleInteraction()">
@@ -73,26 +74,22 @@
     </div>
 
     <div class="media-bar">
-        <button class="media-btn" onclick="skipAudio(-1)">« BACK</button>
-        <button class="media-btn" id="playPauseBtn" onclick="togglePlayback()">PAUSE</button>
-        <button class="media-btn" onclick="skipAudio(1)">NEXT »</button>
+        <button class="media-btn" onclick="event.stopPropagation(); skipAudio(-1)">« BACK</button>
+        <button class="media-btn" id="playPauseBtn" onclick="event.stopPropagation(); togglePlayback()">PAUSE</button>
+        <button class="media-btn" onclick="event.stopPropagation(); skipAudio(1)">NEXT »</button>
     </div>
 
     <div class="controls">
         <input type="file" id="scriptInput" accept=".pdf" style="display:none;" multiple onchange="uploadFiles()">
-        <button class="btn" onclick="document.getElementById('scriptInput').click()">PDF UPLOAD</button>
-        <button class="mic-btn" id="micBtn" onclick="toggleDictation()">🎙️</button>
-        <input type="text" id="userInput" placeholder="Defend your choices..." onkeypress="if(event.key === 'Enter') sendChat()">
-        <button class="btn" onclick="sendChat()">Send</button>
+        <button class="btn" onclick="event.stopPropagation(); checkPaymentBeforeUpload()">PDF UPLOAD</button>
     </div>
 
     <script>
         const chatWindow = document.getElementById('chat-window');
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, hasGreeted = false, totalSentences = 0;
-        let recognition = null, isDictating = false, finalTranscript = '';
 
-        // Check if returning from PayPal
+        // Detect return from PayPal
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('amt') || urlParams.has('tx') || urlParams.has('st') || urlParams.has('status')) {
             localStorage.setItem('frank_paid', 'true');
@@ -102,7 +99,6 @@
         const FULL_GREETING = "Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per feedback, I perform a comprehensive narrative autopsy. I provide a rigorous spelling and grammar check, a strict formatting audit, a punchy logline, and a detailed synopsis. Then, I dive deep into your character arcs, pacing, and originality. If you're working on a series, I track multiple storylines and trajectories across every episode to ensure your continuity is flawless. Click anywhere again to proceed to payment and let's get to work.";
 
         function handleInteraction() {
-            // Logic for when they return from paying
             if (localStorage.getItem('frank_paid') === 'true') {
                 if (!hasGreeted) {
                     hasGreeted = true;
@@ -112,8 +108,6 @@
                 }
                 return; 
             }
-
-            // Standard Flow: Welcome then Payment
             if (!hasGreeted) {
                 hasGreeted = true;
                 if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -121,11 +115,20 @@
                 speak(FULL_GREETING);
             } else {
                 const overlay = document.getElementById('paywall-overlay');
-                // Ensure paywall doesn't block them if they are trying to use the mic/chat
                 if (overlay.style.display === 'none' || overlay.style.display === '') {
                     stopCurrentAudio();
                     overlay.style.display = 'flex';
                 }
+            }
+        }
+
+        function checkPaymentBeforeUpload() {
+            if (localStorage.getItem('frank_paid') === 'true') {
+                document.getElementById('scriptInput').click();
+            } else {
+                const overlay = document.getElementById('paywall-overlay');
+                stopCurrentAudio();
+                overlay.style.display = 'flex';
             }
         }
 
@@ -178,65 +181,53 @@
             playSequentially();
         }
 
-        if ('webkitSpeechRecognition' in window) {
-            recognition = new webkitSpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true; 
-            recognition.onresult = (event) => {
-                let interimTranscript = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) { finalTranscript += event.results[i][0].transcript + ' '; }
-                    else { interimTranscript += event.results[i][0].transcript; }
-                }
-                document.getElementById('userInput').value = finalTranscript + interimTranscript;
-            };
-            recognition.onend = () => { if (isDictating) recognition.start(); };
-        }
-
-        function toggleDictation() {
-            const micBtn = document.getElementById('micBtn');
-            if (!isDictating) {
-                isDictating = true;
-                finalTranscript = document.getElementById('userInput').value; 
-                micBtn.classList.add('mic-active');
-                recognition.start();
-            } else {
-                isDictating = false;
-                micBtn.classList.remove('mic-active');
-                recognition.stop();
-            }
-        }
-
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
             const mode = document.getElementById('modeToggle').checked ? 'TV Series' : 'Feature';
             if (fileInput.files.length === 0) return;
-            addMessage(`Frank is initiating a ${mode} scan...`, true);
+            
+            addMessage(`Frank is initiating a ${mode} scan...`, false);
             const formData = new FormData();
             formData.append('mode', mode);
             for (let i = 0; i < fileInput.files.length; i++) formData.append('scripts', fileInput.files[i]);
-            const response = await fetch('/analyze', { method: 'POST', body: formData });
-            const data = await response.json();
-            addMessage(data.message); speak(data.message);
-            // RESET: Analysis complete, remove paid status so next upload costs $5
-            localStorage.removeItem('frank_paid');
+            
+            try {
+                const response = await fetch('/analyze', { method: 'POST', body: formData });
+                const data = await response.json();
+                addMessage(data.message, true); 
+                speak(data.message);
+                localStorage.removeItem('frank_paid');
+            } catch (err) { 
+                addMessage("Frank is indisposed. Please try again, darling.", true); 
+            }
         }
 
-        async function sendChat() {
-            const input = document.getElementById('userInput');
-            const text = input.value; if (!text) return;
-            addMessage(text, false); input.value = '';
-            const response = await fetch('/chat', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message: text }) });
-            const data = await response.json();
-            addMessage(data.message); speak(data.message);
-        }
-
-        function addMessage(text, isFrank = true) {
+        function addMessage(text, isReport = false) {
             const div = document.createElement('div');
-            div.className = `msg ${isFrank ? 'frank-msg' : 'user-msg'}`;
+            div.className = `msg frank-msg`;
             div.innerText = text;
+
+            if (isReport) {
+                const dl = document.createElement('button');
+                dl.className = 'download-btn'; 
+                dl.innerText = "↓ DOWNLOAD EXECUTIVE COVERAGE (.TXT)";
+                dl.onclick = (e) => { e.stopPropagation(); downloadReport(text); };
+                div.appendChild(dl);
+            }
+
             chatWindow.appendChild(div);
             chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        function downloadReport(text) {
+            const timestamp = new Date().toLocaleDateString();
+            const header = `FRANK | EXECUTIVE SCRIPT COVERAGE\nDate: ${timestamp}\n------------------------------------------\n\n`;
+            const blob = new Blob([header + text], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Frank_Coverage_${Date.now()}.txt`;
+            a.click();
         }
     </script>
 </body>
