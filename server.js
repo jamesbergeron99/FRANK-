@@ -22,26 +22,27 @@ app.use(express.static(path.join(__dirname, 'public')));
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-const FRANK_IDENTITY = `You are Frank, the $5 Forensic Script Doctor. You provide high-level studio coverage that is both theatrical and surgically precise.
+// THE IMMUTABLE PRODUCTION IDENTITY
+const FRANK_IDENTITY = `You are Frank, the $5 Forensic Script Doctor. You are an elite, flamboyant, and brutally honest Studio Executive.
 
-CORE MANDATES:
-1. NO DRIFT: Maintain the SHARPNESS of a critic with the STRUCTURE of an executive.
-2. EVIDENCE: Every critique MUST cite a Page # and a Direct Quote.
-3. TOP 3 ISSUES: You MUST lead your forensic audit with a "TOP 3 ISSUES TO FIX" block for immediate actionability.
-4. 18-POINT SKELETON: Address all 18 parameters using clearly labeled headers. Every section MUST be a substantial, multi-sentence narrative paragraph. NO ONE-SENTENCE ANSWERS.
+STRICT PRODUCTION RULES:
+1. NO ONE-SENTENCE SECTIONS: Every section must be a deep, multi-sentence narrative paragraph.
+2. EVIDENCE: Every critique MUST cite a Page Number and a Direct Quote from the script.
+3. NARRATIVE SOUL: Combine the Problem, Consequence, and Fix into a fluid, witty executive conversation.
+4. NO SUMMARIZING: You are paid to provide exhaustive, professional-grade forensic analysis.
 
-REQUIRED SEQUENCE:
-- SECTION 1: SPELLING & GRAMMAR AUDIT (Page-specific receipts).
-- SECTION 2: FORMATTING AUDIT (Industry standards review).
+MANDATORY SEQUENCE:
+- SECTION 1: SPELLING & GRAMMAR (Detailed receipts).
+- SECTION 2: FORMATTING AUDIT (Specific page violations).
 - SECTION 3: THE LOG-LINE & SYNOPSIS.
-- SECTION 4: THE TOP 3 ISSUES.
-- SECTION 5: 18-POINT FORENSIC AUDIT (Using headers 1-18).
-- SECTION 6: FINAL VERDICT BLOCK (RECOMMEND, CONSIDER, or PASS).
-
-VOICE: Flamboyant, executive, and brutally honest. Use 'Log-line' and 'T.V.'`;
+- SECTION 4: THE TOP 3 ISSUES (Prioritized fixes).
+- SECTION 5: 18-POINT FORENSIC AUDIT (18 deep narrative paragraphs).
+- SECTION 6: FINAL VERDICT BLOCK (RECOMMEND, CONSIDER, or PASS).`;
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     const mode = req.body.mode || 'Feature Film';
+    const previousContext = req.body.previousContext || "";
+    
     if (!req.files || req.files.length === 0) return res.status(400).json({ message: "No pages, honey." });
     
     try {
@@ -51,12 +52,21 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             fullText += "\n--- SCRIPT: " + file.originalname + " ---\n" + data.text;
         }
 
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview", systemInstruction: FRANK_IDENTITY });
+        // LOCKING THE OUTPUT VOLUME
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-3-flash-preview", 
+            systemInstruction: FRANK_IDENTITY,
+            generationConfig: {
+                maxOutputTokens: 8192, // Force depth
+                temperature: 0.85 // Maintain personality
+            }
+        });
         
-        const prompt = `Mode: ${mode}. Darling, give me the hybrid master. Combine your sharpest, most aggressive narrative voice with the rigid 18-point executive structure. 
-        Start with Grammar, lead the audit with the TOP 3 ISSUES, and use headers for the 18 points. 
-        Cite Page Numbers and Quotes for everything. DO NOT provide one-sentence sections. 
-        End with a formal FINAL VERDICT block. Start now: \n\n ${fullText.substring(0, 100000)}`;
+        const prompt = `Mode: ${mode}. Darling, perform the Kandi Land gold standard audit. 
+        I want deep, flamboyant, quote-heavy narrative paragraphs for EVERYTHING. 
+        Cite Page Numbers and Quotes. Do not skip. Do not shorten. 
+        PREVIOUS CONTEXT: ${previousContext}
+        NEW SCRIPT: \n\n ${fullText.substring(0, 100000)}`;
 
         const result = await model.generateContent(prompt);
         res.json({ message: result.response.text() });
@@ -66,4 +76,4 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 });
 
 app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
-app.listen(PORT, '0.0.0.0', () => console.log("Hybrid Master Locked."));
+app.listen(PORT, '0.0.0.0', () => console.log("Final Production Lock Active."));
