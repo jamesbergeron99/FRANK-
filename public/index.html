@@ -6,34 +6,72 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
         body { background: #0a0a0a; color: #d4af37; font-family: 'Georgia', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
-        #auth-check { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0a0a0a; z-index: 10000; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; color: #d4af37; }
-        .header { padding: 25px 15px; border-bottom: 2px solid #d4af37; background: #111; text-align: center; }
+        #auth-check { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0a0a0a; z-index: 10000; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+        .header { padding: 25px 15px; border-bottom: 2px solid #d4af37; background: #111; text-align: center; shrink-0; }
         h1 { margin: 0; font-style: italic; letter-spacing: 3px; text-transform: uppercase; font-size: 2.2rem; }
-        #chat-window { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; background: #050505; padding-bottom: 150px; }
+        #chat-window { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; background: #050505; scroll-behavior: smooth; padding-bottom: 150px; }
         .msg { max-width: 95%; padding: 30px; border-radius: 10px; line-height: 1.8; font-size: 1.15rem; white-space: pre-wrap; align-self: flex-start; background: #1a1a1a; border-left: 5px solid #d4af37; color: #eee; }
-        .controls { padding: 25px; background: #111; border-top: 2px solid #d4af37; display: flex; justify-content: center; gap: 30px; }
-        .btn { background: #d4af37; color: #000; padding: 18px 50px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 1.2rem; }
-        .btn:disabled { background: #444; color: #888; }
+        .download-btn { display: inline-block; margin-top: 25px; padding: 15px 25px; background: #d4af37; color: #000; font-weight: bold; cursor: pointer; border: none; text-transform: uppercase; }
+        .media-bar { background: #1a1a1a; border-top: 1px solid #333; padding: 15px; display: flex; justify-content: center; gap: 25px; align-items: center; shrink-0; }
+        .media-btn { background: none; border: 1px solid #d4af37; color: #d4af37; padding: 10px 25px; cursor: pointer; font-size: 0.9rem; text-transform: uppercase; font-weight: bold; }
+        .controls { padding: 25px; background: #111; border-top: 2px solid #d4af37; display: flex; justify-content: center; gap: 30px; shrink-0; }
+        .btn { background: #d4af37; color: #000; padding: 18px 50px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 1.2rem; transition: 0.3s; }
+        .btn:disabled { background: #444; color: #888; cursor: not-allowed; }
+        .toggle-container { margin-top: 15px; display: flex; justify-content: center; align-items: center; gap: 15px; font-size: 0.9rem; font-weight: bold; }
+        .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 26px; border: 1px solid #d4af37; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 3px; background-color: #d4af37; transition: .4s; border-radius: 50%; }
+        input:checked + .slider:before { transform: translateX(24px); }
     </style>
 </head>
 <body>
-    <div id="auth-check"><h1>VERIFYING PAYMENT...</h1></div>
+    <div id="auth-check">
+        <p>VERIFYING CREDENTIALS, DARLING...</p>
+    </div>
 
-    <div class="header"><h1>FRANK'S $5 FEEDBACK</h1></div>
+    <div class="header">
+        <h1>FRANK'S $5 FEEDBACK</h1>
+        <div class="toggle-container">
+            <span>FEATURE FILM</span>
+            <label class="switch"><input type="checkbox" id="modeToggle"><span class="slider"></span></label>
+            <span>T.V. SERIES</span>
+        </div>
+    </div>
+
     <div id="chat-window"></div>
+
+    <div class="media-bar">
+        <button class="media-btn" onclick="skipAudio(-1)">« BACK</button>
+        <button class="media-btn" id="playPauseBtn" onclick="togglePlayback()">PAUSE</button>
+        <button class="media-btn" onclick="skipAudio(1)">NEXT »</button>
+    </div>
+
     <div class="controls">
         <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadFiles()">
-        <button class="btn" id="uploadBtn" onclick="document.getElementById('scriptInput').click()">UPLOAD PAGES</button>
+        <button class="btn" id="uploadBtn" onclick="document.getElementById('scriptInput').click()">UPLOAD YOUR PAGES</button>
     </div>
 
     <script>
+        const chatWindow = document.getElementById('chat-window');
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSentences = 0;
+
         window.onload = () => {
             const urlParams = new URLSearchParams(window.location.search);
-            // Bulletproof verification: If the URL has 'st' or local memory says paid, open the door
             if (urlParams.has('st') || localStorage.getItem('frank_paid') === 'true') {
                 localStorage.setItem('frank_paid', 'true');
                 document.getElementById('auth-check').style.display = 'none';
-                addMessage("Frank is in. Upload your pages and let's get to work.");
+                
+                const lastFeedback = localStorage.getItem('frank_last_feedback');
+                let welcome = "Frank is in. Select your format and upload your pages. I don't have all day.";
+                
+                if (lastFeedback) {
+                    welcome = "I've reviewed your previous notes. Let's see if this next installment actually shows some growth.";
+                }
+                
+                addMessage(welcome);
+                speak(welcome);
             } else {
                 window.location.href = "https://www.scriptread.ca";
             }
@@ -42,47 +80,106 @@
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
             const uploadBtn = document.getElementById('uploadBtn');
+            const isTV = document.getElementById('modeToggle').checked;
+            const mode = isTV ? 'T.V. Series' : 'Feature Film';
+            
             if (fileInput.files.length === 0) return;
 
             uploadBtn.disabled = true;
-            uploadBtn.innerText = "AUDITING...";
-            addMessage("Preparing forensic audit...");
+            uploadBtn.innerText = "SESSION IN PROGRESS...";
 
+            addMessage(`Preparing your forensic audit for this ${mode}...`, false);
             const formData = new FormData();
+            formData.append('mode', mode);
             formData.append('scripts', fileInput.files[0]);
             
-            // Pass memory of previous episode if it exists
             const memory = localStorage.getItem('frank_last_feedback');
-            if (memory) formData.append('previousContext', memory);
+            if (memory) {
+                formData.append('previousContext', memory);
+            }
 
             try {
                 const response = await fetch('/analyze', { method: 'POST', body: formData });
                 const data = await response.json();
                 
-                // Store this audit for the next episode/sequel
                 localStorage.setItem('frank_last_feedback', data.message);
-                addMessage(data.message);
+                
+                addMessage(data.message, true); 
+                speak(data.message);
                 
                 uploadBtn.disabled = false;
-                uploadBtn.innerText = "NEXT EPISODE ($5)";
+                uploadBtn.innerText = isTV ? "START NEXT EPISODE ($5)" : "START SEQUEL / TRILOGY ($5)";
+                
                 uploadBtn.onclick = () => {
-                    localStorage.removeItem('frank_paid');
+                    localStorage.removeItem('frank_paid'); 
                     window.location.href = "https://www.paypal.com/ncp/payment/VRYUFK4H8K6M6";
                 };
-            } catch (err) {
-                addMessage("Frank is indisposed. Check your connection.");
+
+            } catch (err) { 
+                addMessage("Frank is indisposed, honey.");
                 uploadBtn.disabled = false;
                 uploadBtn.innerText = "RETRY UPLOAD";
             }
         }
 
-        function addMessage(text) {
+        function addMessage(text, isReport = false) {
             const div = document.createElement('div');
             div.className = 'msg';
             div.innerText = text;
-            document.getElementById('chat-window').appendChild(div);
-            document.getElementById('chat-window').scrollTop = chatWindow.scrollHeight;
+            if (isReport) {
+                const dl = document.createElement('button');
+                dl.className = 'download-btn'; dl.innerText = "DOWNLOAD PDF REPORT";
+                dl.onclick = () => downloadPDF(text);
+                div.appendChild(dl);
+            }
+            chatWindow.appendChild(div);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
         }
+
+        function downloadPDF(text) {
+            const element = document.createElement('div');
+            element.innerHTML = `<div style="background:#0a0a0a; color:#eee; font-family:Courier; padding:40px; border:2px solid #d4af37; line-height:1.6;"><h1 style="color:#d4af37; text-align:center; border-bottom:2px solid #d4af37;">FRANK'S $5 FEEDBACK</h1><p style="text-align:right; font-weight:bold; color:#d4af37;">EXECUTIVE AUDIT</p><div style="margin-top:30px; white-space: pre-wrap;">${text}</div></div>`;
+            html2pdf().from(element).save();
+        }
+
+        async function speak(fullText) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            stopCurrentAudio();
+            const cleanText = fullText.replace(/[#*]/g, '');
+            const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
+            audioBuffers = {}; nextToPlay = 0; totalSentences = sentences.length;
+            sentences.forEach(async (sentence, index) => {
+                try {
+                    const settingsResp = await fetch('/voice-settings');
+                    const settings = await settingsResp.json();
+                    const ttsResp = await fetch("https://api.inworld.ai/tts/v1/voice", {
+                        method: "POST",
+                        headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ text: sentence, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                    });
+                    const data = await ttsResp.json();
+                    const audioData = Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer;
+                    audioBuffers[index] = await audioCtx.decodeAudioData(audioData);
+                    if (!isPlaying && index === 0) playSequentially();
+                } catch (e) {}
+            });
+        }
+
+        function playSequentially() {
+            if (nextToPlay >= totalSentences) { isPlaying = false; document.getElementById('playPauseBtn').innerText = "PLAY"; return; }
+            if (audioBuffers[nextToPlay]) {
+                isPlaying = true; document.getElementById('playPauseBtn').innerText = "PAUSE";
+                currentSource = audioCtx.createBufferSource();
+                currentSource.buffer = audioBuffers[nextToPlay];
+                currentSource.connect(audioCtx.destination);
+                currentSource.onended = () => { if (isPlaying) { nextToPlay++; playSequentially(); } };
+                currentSource.start();
+            } else { setTimeout(playSequentially, 150); }
+        }
+
+        function stopCurrentAudio() { isPlaying = false; if (currentSource) { try { currentSource.stop(); } catch (e) {} currentSource = null; } }
+        function togglePlayback() { if (isPlaying) { stopCurrentAudio(); document.getElementById('playPauseBtn').innerText = "PLAY"; } else { playSequentially(); } }
+        function skipAudio(direction) { stopCurrentAudio(); nextToPlay = Math.max(0, Math.min(totalSentences - 1, nextToPlay + direction)); playSequentially(); }
     </script>
 </body>
 </html>
