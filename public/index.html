@@ -16,7 +16,7 @@
             text-align: center; color: #d4af37;
         }
         #paywall-overlay h2 { font-style: italic; margin-bottom: 10px; max-width: 80%; }
-        #paywall-overlay p { color: #eee; margin-bottom: 300x; font-size: 0.9rem; }
+        #paywall-overlay p { color: #eee; margin-bottom: 30px; font-size: 0.9rem; }
         .pp-NUT3KZBHA2Q74{text-align:center;border:none;border-radius:0.25rem;min-width:11.625rem;padding:0 2rem;height:2.625rem;font-weight:bold;background-color:#FFD140;color:#000000;font-family:"Helvetica Neue",Arial,sans-serif;font-size:1rem;line-height:1.25rem;cursor:pointer;}
 
         .toggle-container { margin-top: 10px; display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 0.8rem; font-weight: bold; }
@@ -92,15 +92,20 @@
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, hasGreeted = false, totalSentences = 0;
         let recognition = null, isDictating = false, finalTranscript = '';
 
+        // DETECT RETURN FROM PAYPAL
         const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.has('amt') || urlParams.has('tx') || urlParams.has('st') || urlParams.has('status')) {
+        const isReturn = urlParams.has('amt') || urlParams.has('tx') || urlParams.has('st') || urlParams.has('status');
+
+        if (isReturn) {
             localStorage.setItem('frank_paid', 'true');
+            // Remove params from URL bar
             window.history.replaceState({}, document.title, window.location.pathname);
         }
 
         const FULL_GREETING = "Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per feedback, I perform a comprehensive narrative autopsy. I provide a rigorous spelling and grammar check, a strict formatting audit, a punchy logline, and a detailed synopsis. Then, I dive deep into your character arcs, pacing, and originality. If you're working on a series, I track multiple storylines and trajectories across every episode to ensure your continuity is flawless. Click anywhere again to proceed to payment and let's get to work.";
 
         function handleInteraction() {
+            // IF RETURNING FROM PAYPAL
             if (localStorage.getItem('frank_paid') === 'true') {
                 if (!hasGreeted) {
                     hasGreeted = true;
@@ -108,14 +113,17 @@
                     document.getElementById('intro-msg').innerText = "Welcome back, darling. Payment confirmed. I'm ready for your pages.";
                     speak("Welcome back, darling. Payment confirmed. I'm ready for your pages.");
                 }
-                return; 
+                return;
             }
+
+            // STANDARD INTRO FLOW
             if (!hasGreeted) {
                 hasGreeted = true;
                 if (audioCtx.state === 'suspended') audioCtx.resume();
                 document.getElementById('intro-msg').innerText = FULL_GREETING;
                 speak(FULL_GREETING);
             } else {
+                // Second click shows payment
                 const overlay = document.getElementById('paywall-overlay');
                 if (overlay.style.display === 'none' || overlay.style.display === '') {
                     stopCurrentAudio();
@@ -124,35 +132,7 @@
             }
         }
 
-        if ('webkitSpeechRecognition' in window) {
-            recognition = new webkitSpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true; 
-            recognition.onresult = (event) => {
-                let interimTranscript = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) { finalTranscript += event.results[i][0].transcript + ' '; }
-                    else { interimTranscript += event.results[i][0].transcript; }
-                }
-                document.getElementById('userInput').value = finalTranscript + interimTranscript;
-            };
-            recognition.onend = () => { if (isDictating) recognition.start(); };
-        }
-
-        function toggleDictation() {
-            const micBtn = document.getElementById('micBtn');
-            if (!isDictating) {
-                isDictating = true;
-                finalTranscript = document.getElementById('userInput').value; 
-                micBtn.classList.add('mic-active');
-                recognition.start();
-            } else {
-                isDictating = false;
-                micBtn.classList.remove('mic-active');
-                recognition.stop();
-            }
-        }
-
+        // --- TTS & UTILS ---
         async function speak(fullText) {
             stopCurrentAudio();
             const sentences = fullText.match(/[^.!?]+[.!?]+/g) || [fullText];
@@ -202,6 +182,37 @@
             playSequentially();
         }
 
+        // --- DICTATION ---
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true; 
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) { finalTranscript += event.results[i][0].transcript + ' '; }
+                    else { interimTranscript += event.results[i][0].transcript; }
+                }
+                document.getElementById('userInput').value = finalTranscript + interimTranscript;
+            };
+            recognition.onend = () => { if (isDictating) recognition.start(); };
+        }
+
+        function toggleDictation() {
+            const micBtn = document.getElementById('micBtn');
+            if (!isDictating) {
+                isDictating = true;
+                finalTranscript = document.getElementById('userInput').value; 
+                micBtn.classList.add('mic-active');
+                recognition.start();
+            } else {
+                isDictating = false;
+                micBtn.classList.remove('mic-active');
+                recognition.stop();
+            }
+        }
+
+        // --- UPLOAD & CHAT ---
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
             const mode = document.getElementById('modeToggle').checked ? 'TV Series' : 'Feature';
@@ -213,6 +224,8 @@
             const response = await fetch('/analyze', { method: 'POST', body: formData });
             const data = await response.json();
             addMessage(data.message); speak(data.message);
+            
+            // CLEANUP FOR NEXT TRANSACTION
             localStorage.removeItem('frank_paid');
         }
 
