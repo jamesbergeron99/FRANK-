@@ -67,7 +67,7 @@
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('amt') || urlParams.has('tx') || urlParams.has('st')) { localStorage.setItem('frank_paid', 'true'); }
 
-        const GREETING = "Hello, darling. I’m Frank, and not just in name. I’m a sophisticated AI engineered to scan the DNA of your story. For a mere five dollars per feedback, I perform a comprehensive narrative autopsy using eighteen industry-standard parameters. I provide a rigorous spelling and grammar check, a strict formatting audit, a punchy log line, and a detailed synopsis. Then, I dive deep into your character arcs, pacing, and commercial viability. Click the PDF Upload button to begin the transaction, and let's get to work.";
+        const GREETING = "Hello, darling. I’m Frank, and not just in name. I’m a sophisticated AI engineered to scan the DNA of your story. For a mere five dollars per feedback, I perform a comprehensive narrative autopsy using eighteen industry-standard parameters. I provide a rigorous spelling and grammar check, a strict formatting audit, a punchy log line, and a detailed synopsis. Then, I dive deep into your character arcs, pacing, and commercial viability. Click the below to begin.";
 
         function playIntroOnce() {
             if (hasGreeted) return;
