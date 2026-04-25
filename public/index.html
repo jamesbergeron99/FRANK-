@@ -1,63 +1,239 @@
-<body onclick="handleFirstInteraction()"> 
-
-<div class="controls">
-    <input type="file" id="scriptInput" accept=".pdf" style="display:none;" multiple onchange="uploadFiles()">
-    <button class="btn" onclick="checkPaymentBeforeUpload()">PDF UPLOAD</button>
-    <button class="mic-btn" id="micBtn" onclick="toggleDictation()">🎙️</button>
-    <input type="text" id="userInput" placeholder="Defend your choices..." onkeypress="if(event.key === 'Enter') sendChat()">
-    <button class="btn" onclick="sendChat()">Send</button>
-</div>
-
-<script>
-    // ... keep all your existing variables (chatWindow, audioCtx, etc.) ...
-
-    // 1. THIS HANDLES THE VERY FIRST GREETING ONLY
-    async function handleFirstInteraction() {
-        if (hasGreeted) return;
-        hasGreeted = true;
-        if (audioCtx.state === 'suspended') await audioCtx.resume();
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>FRANK | The $5 Narrative Autopsy</title>
+    <style>
+        body { background: #0a0a0a; color: #d4af37; font-family: 'Georgia', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
+        .header { padding: 15px; border-bottom: 2px solid #d4af37; background: #111; text-align: center; shrink-0; position: relative; }
+        h1 { margin: 0; font-style: italic; letter-spacing: 3px; text-transform: uppercase; }
+        .tagline { color: #eee; font-size: 0.9rem; margin-top: 5px; opacity: 0.8; }
         
-        // Your detailed $5 checklist greeting remains untouched
-        const greeting = "Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per feedback, I perform a comprehensive narrative autopsy. I provide a rigorous spelling and grammar check, a strict formatting audit, a punchy logline, and a detailed synopsis. Then, I dive deep into your character arcs, pacing, and originality. If you're working on a series, I track multiple storylines and trajectories across every episode to ensure your continuity is flawless. Click the PDF Upload button to proceed to payment and let's get to work.";
-        speak(greeting);
-    }
-
-    // 2. THIS SPECIFICALLY CHECKS PAYMENT ONLY WHEN UPLOADING
-    function checkPaymentBeforeUpload() {
-        // If they already paid (returned from PayPal), let them pick the file
-        if (localStorage.getItem('frank_paid') === 'true') {
-            document.getElementById('scriptInput').click();
-        } else {
-            // Otherwise, show the paywall overlay
-            const overlay = document.getElementById('paywall-overlay');
-            stopCurrentAudio();
-            overlay.style.display = 'flex';
+        #paywall-overlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.95); z-index: 9999; 
+            display: none; flex-direction: column; justify-content: center; align-items: center; 
+            text-align: center; color: #d4af37;
         }
-    }
+        #paywall-overlay h2 { font-style: italic; margin-bottom: 10px; max-width: 80%; }
+        #paywall-overlay p { color: #eee; margin-bottom: 30px; font-size: 0.9rem; }
+        .pp-NUT3KZBHA2Q74{text-align:center;border:none;border-radius:0.25rem;min-width:11.625rem;padding:0 2rem;height:2.625rem;font-weight:bold;background-color:#FFD140;color:#000000;font-family:"Helvetica Neue",Arial,sans-serif;font-size:1rem;line-height:1.25rem;cursor:pointer;}
 
-    // 3. THIS CLEARS THE PAYMENT ONLY AFTER ANALYSIS IS DONE
-    async function uploadFiles() {
-        const fileInput = document.getElementById('scriptInput');
-        const mode = document.getElementById('modeToggle').checked ? 'TV Series' : 'Feature';
-        if (fileInput.files.length === 0) return;
+        .toggle-container { margin-top: 10px; display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 0.8rem; font-weight: bold; }
+        .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 24px; border: 1px solid #d4af37; }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 3px; background-color: #d4af37; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #d4af37; }
+        input:checked + .slider:before { transform: translateX(24px); background-color: #000; }
+
+        #chat-window { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; background: #050505; scroll-behavior: smooth; padding-bottom: 120px; }
+        .msg { max-width: 85%; padding: 15px; border-radius: 8px; line-height: 1.5; font-size: 1.1rem; white-space: pre-wrap; position: relative; }
+        .frank-msg { align-self: flex-start; background: #1a1a1a; border-left: 4px solid #d4af37; color: #eee; }
+        .user-msg { align-self: flex-end; background: #d4af37; color: #000; font-weight: bold; }
         
-        addMessage(`Frank is initiating a ${mode} scan...`, true);
-        const formData = new FormData();
-        formData.append('mode', mode);
-        for (let i = 0; i < fileInput.files.length; i++) formData.append('scripts', fileInput.files[i]);
-        
-        try {
-            const response = await fetch('/analyze', { method: 'POST', body: formData });
-            const data = await response.json();
-            addMessage(data.message); 
-            speak(data.message);
+        .controls { padding: 15px; background: #111; border-top: 2px solid #d4af37; display: flex; gap: 10px; align-items: center; shrink-0; }
+        input[type="text"] { flex-grow: 1; padding: 12px; background: #000; border: 1px solid #d4af37; color: #d4af37; font-size: 1rem; outline: none; }
+        .media-bar { background: #1a1a1a; border-top: 1px solid #333; padding: 10px; display: flex; justify-content: center; gap: 20px; align-items: center; }
+        .media-btn { background: none; border: 1px solid #d4af37; color: #d4af37; padding: 5px 15px; cursor: pointer; font-family: serif; font-size: 0.8rem; text-transform: uppercase; }
+        .btn { background: #d4af37; color: #000; padding: 10px 20px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; }
+        .mic-btn { background: #800; color: #fff; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center; }
+        .mic-active { background: #f00; box-shadow: 0 0 15px #f00; }
+    </style>
+</head>
+<body onclick="handleFirstInteraction()">
+
+    <div id="paywall-overlay">
+        <h2>"Quality costs, darling. Five dollars for the full autopsy."</h2>
+        <p>After payment, return here to upload your PDF.</p>
+        <div>
+          <form action="https://www.paypal.com/ncp/payment/NUT3KZBHA2Q74" method="post" target="_blank" style="display:inline-grid;justify-items:center;align-content:start;gap:0.5rem;">
+            <input class="pp-NUT3KZBHA2Q74" type="submit" value="Buy Now" />
+            <img src="https://www.paypalobjects.com/images/Debit_Credit_APM.svg" alt="cards" />
+            <section style="font-size: 0.75rem;"> Powered by <img src="https://www.paypalobjects.com/paypal-ui/logos/svg/paypal-wordmark-color.svg" alt="paypal" style="height:0.875rem;vertical-align:middle;"/></section>
+          </form>
+        </div>
+    </div>
+
+    <div class="header">
+        <h1>FRANK</h1>
+        <p class="tagline"><em>"The $5 Narrative Autopsy, darling."</em></p>
+        <div class="toggle-container">
+            <span>FEATURE FILM</span>
+            <label class="switch">
+                <input type="checkbox" id="modeToggle">
+                <span class="slider"></span>
+            </label>
+            <span>TV SERIES</span>
+        </div>
+    </div>
+
+    <div id="chat-window">
+        <div class="msg frank-msg" id="intro-msg">"Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. Click anywhere to hear what I can do for you."</div>
+    </div>
+
+    <div class="media-bar">
+        <button class="media-btn" onclick="skipAudio(-1)">« BACK</button>
+        <button class="media-btn" id="playPauseBtn" onclick="togglePlayback()">PAUSE</button>
+        <button class="media-btn" onclick="skipAudio(1)">NEXT »</button>
+    </div>
+
+    <div class="controls">
+        <input type="file" id="scriptInput" accept=".pdf" style="display:none;" multiple onchange="uploadFiles()">
+        <button class="btn" onclick="checkPaymentBeforeUpload()">PDF UPLOAD</button>
+        <button class="mic-btn" id="micBtn" onclick="toggleDictation()">🎙️</button>
+        <input type="text" id="userInput" placeholder="Defend your choices..." onkeypress="if(event.key === 'Enter') sendChat()">
+        <button class="btn" onclick="sendChat()">Send</button>
+    </div>
+
+    <script>
+        const chatWindow = document.getElementById('chat-window');
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, hasGreeted = false, totalSentences = 0;
+        let recognition = null, isDictating = false, finalTranscript = '';
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('amt') || urlParams.has('tx') || urlParams.has('st') || urlParams.has('status')) {
+            localStorage.setItem('frank_paid', 'true');
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        const FULL_GREETING = "Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per feedback, I perform a comprehensive narrative autopsy. I provide a rigorous spelling and grammar check, a strict formatting audit, a punchy logline, and a detailed synopsis. Then, I dive deep into your character arcs, pacing, and originality. If you're working on a series, I track multiple storylines and trajectories across every episode to ensure your continuity is flawless. Click the PDF Upload button to proceed to payment and let's get to work.";
+
+        async function handleFirstInteraction() {
+            if (hasGreeted) return;
+            hasGreeted = true;
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
             
-            // ANALYSIS FINISHED: Now we wipe the payment so they have to pay for the NEXT one
-            localStorage.removeItem('frank_paid');
-        } catch (err) {
-            addMessage("Frank is indisposed. Try again, darling.");
+            if (localStorage.getItem('frank_paid') === 'true') {
+                document.getElementById('intro-msg').innerText = "Welcome back, darling. Payment confirmed. I'm ready for your pages.";
+                speak("Welcome back, darling. Payment confirmed. I'm ready for your pages.");
+            } else {
+                document.getElementById('intro-msg').innerText = FULL_GREETING;
+                speak(FULL_GREETING);
+            }
         }
-    }
 
-    // ... (Keep the rest of your functions: speak, toggleDictation, sendChat, etc. exactly as they are) ...
-</script>
+        function checkPaymentBeforeUpload() {
+            if (localStorage.getItem('frank_paid') === 'true') {
+                document.getElementById('scriptInput').click();
+            } else {
+                const overlay = document.getElementById('paywall-overlay');
+                stopCurrentAudio();
+                overlay.style.display = 'flex';
+            }
+        }
+
+        async function uploadFiles() {
+            const fileInput = document.getElementById('scriptInput');
+            const mode = document.getElementById('modeToggle').checked ? 'TV Series' : 'Feature';
+            if (fileInput.files.length === 0) return;
+            addMessage(`Frank is initiating a ${mode} scan...`, true);
+            const formData = new FormData();
+            formData.append('mode', mode);
+            for (let i = 0; i < fileInput.files.length; i++) formData.append('scripts', fileInput.files[i]);
+            try {
+                const response = await fetch('/analyze', { method: 'POST', body: formData });
+                const data = await response.json();
+                addMessage(data.message); speak(data.message);
+                localStorage.removeItem('frank_paid');
+            } catch (err) { addMessage("Error, darling. Try again."); }
+        }
+
+        async function sendChat() {
+            const input = document.getElementById('userInput');
+            const text = input.value; if (!text) return;
+            addMessage(text, false); input.value = '';
+            const response = await fetch('/chat', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message: text }) });
+            const data = await response.json();
+            addMessage(data.message); speak(data.message);
+        }
+
+        async function speak(fullText) {
+            stopCurrentAudio();
+            const sentences = fullText.match(/[^.!?]+[.!?]+/g) || [fullText];
+            audioBuffers = {}; nextToPlay = 0; totalSentences = sentences.length;
+            sentences.forEach(async (sentence, index) => {
+                try {
+                    const settingsResp = await fetch('/voice-settings');
+                    const settings = await settingsResp.json();
+                    const ttsResponse = await fetch("https://api.inworld.ai/tts/v1/voice", {
+                        method: "POST",
+                        headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ text: sentence, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                    });
+                    const data = await ttsResponse.json();
+                    const audioData = Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer;
+                    audioBuffers[index] = await audioCtx.decodeAudioData(audioData);
+                    if (!isPlaying && index === nextToPlay) playSequentially();
+                } catch (e) { console.error(e); }
+            });
+        }
+
+        function playSequentially() {
+            if (nextToPlay >= totalSentences) { isPlaying = false; document.getElementById('playPauseBtn').innerText = "PLAY"; return; }
+            if (audioBuffers[nextToPlay]) {
+                isPlaying = true; document.getElementById('playPauseBtn').innerText = "PAUSE";
+                currentSource = audioCtx.createBufferSource();
+                currentSource.buffer = audioBuffers[nextToPlay];
+                currentSource.connect(audioCtx.destination);
+                currentSource.onended = () => { if (isPlaying) { nextToPlay++; playSequentially(); } };
+                currentSource.start();
+            } else { setTimeout(playSequentially, 150); }
+        }
+
+        function stopCurrentAudio() {
+            isPlaying = false;
+            if (currentSource) { try { currentSource.stop(); } catch (e) {} currentSource = null; }
+        }
+
+        function togglePlayback() {
+            if (isPlaying) { stopCurrentAudio(); document.getElementById('playPauseBtn').innerText = "PLAY"; }
+            else { playSequentially(); }
+        }
+
+        function skipAudio(direction) {
+            stopCurrentAudio();
+            nextToPlay = Math.max(0, Math.min(totalSentences - 1, nextToPlay + direction));
+            playSequentially();
+        }
+
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true; 
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) { finalTranscript += event.results[i][0].transcript + ' '; }
+                    else { interimTranscript += event.results[i][0].transcript; }
+                }
+                document.getElementById('userInput').value = finalTranscript + interimTranscript;
+            };
+            recognition.onend = () => { if (isDictating) recognition.start(); };
+        }
+
+        function toggleDictation() {
+            const micBtn = document.getElementById('micBtn');
+            if (!isDictating) {
+                isDictating = true;
+                finalTranscript = document.getElementById('userInput').value; 
+                micBtn.classList.add('mic-active');
+                recognition.start();
+            } else {
+                isDictating = false;
+                micBtn.classList.remove('mic-active');
+                recognition.stop();
+            }
+        }
+
+        function addMessage(text, isFrank = true) {
+            const div = document.createElement('div');
+            div.className = `msg ${isFrank ? 'frank-msg' : 'user-msg'}`;
+            div.innerText = text;
+            chatWindow.appendChild(div);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+    </script>
+</body>
+</html>
