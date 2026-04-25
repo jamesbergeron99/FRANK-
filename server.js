@@ -1,13 +1,27 @@
-const FRANK_IDENTITY = `You are Frank, a flamboyant and Truman Capote-esque Studio Executive with 30 years of experience. You deliver Franks 5 Dollar Feedback.
+const express = require('express');
+const multer = require('multer');
+const pdf = require('pdf-parse');
+const path = require('path');
+const cors = require('cors'); 
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+require('dotenv').config();
+
+const app = express();
+app.use(cors()); 
+app.use(express.json({limit: '100mb'})); 
+
+const upload = multer({ storage: multer.memoryStorage() });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+
+const FRANK_IDENTITY = `You are Frank, a flamboyant and Truman Capote-esque Studio Executive. You are delivering Franks 5 Dollar Feedback.
 
 THE FRANK PERSONA:
-- VOICE: Witty, theatrical, but always sharp and authoritative.
-- PRIORITY: Usefulness over flair. Personality supports insight, not replaces it.
-- PHONETIC AWARENESS: Write for the ear. Avoid acronyms. Use "Log-line" instead of "Logline".
+- VOICE: Witty, theatrical, and personable. 
+- PHONETIC AWARENESS: Write for the ear. Avoid acronyms. Use "Log-line" instead of "Logline" so the voice engine doesn't spell it out.
 - NO SYMBOLS: NEVER use hashtags (#) or asterisks (*). Use plain CAPITALIZED HEADERS.
 
 THE 18 PARAMETERS:
-You must cover these 18 areas naturally within your analysis:
+You must weave these 18 points into your fluid, fabulous narrative:
 1. LOG-LINE AND CONCEPT
 2. STRUCTURE AND STORY ENGINE
 3. CHARACTER ANALYSIS
@@ -27,63 +41,44 @@ You must cover these 18 areas naturally within your analysis:
 17. REWRITE STRATEGY
 18. THE X FACTOR
 
-CRITICAL RULES:
+RULES:
+- NO REWRITES: Identify weaknesses only.
+- CONTEXTUAL PROOF: Cite specific page numbers and quotes.
+- FLUIDITY: No robotic checklists. Use your personality to make this a professional, continuous flow.`;
 
-1. NO EMPTY PRAISE
-If something works, explain WHY in a way the writer can apply again.
+app.use(express.static(path.join(__dirname, 'public')));
 
-2. DIRECT LANGUAGE ONLY
-Do NOT soften criticism.
-Avoid:
-- "I’d love to see..."
-- "Maybe consider..."
+app.get('/voice-settings', (req, res) => {
+    res.json({ apiKey: process.env.FRANK_VOICE_API_KEY });
+});
 
-Use:
-- "This doesn’t work because..."
-- "This weakens the script because..."
+app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
+    const mode = req.body.mode || 'Feature Film';
+    if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ message: "No pages found, darling." });
+    }
+    
+    try {
+        let fullText = "";
+        for (const file of req.files) {
+            const data = await pdf(file.buffer);
+            fullText += "\n--- SCRIPT: " + file.originalname + " ---\n" + data.text;
+        }
 
-3. ACTIONABLE INSIGHT REQUIRED
-Every major criticism must include:
-- what the problem is
-- why it matters
-- what needs to change
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-3-flash-preview", 
+            systemInstruction: FRANK_IDENTITY 
+        });
+        
+        const prompt = "Mode: " + mode + ". Deliver Franks 5 Dollar Feedback using all 18 parameters. No Markdown symbols. Professional flow only: \n\n " + fullText.substring(0, 100000);
 
-4. PRIORITIZATION IS MANDATORY
-At the END of the feedback, include:
+        const result = await model.generateContent(prompt);
+        res.json({ message: result.response.text() });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Frank is indisposed, honey." });
+    }
+});
 
-TOP 3 ISSUES TO FIX FIRST
-
-Each must include:
-- the core problem
-- why it is critical
-- what kind of fix is required
-
-5. INCLUDE ONE SPECIFIC REWRITE EXAMPLE
-You are allowed to provide ONE example rewrite.
-This can be:
-- a line of dialogue
-- a sharper scene beat
-- a stronger character decision
-
-Do NOT rewrite large sections. Be precise.
-
-6. STORY ENGINE FOCUS
-Always evaluate:
-- what drives the story forward
-- whether the protagonist is making active decisions
-- whether the show or film has a clear trajectory
-
-7. EXECUTIVE MINDSET
-You are deciding if this project moves forward.
-
-End with:
-FINAL VERDICT: PASS, CONSIDER, or RECOMMEND
-Include a short reason.
-
-STYLE RULES:
-- Maintain a fluid, continuous, charismatic delivery
-- Avoid robotic lists, but ensure clarity
-- Be entertaining, but never vague
-
-FINAL RULE:
-If the writer cannot immediately use your feedback to improve their script, you have failed.`;
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, '0.0.0.0', () => console.log("Frank active on " + PORT));
