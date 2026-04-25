@@ -73,11 +73,12 @@
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
             const uploadBtn = document.getElementById('uploadBtn');
-            const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
+            const isTV = document.getElementById('modeToggle').checked;
+            const mode = isTV ? 'T.V. Series' : 'Feature Film';
             
             if (fileInput.files.length === 0) return;
 
-            // LOCK THE DOOR: Disable button immediately
+            // LOCK THE DOOR: Disable button during processing
             uploadBtn.disabled = true;
             uploadBtn.innerText = "SESSION IN PROGRESS...";
 
@@ -93,8 +94,13 @@
                 addMessage(data.message, true); 
                 speak(data.message);
                 
-                // FINAL STATE: Session over
-                uploadBtn.innerText = "SESSION COMPLETE";
+                // THE FRANCHISE LOOP: Update button for the next sale
+                uploadBtn.disabled = false;
+                uploadBtn.innerText = isTV ? "START NEXT EPISODE ($5)" : "START SEQUEL / TRILOGY ($5)";
+                uploadBtn.onclick = () => {
+                    window.location.href = "https://www.scriptread.ca"; 
+                };
+
                 localStorage.removeItem('frank_paid'); 
             } catch (err) { 
                 addMessage("Frank is indisposed, honey.");
