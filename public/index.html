@@ -51,7 +51,7 @@
     </div>
 
     <div id="chat-window">
-        <div class="msg" id="intro-msg">"Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. Click anywhere to hear what I can do for you."</div>
+        <div class="msg" id="intro-msg">"Hello, darling. I’m Frank, and not just in name. I’m a sophisticated AI engineered to scan the DNA of your story. Click anywhere to hear what I can do for you."</div>
     </div>
 
     <div class="media-bar" onclick="event.stopPropagation()">
@@ -75,7 +75,7 @@
         const hasPaidParam = urlParams.has('amt') || urlParams.has('tx') || urlParams.has('st') || urlParams.has('status');
         if (hasPaidParam) { localStorage.setItem('frank_paid', 'true'); }
 
-        const GREETING = "Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per feedback, I perform a comprehensive narrative autopsy using eighteen industry-standard parameters. I provide a rigorous spelling and grammar check, a strict formatting audit, a punchy Log-line, and a detailed synopsis. Then, I dive deep into your character arcs, pacing, and commercial viability. Click the PDF Upload button to begin the transaction and let's get to work.";
+        const GREETING = "Hello, darling. I’m Frank, and not just in name. I’m a sophisticated AI engineered to scan the DNA of your story. For a mere five dollars per feedback, I perform a comprehensive narrative autopsy using eighteen industry-standard parameters. I provide a rigorous spelling and grammar check, a strict formatting audit, a punchy Log-line, and a detailed synopsis. Then, I dive deep into your character arcs, pacing, and commercial viability. Click the PDF Upload button to begin the transaction and let's get to work.";
 
         function playIntroOnce() {
             if (hasGreeted) return;
@@ -84,7 +84,7 @@
             
             const intro = document.getElementById('intro-msg');
             if (localStorage.getItem('frank_paid') === 'true') {
-                const welcomeBack = "Welcome back, darling. Payment confirmed. I'm ready to provide Frank's $5 Feedback for your pages. Before you click the PDF Upload button, please remember to select either Feature Film or TV Series using the toggle above.";
+                const welcomeBack = "Welcome back, darling. Payment confirmed. I'm ready for your pages. Before you click the PDF Upload button, please remember to select either Feature Film or TV Series using the toggle above.";
                 intro.innerText = welcomeBack;
                 speak(welcomeBack);
             } else {
