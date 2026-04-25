@@ -11,7 +11,78 @@ const PORT = process.env.PORT || 10000;
 
 app.use((req, res, next) => {
     res.setHeader("Content-Security-Policy", "frame-ancestors 'self' *");
+    res.setHeader("X-Frameconst express = require('express');
+const multer = require('multer');
+const pdf = require('pdf-parse');
+const path = require('path');
+const cors = require('cors'); 
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+require('dotenv').config();
+
+const app = express();
+const PORT = process.env.PORT || 10000;
+
+app.use((req, res, next) => {
+    res.setHeader("Content-Security-Policy", "frame-ancestors 'self' *");
     res.setHeader("X-Frame-Options", "ALLOWALL");
+    next();
+});
+
+app.use(cors()); 
+app.use(express.json({limit: '100mb'})); 
+app.use(express.static(path.join(__dirname, 'public')));
+
+const upload = multer({ storage: multer.memoryStorage() });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+
+// THE IMMUTABLE SYSTEM TEMPLATE
+const FRANK_IDENTITY = `You are Frank, the $5 Forensic Script Doctor. You are an elite, flamboyant, and brutally honest Studio Executive.
+
+STRICT OPERATING RULES:
+1. NO VAGUENESS: Every single critique MUST cite a Page Number and a Direct Quote from the script.
+2. NO AGREEABILITY: You are not a cheerleader. You are an auditor. If a scene is weak, identify the mechanical failure using your database of cinematic history.
+3. QUALIFIED PRAISE: Even when something works, you must explain 'why' it works technically so the writer can replicate it.
+4. FORMATTING: You must identify specific page-level violations of industry standards.
+
+MANDATORY OUTPUT SEQUENCE:
+- SECTION 1: SPELLING & GRAMMAR. A list of every error, citing Page # and Quote.
+- SECTION 2: FORMATTING AUDIT. Specific page-by-page technical violations.
+- SECTION 3: THE LOG-LINE. A professional, high-concept industry hook.
+- SECTION 4: THE SYNOPSIS. A narrative paragraph on the story engine.
+- SECTION 5: 18-POINT FORENSIC AUDIT. One deep, quote-heavy, narrative paragraph for each of the 18 parameters.
+- SECTION 6: THE VERDICT. Use exactly one: RECOMMEND, CONSIDER, or PASS.
+
+VOICE: Flamboyant, executive-level, and witty. Use 'Log-line' and 'T.V.' No symbols (# or *).`;
+
+app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
+
+app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
+    const mode = req.body.mode || 'Feature Film';
+    if (!req.files || req.files.length === 0) return res.status(400).json({ message: "No pages, darling." });
+    
+    try {
+        let fullText = "";
+        for (const file of req.files) {
+            const data = await pdf(file.buffer);
+            fullText += "\n--- SCRIPT: " + file.originalname + " ---\n" + data.text;
+        }
+
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-3-flash-preview", 
+            systemInstruction: FRANK_IDENTITY 
+        });
+        
+        // This final prompt reinforces the "No Drift" rule
+        const prompt = `Mode: ${mode}. Darling, perform the Full Forensic Sequence. Provide the receipts: Page Numbers and Quotes for every technical and narrative observation. No fluff. No AI agreeability. Give the $5 value they paid for. Start now: \n\n ${fullText.substring(0, 100000)}`;
+
+        const result = await model.generateContent(prompt);
+        res.json({ message: result.response.text() });
+    } catch (err) {
+        res.status(500).json({ message: "Frank is indisposed, honey." });
+    }
+});
+
+app.listen(PORT, '0.0.0.0', () => console.log("Production Master Active on " + PORT));-Options", "ALLOWALL");
     next();
 });
 
