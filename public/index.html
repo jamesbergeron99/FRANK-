@@ -78,7 +78,6 @@
             window.history.replaceState({}, document.title, window.location.pathname);
         }
 
-        // RESTORED: THE ORIGINAL THEATRICAL GREETING
         const GREETING = "Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per feedback, I perform a comprehensive narrative autopsy. I provide a rigorous spelling and grammar check, a strict formatting audit, a punchy logline, and a detailed synopsis. Then, I dive deep into your character arcs, pacing, and originality. If you're working on a series, I track multiple storylines and trajectories across every episode to ensure your continuity is flawless. Click anywhere again to proceed to payment and let's get to work.";
 
         function playIntroOnce() {
@@ -118,8 +117,13 @@
             try {
                 const response = await fetch('/analyze', { method: 'POST', body: formData });
                 const data = await response.json();
+                
+                // RESTORED: Add the full text of the feedback to the chat window
                 addMessage(data.message, true); 
-                speak("The autopsy is complete, darling. Your executive report is ready for download.");
+                
+                // RESTORED: Frank actually speaks the feedback result
+                speak(data.message);
+                
                 localStorage.removeItem('frank_paid');
             } catch (err) { 
                 addMessage("Frank is indisposed. Try once more in 30 seconds.", true); 
