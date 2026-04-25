@@ -26,23 +26,32 @@
     </style>
 </head>
 <body>
-    <div id="auth-check"><p>VERIFYING CREDENTIALS, DARLING...</p></div>
+    <div id="auth-check">
+        <p>VERIFYING CREDENTIALS, DARLING...</p>
+    </div>
+
     <div class="header">
         <h1>FRANK'S $5 FEEDBACK</h1>
         <div class="toggle-container">
-            <span>FEATURE FILM</span><label class="switch"><input type="checkbox" id="modeToggle"><span class="slider"></span></label><span>T.V. SERIES</span>
+            <span>FEATURE FILM</span>
+            <label class="switch"><input type="checkbox" id="modeToggle"><span class="slider"></span></label>
+            <span>T.V. SERIES</span>
         </div>
     </div>
+
     <div id="chat-window"></div>
+
     <div class="media-bar">
         <button class="media-btn" onclick="skipAudio(-1)">« BACK</button>
         <button class="media-btn" id="playPauseBtn" onclick="togglePlayback()">PAUSE</button>
         <button class="media-btn" onclick="skipAudio(1)">NEXT »</button>
     </div>
+
     <div class="controls">
         <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadFiles()">
         <button class="btn" id="uploadBtn" onclick="document.getElementById('scriptInput').click()">UPLOAD YOUR PAGES</button>
     </div>
+
     <script>
         const chatWindow = document.getElementById('chat-window');
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
@@ -53,51 +62,77 @@
             if (urlParams.has('st') || localStorage.getItem('frank_paid') === 'true') {
                 localStorage.setItem('frank_paid', 'true');
                 document.getElementById('auth-check').style.display = 'none';
-                const hasMemory = localStorage.getItem('frank_last_feedback');
-                const welcome = hasMemory ? "Welcome back. I've reviewed your previous notes. Let's see if this next installment shows some growth." : "Frank is in. Select your format above and upload your pages whenever you're ready.";
-                addMessage(welcome); speak(welcome);
-            } else { window.location.href = "https://www.scriptread.ca"; }
+                const welcome = "Welcome back, darling. I've cleared my schedule. Select your format above and upload your pages whenever you're ready.";
+                addMessage(welcome);
+                speak(welcome);
+            } else {
+                window.location.href = "https://www.scriptread.ca";
+            }
         };
 
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
             const uploadBtn = document.getElementById('uploadBtn');
-            const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
+            const isTV = document.getElementById('modeToggle').checked;
+            const mode = isTV ? 'T.V. Series' : 'Feature Film';
+            
             if (fileInput.files.length === 0) return;
-            uploadBtn.disabled = true; uploadBtn.innerText = "SESSION IN PROGRESS...";
+
+            // LOCK THE DOOR: Disable button during processing
+            uploadBtn.disabled = true;
+            uploadBtn.innerText = "SESSION IN PROGRESS...";
+
+            addMessage(`Preparing your forensic audit for this ${mode}...`, false);
             const formData = new FormData();
-            formData.append('mode', mode); formData.append('scripts', fileInput.files[0]);
-            const memory = localStorage.getItem('frank_last_feedback');
-            if (memory) { formData.append('previousContext', memory); }
+            formData.append('mode', mode);
+            formData.append('scripts', fileInput.files[0]);
+
             try {
                 const response = await fetch('/analyze', { method: 'POST', body: formData });
                 const data = await response.json();
-                localStorage.setItem('frank_last_feedback', data.message);
-                addMessage(data.message, true); speak(data.message);
-                uploadBtn.disabled = false; uploadBtn.innerText = "START NEXT EPISODE ($5)";
-                uploadBtn.onclick = () => { localStorage.removeItem('frank_paid'); window.location.href = "https://www.paypal.com/ncp/payment/VRYUFK4H8K6M6"; };
-            } catch (err) { addMessage("Frank is indisposed, honey."); uploadBtn.disabled = false; }
+                
+                addMessage(data.message, true); 
+                speak(data.message);
+                
+                // THE FRANCHISE LOOP: Update button for the next sale
+                uploadBtn.disabled = false;
+                uploadBtn.innerText = isTV ? "START NEXT EPISODE ($5)" : "START SEQUEL / TRILOGY ($5)";
+                uploadBtn.onclick = () => {
+                    window.location.href = "https://www.scriptread.ca"; 
+                };
+
+                localStorage.removeItem('frank_paid'); 
+            } catch (err) { 
+                addMessage("Frank is indisposed, honey.");
+                uploadBtn.disabled = false;
+                uploadBtn.innerText = "RETRY UPLOAD";
+            }
         }
 
         function addMessage(text, isReport = false) {
-            const div = document.createElement('div'); div.className = 'msg'; div.innerText = text;
+            const div = document.createElement('div');
+            div.className = 'msg';
+            div.innerText = text;
             if (isReport) {
-                const dl = document.createElement('button'); dl.className = 'download-btn'; dl.innerText = "DOWNLOAD PDF REPORT";
-                dl.onclick = () => downloadPDF(text); div.appendChild(dl);
+                const dl = document.createElement('button');
+                dl.className = 'download-btn'; dl.innerText = "DOWNLOAD PDF REPORT";
+                dl.onclick = () => downloadPDF(text);
+                div.appendChild(dl);
             }
-            chatWindow.appendChild(div); chatWindow.scrollTop = chatWindow.scrollHeight;
+            chatWindow.appendChild(div);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
         }
 
         function downloadPDF(text) {
             const element = document.createElement('div');
-            element.innerHTML = `<div style="background:#0a0a0a; color:#eee; font-family:Courier; padding:40px; border:2px solid #d4af37;">${text}</div>`;
-            html2pdf().from(element).save();
+            element.innerHTML = `<div style="background:#0a0a0a; color:#eee; font-family:Courier; padding:40px; border:2px solid #d4af37; line-height:1.6;"><h1 style="color:#d4af37; text-align:center; border-bottom:2px solid #d4af37;">FRANK'S $5 FEEDBACK</h1><p style="text-align:right; font-weight:bold; color:#d4af37;">EXECUTIVE AUDIT</p><div style="margin-top:30px; white-space: pre-wrap;">${text}</div></div>`;
+            html2pdf().from(element).set({ margin: 0.5, filename: 'Franks_Forensic_Audit.pdf', jsPDF: { unit: 'in', format: 'letter' } }).save();
         }
 
         async function speak(fullText) {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             stopCurrentAudio();
-            const cleanText = fullText.replace(/[#*]/g, '');
+            const cleanText = fullText.replace(/[#*]/g, '').replace(/LOGLINE/gi, "LOG-LINE").replace(/TV/gi, "T.V.");
             const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
             audioBuffers = {}; nextToPlay = 0; totalSentences = sentences.length;
             sentences.forEach(async (sentence, index) => {
@@ -105,7 +140,8 @@
                     const settingsResp = await fetch('/voice-settings');
                     const settings = await settingsResp.json();
                     const ttsResp = await fetch("https://api.inworld.ai/tts/v1/voice", {
-                        method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                        method: "POST",
+                        headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
                         body: JSON.stringify({ text: sentence, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                     });
                     const data = await ttsResp.json();
@@ -120,7 +156,8 @@
             if (nextToPlay >= totalSentences) { isPlaying = false; document.getElementById('playPauseBtn').innerText = "PLAY"; return; }
             if (audioBuffers[nextToPlay]) {
                 isPlaying = true; document.getElementById('playPauseBtn').innerText = "PAUSE";
-                currentSource = audioCtx.createBufferSource(); currentSource.buffer = audioBuffers[nextToPlay];
+                currentSource = audioCtx.createBufferSource();
+                currentSource.buffer = audioBuffers[nextToPlay];
                 currentSource.connect(audioCtx.destination);
                 currentSource.onended = () => { if (isPlaying) { nextToPlay++; playSequentially(); } };
                 currentSource.start();
