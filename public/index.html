@@ -2,55 +2,148 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>FRANK'S RECORDING STUDIO</title>
+    <title>Frank's $5 Feedback - Office</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
-        body { background: #0a0a0a; color: #d4af37; font-family: 'Georgia', serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .box { border: 2px solid #d4af37; padding: 50px; text-align: center; background: #111; }
-        button { background: #d4af37; color: #000; padding: 20px 40px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 1.5rem; }
+        body { background: #0a0a0a; color: #d4af37; font-family: 'Georgia', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
+        .header { padding: 25px 15px; border-bottom: 2px solid #d4af37; background: #111; text-align: center; }
+        h1 { margin: 0; font-style: italic; letter-spacing: 3px; text-transform: uppercase; font-size: 2.2rem; }
+        #chat-window { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; background: #050505; scroll-behavior: smooth; padding-bottom: 150px; }
+        .msg { max-width: 95%; padding: 30px; border-radius: 10px; line-height: 1.8; font-size: 1.15rem; white-space: pre-wrap; align-self: flex-start; background: #1a1a1a; border-left: 5px solid #d4af37; color: #eee; }
+        .download-btn { display: inline-block; margin-top: 25px; padding: 15px 25px; background: #d4af37; color: #000; font-weight: bold; cursor: pointer; border: none; text-transform: uppercase; letter-spacing: 1px; }
+        .controls { padding: 25px; background: #111; border-top: 2px solid #d4af37; display: flex; justify-content: center; gap: 30px; }
+        .btn { background: #d4af37; color: #000; padding: 18px 50px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 1.2rem; }
+        .toggle-container { margin-top: 15px; display: flex; justify-content: center; align-items: center; gap: 15px; font-size: 0.9rem; font-weight: bold; }
+        .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 26px; border: 1px solid #d4af37; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 3px; background-color: #d4af37; transition: .4s; border-radius: 50%; }
+        input:checked + .slider:before { transform: translateX(24px); }
     </style>
 </head>
-<body>
-    <div class="box">
-        <h1 style="font-style: italic; margin-bottom: 30px;">"Ready for your close-up, Frank?"</h1>
-        <button onclick="speak()">PLAY MASTER GREETING</button>
-        <p id="status" style="margin-top: 20px; font-size: 0.8rem; opacity: 0.6;">Ready to record...</p>
+<body onclick="initAudio()">
+    <div class="header">
+        <h1>FRANK'S $5 FEEDBACK</h1>
+        <div class="toggle-container">
+            <span>FEATURE FILM</span>
+            <label class="switch"><input type="checkbox" id="modeToggle"><span class="slider"></span></label>
+            <span>T.V. SERIES</span>
+        </div>
+    </div>
+
+    <div id="chat-window">
+        <div class="msg" id="intro-msg">"Welcome back, darling. I've cleared my schedule. Select your format above and upload your pages whenever you're ready."</div>
+    </div>
+
+    <div class="controls">
+        <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadFiles()">
+        <button class="btn" onclick="document.getElementById('scriptInput').click()">UPLOAD YOUR PAGES</button>
     </div>
 
     <script>
+        const chatWindow = document.getElementById('chat-window');
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-        const GREETING = "Hey there, I’m Frank. And not just in name, darling. I’m a sophisticated AI engineered to scan the DNA of your story. For a mere five dollars per feedback, I perform a comprehensive narrative autopsy using eighteen industry-standard parameters. I provide a rigorous spelling and grammar check, a strict formatting audit, a punchy log line, and a detailed synopsis. Then, I dive deep into your character arcs, pacing, and commercial viability. To begin, simply click the link below. You will be redirected to PayPal for a secure payment, and then sent straight to my office to upload your pages. I’m ready to work if you are.";
+        let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, hasGreeted = false;
 
-        async function speak() {
+        function initAudio() {
+            if (hasGreeted) return;
+            hasGreeted = true;
             if (audioCtx.state === 'suspended') audioCtx.resume();
-            document.getElementById('status').innerText = "FRANK IS SPEAKING...";
+            speak(document.getElementById('intro-msg').innerText);
+        }
+
+        async function uploadFiles() {
+            const fileInput = document.getElementById('scriptInput');
+            const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
+            if (fileInput.files.length === 0) return;
             
-            const sentences = GREETING.match(/[^.!?]+[.!?]+/g) || [GREETING];
+            addMessage(`Preparing your forensic audit for this ${mode}...`, false);
+            const formData = new FormData();
+            formData.append('mode', mode);
+            formData.append('scripts', fileInput.files[0]);
+
+            try {
+                const response = await fetch('/analyze', { method: 'POST', body: formData });
+                const data = await response.json();
+                addMessage(data.message, true); 
+                speak(data.message);
+            } catch (err) { 
+                addMessage("Frank is indisposed, honey. Check your connection."); 
+            }
+        }
+
+        function addMessage(text, isReport = false) {
+            const div = document.createElement('div');
+            div.className = 'msg';
+            div.innerText = text;
+            if (isReport) {
+                const dl = document.createElement('button');
+                dl.className = 'download-btn';
+                dl.innerText = "DOWNLOAD PDF REPORT";
+                dl.onclick = (e) => { e.stopPropagation(); downloadPDF(text); };
+                div.appendChild(dl);
+            }
+            chatWindow.appendChild(div);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        function downloadPDF(text) {
+            const element = document.createElement('div');
+            element.innerHTML = `
+                <div style="background:#0a0a0a; color:#eee; font-family:Courier, monospace; padding:40px; border:2px solid #d4af37; line-height:1.6;">
+                    <h1 style="color:#d4af37; text-align:center; border-bottom:2px solid #d4af37; padding-bottom:10px;">FRANK'S $5 FEEDBACK</h1>
+                    <p style="text-align:right; color:#d4af37; font-weight:bold;">CONFIDENTIAL EXECUTIVE AUDIT</p>
+                    <div style="margin-top:30px; white-space: pre-wrap;">${text}</div>
+                </div>
+            `;
+            html2pdf().from(element).set({ 
+                margin: 0.5, 
+                filename: 'Franks_Forensic_Audit.pdf', 
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } 
+            }).save();
+        }
+
+        async function speak(fullText) {
+            const cleanText = fullText.replace(/[#*]/g, '').replace(/LOGLINE/gi, "LOG-LINE").replace(/TV/gi, "T.V.");
+            const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
+            audioBuffers = {}; nextToPlay = 0; 
             
-            for (let i = 0; i < sentences.length; i++) {
+            sentences.forEach(async (sentence, index) => {
                 try {
                     const settingsResp = await fetch('/voice-settings');
                     const settings = await settingsResp.json();
                     const ttsResp = await fetch("https://api.inworld.ai/tts/v1/voice", {
                         method: "POST",
                         headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: sentences[i], voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                        body: JSON.stringify({ 
+                            text: sentence, 
+                            voiceId: "default-oglabcjnetcklcq7rghmbw__frank", 
+                            modelId: "inworld-tts-1.5-max" 
+                        })
                     });
                     const data = await ttsResp.json();
                     const audioData = Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer;
-                    const buffer = await audioCtx.decodeAudioData(audioData);
-                    
-                    const source = audioCtx.createBufferSource();
-                    source.buffer = buffer;
-                    source.connect(audioCtx.destination);
-                    const ended = new Promise(resolve => source.onended = resolve);
-                    source.start();
-                    await ended;
-                } catch (e) {
-                    console.error(e);
-                    document.getElementById('status').innerText = "ERROR: CHECK RENDER LOGS";
-                }
+                    audioBuffers[index] = await audioCtx.decodeAudioData(audioData);
+                    if (!isPlaying && index === 0) playNext();
+                } catch (e) {}
+            });
+        }
+
+        function playNext() {
+            if (!audioBuffers[nextToPlay]) {
+                if (nextToPlay < 50) setTimeout(playNext, 100);
+                return;
             }
-            document.getElementById('status').innerText = "FINISH. READY TO RECORD AGAIN.";
+            isPlaying = true;
+            currentSource = audioCtx.createBufferSource();
+            currentSource.buffer = audioBuffers[nextToPlay];
+            currentSource.connect(audioCtx.destination);
+            currentSource.onended = () => { 
+                nextToPlay++; 
+                if (audioBuffers[nextToPlay] || nextToPlay < 50) playNext();
+                else isPlaying = false;
+            };
+            currentSource.start();
         }
     </script>
 </body>
