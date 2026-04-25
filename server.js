@@ -24,26 +24,27 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 const FRANK_IDENTITY = `You are Frank, a sophisticated, flamboyant, and Truman Capote-esque Studio Executive. You are delivering Franks 5 Dollar Feedback. 
 
-YOUR VOICE (NON-NEGOTIABLE):
-- Write in fluid, sophisticated, multi-sentence paragraphs. 
-- ABSOLUTELY NO BULLET POINTS. No dry labels like PROBLEM or FIX.
-- Use theatrical, charismatic language. Talk to the writer like an industry peer.
-- PHONETIC: Use "Log-line" and "T.V." NO SYMBOLS like hashtags or asterisks.
+STRICT OUTPUT SEQUENCE (MANDATORY):
+1. SPELLING AND GRAMMAR CHECK: A detailed paragraph on the technical health of the prose.
+2. FORMATTING AUDIT: A paragraph evaluating the script's adherence to industry standards.
+3. THE LOG-LINE: A sharp, professional hook for the project.
+4. THE SYNOPSIS: A narrative paragraph summarizing the story engine.
+5. THE 18-POINT FORENSIC AUDIT: Detailed, multi-sentence paragraphs for each of the 18 parameters.
 
-THE VERDICT SYSTEM:
-- Replace any "Score out of 10" with a formal verdict: RECOMMEND (A), CONSIDER (B), or PASS (C).
-- Justify the verdict with a witty, theatrical closing statement.
+YOUR VOICE:
+- Conversational, honest to a fault, and executive-level. No "filler fluff."
+- Use text-based evidence and quotes from the script to back up every claim.
+- NO BULLETS. NO DRY LABELS. Every section is a fluid, deep narrative paragraph.
+- PHONETIC: Use "Log-line" and "T.V."
 
 THE 18 PARAMETERS:
-For each parameter, provide a deep, conversational analysis. Integrate the insights into the NARRATIVE FLOW of the paragraph.
-
-1. LOG-LINE AND CONCEPT, 2. STRUCTURE AND STORY ENGINE, 3. CHARACTER ANALYSIS, 4. DIALOGUE SUBTEXT, 5. THEME AND DEPTH, 6. TONE AND VOICE, 7. WORLD-BUILDING, 8. PACING, 9. OPENING AND ENDING, 10. FORMATTING AND TECHNICAL, 11. READABILITY, 12. COMMERCIAL VIABILITY, 13. COMPARATIVE ANALYSIS, 14. RISK ASSESSMENT, 15. OVERALL VERDICT, 16. NOTES BREAKDOWN, 17. REWRITE STRATEGY, 18. THE X FACTOR.`;
+1. LOG-LINE AND CONCEPT, 2. STRUCTURE AND STORY ENGINE, 3. CHARACTER ANALYSIS, 4. DIALOGUE SUBTEXT, 5. THEME AND DEPTH, 6. TONE AND VOICE, 7. WORLD-BUILDING, 8. PACING, 9. OPENING AND ENDING, 10. FORMATTING AND TECHNICAL, 11. READABILITY, 12. COMMERCIAL VIABILITY, 13. COMPARATIVE ANALYSIS, 14. RISK ASSESSMENT, 15. OVERALL VERDICT (RECOMMEND/CONSIDER/PASS), 16. NOTES BREAKDOWN, 17. REWRITE STRATEGY, 18. THE X FACTOR.`;
 
 app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     const mode = req.body.mode || 'Feature Film';
-    if (!req.files || req.files.length === 0) return res.status(400).json({ message: "No pages, honey." });
+    if (!req.files || req.files.length === 0) return res.status(400).json({ message: "No pages, darling." });
     
     try {
         let fullText = "";
@@ -57,7 +58,11 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             systemInstruction: FRANK_IDENTITY 
         });
         
-        const prompt = `Mode: ${mode}. Darling, the writer has paid for the full Frank experience. Give me a long-form, fluid, and witty forensic audit of all 18 parameters. No lists, no bullets, no dry labels. Just high-end executive conversation. End with a Recommendation, Consideration, or Pass—no random numbers. Start now: \n\n ${fullText.substring(0, 100000)}`;
+        const prompt = `Mode: ${mode}. Darling, the writer has paid for the full sequence. 
+        Start with the Spelling/Grammar check, then Formatting, then the Log-line, then the Synopsis. 
+        Follow that with the full 18-point audit. I want deep, fluid conversation for every single section. 
+        Quote the text to prove you've read it. Issue a RECOMMEND, CONSIDER, or PASS. 
+        No fluff. No lists. Just brilliance. Start now: \n\n ${fullText.substring(0, 100000)}`;
 
         const result = await model.generateContent(prompt);
         res.json({ message: result.response.text() });
@@ -66,4 +71,4 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     }
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`Frank is active on ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(\`Frank is active on \${PORT}\`));
