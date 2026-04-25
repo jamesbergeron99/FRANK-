@@ -2,16 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Frank's $5 Feedback - Office</title>
+    <title>Frank's $5 Feedback - Private Office</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
         body { background: #0a0a0a; color: #d4af37; font-family: 'Georgia', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
-        .header { padding: 25px 15px; border-bottom: 2px solid #d4af37; background: #111; text-align: center; }
+        #auth-check { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0a0a0a; z-index: 10000; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+        .header { padding: 25px 15px; border-bottom: 2px solid #d4af37; background: #111; text-align: center; shrink-0; }
         h1 { margin: 0; font-style: italic; letter-spacing: 3px; text-transform: uppercase; font-size: 2.2rem; }
         #chat-window { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; background: #050505; scroll-behavior: smooth; padding-bottom: 150px; }
         .msg { max-width: 95%; padding: 30px; border-radius: 10px; line-height: 1.8; font-size: 1.15rem; white-space: pre-wrap; align-self: flex-start; background: #1a1a1a; border-left: 5px solid #d4af37; color: #eee; }
-        .download-btn { display: inline-block; margin-top: 25px; padding: 15px 25px; background: #d4af37; color: #000; font-weight: bold; cursor: pointer; border: none; text-transform: uppercase; letter-spacing: 1px; }
-        .controls { padding: 25px; background: #111; border-top: 2px solid #d4af37; display: flex; justify-content: center; gap: 30px; }
+        .download-btn { display: inline-block; margin-top: 25px; padding: 15px 25px; background: #d4af37; color: #000; font-weight: bold; cursor: pointer; border: none; text-transform: uppercase; }
+        .media-bar { background: #1a1a1a; border-top: 1px solid #333; padding: 12px; display: flex; justify-content: center; gap: 25px; align-items: center; shrink-0; }
+        .media-btn { background: none; border: 1px solid #d4af37; color: #d4af37; padding: 8px 20px; cursor: pointer; font-size: 0.85rem; text-transform: uppercase; }
+        .controls { padding: 25px; background: #111; border-top: 2px solid #d4af37; display: flex; justify-content: center; gap: 30px; shrink-0; }
         .btn { background: #d4af37; color: #000; padding: 18px 50px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 1.2rem; }
         .toggle-container { margin-top: 15px; display: flex; justify-content: center; align-items: center; gap: 15px; font-size: 0.9rem; font-weight: bold; }
         .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
@@ -19,9 +22,16 @@
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 26px; border: 1px solid #d4af37; }
         .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 3px; background-color: #d4af37; transition: .4s; border-radius: 50%; }
         input:checked + .slider:before { transform: translateX(24px); }
+        .spinner { border: 4px solid rgba(212, 175, 55, 0.1); border-left-color: #d4af37; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
-<body onclick="initAudio()">
+<body>
+    <div id="auth-check">
+        <div class="spinner"></div>
+        <p style="margin-top: 20px;">VERIFYING CREDENTIALS, DARLING...</p>
+    </div>
+
     <div class="header">
         <h1>FRANK'S $5 FEEDBACK</h1>
         <div class="toggle-container">
@@ -31,8 +41,12 @@
         </div>
     </div>
 
-    <div id="chat-window">
-        <div class="msg" id="intro-msg">"Welcome back, darling. I've cleared my schedule. Select your format above and upload your pages whenever you're ready."</div>
+    <div id="chat-window"></div>
+
+    <div class="media-bar">
+        <button class="media-btn" onclick="skipAudio(-1)">« BACK</button>
+        <button class="media-btn" id="playPauseBtn" onclick="togglePlayback()">PAUSE</button>
+        <button class="media-btn" onclick="skipAudio(1)">NEXT »</button>
     </div>
 
     <div class="controls">
@@ -43,33 +57,38 @@
     <script>
         const chatWindow = document.getElementById('chat-window');
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-        let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, hasGreeted = false;
+        let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSentences = 0;
 
-        function initAudio() {
-            if (hasGreeted) return;
-            hasGreeted = true;
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            speak(document.getElementById('intro-msg').innerText);
-        }
+        window.onload = () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            // This is the Gatekeeper. It checks for the PayPal success signal.
+            if (urlParams.has('st') || urlParams.has('amt') || localStorage.getItem('frank_paid') === 'true') {
+                localStorage.setItem('frank_paid', 'true');
+                document.getElementById('auth-check').style.display = 'none';
+                const welcome = "Welcome back, darling. I've cleared my schedule. Select your format above and upload your pages whenever you're ready.";
+                addMessage(welcome);
+                speak(welcome);
+            } else {
+                // If they didn't pay, send them back to the landing page.
+                window.location.href = "https://YOUR-WEBADOR-LANDING-PAGE.com";
+            }
+        };
 
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
             const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
             if (fileInput.files.length === 0) return;
-            
             addMessage(`Preparing your forensic audit for this ${mode}...`, false);
             const formData = new FormData();
             formData.append('mode', mode);
             formData.append('scripts', fileInput.files[0]);
-
             try {
                 const response = await fetch('/analyze', { method: 'POST', body: formData });
                 const data = await response.json();
                 addMessage(data.message, true); 
                 speak(data.message);
-            } catch (err) { 
-                addMessage("Frank is indisposed, honey. Check your connection."); 
-            }
+                localStorage.removeItem('frank_paid');
+            } catch (err) { addMessage("Frank is indisposed, honey."); }
         }
 
         function addMessage(text, isReport = false) {
@@ -78,9 +97,8 @@
             div.innerText = text;
             if (isReport) {
                 const dl = document.createElement('button');
-                dl.className = 'download-btn';
-                dl.innerText = "DOWNLOAD PDF REPORT";
-                dl.onclick = (e) => { e.stopPropagation(); downloadPDF(text); };
+                dl.className = 'download-btn'; dl.innerText = "DOWNLOAD PDF REPORT";
+                dl.onclick = () => downloadPDF(text);
                 div.appendChild(dl);
             }
             chatWindow.appendChild(div);
@@ -89,25 +107,16 @@
 
         function downloadPDF(text) {
             const element = document.createElement('div');
-            element.innerHTML = `
-                <div style="background:#0a0a0a; color:#eee; font-family:Courier, monospace; padding:40px; border:2px solid #d4af37; line-height:1.6;">
-                    <h1 style="color:#d4af37; text-align:center; border-bottom:2px solid #d4af37; padding-bottom:10px;">FRANK'S $5 FEEDBACK</h1>
-                    <p style="text-align:right; color:#d4af37; font-weight:bold;">CONFIDENTIAL EXECUTIVE AUDIT</p>
-                    <div style="margin-top:30px; white-space: pre-wrap;">${text}</div>
-                </div>
-            `;
-            html2pdf().from(element).set({ 
-                margin: 0.5, 
-                filename: 'Franks_Forensic_Audit.pdf', 
-                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } 
-            }).save();
+            element.innerHTML = `<div style="background:#0a0a0a; color:#eee; font-family:Courier; padding:40px; border:2px solid #d4af37; line-height:1.6;"><h1 style="color:#d4af37; text-align:center; border-bottom:2px solid #d4af37;">FRANK'S $5 FEEDBACK</h1><p style="text-align:right; font-weight:bold; color:#d4af37;">EXECUTIVE AUDIT</p><div style="margin-top:30px; white-space: pre-wrap;">${text}</div></div>`;
+            html2pdf().from(element).set({ margin: 0.5, filename: 'Franks_Forensic_Audit.pdf', jsPDF: { unit: 'in', format: 'letter' } }).save();
         }
 
         async function speak(fullText) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            stopCurrentAudio();
             const cleanText = fullText.replace(/[#*]/g, '').replace(/LOGLINE/gi, "LOG-LINE").replace(/TV/gi, "T.V.");
             const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
-            audioBuffers = {}; nextToPlay = 0; 
-            
+            audioBuffers = {}; nextToPlay = 0; totalSentences = sentences.length;
             sentences.forEach(async (sentence, index) => {
                 try {
                     const settingsResp = await fetch('/voice-settings');
@@ -115,36 +124,31 @@
                     const ttsResp = await fetch("https://api.inworld.ai/tts/v1/voice", {
                         method: "POST",
                         headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ 
-                            text: sentence, 
-                            voiceId: "default-oglabcjnetcklcq7rghmbw__frank", 
-                            modelId: "inworld-tts-1.5-max" 
-                        })
+                        body: JSON.stringify({ text: sentence, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                     });
                     const data = await ttsResp.json();
                     const audioData = Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer;
                     audioBuffers[index] = await audioCtx.decodeAudioData(audioData);
-                    if (!isPlaying && index === 0) playNext();
+                    if (!isPlaying && index === 0) playSequentially();
                 } catch (e) {}
             });
         }
 
-        function playNext() {
-            if (!audioBuffers[nextToPlay]) {
-                if (nextToPlay < 50) setTimeout(playNext, 100);
-                return;
-            }
-            isPlaying = true;
-            currentSource = audioCtx.createBufferSource();
-            currentSource.buffer = audioBuffers[nextToPlay];
-            currentSource.connect(audioCtx.destination);
-            currentSource.onended = () => { 
-                nextToPlay++; 
-                if (audioBuffers[nextToPlay] || nextToPlay < 50) playNext();
-                else isPlaying = false;
-            };
-            currentSource.start();
+        function playSequentially() {
+            if (nextToPlay >= totalSentences) { isPlaying = false; document.getElementById('playPauseBtn').innerText = "PLAY"; return; }
+            if (audioBuffers[nextToPlay]) {
+                isPlaying = true; document.getElementById('playPauseBtn').innerText = "PAUSE";
+                currentSource = audioCtx.createBufferSource();
+                currentSource.buffer = audioBuffers[nextToPlay];
+                currentSource.connect(audioCtx.destination);
+                currentSource.onended = () => { if (isPlaying) { nextToPlay++; playSequentially(); } };
+                currentSource.start();
+            } else { setTimeout(playSequentially, 150); }
         }
+
+        function stopCurrentAudio() { isPlaying = false; if (currentSource) { try { currentSource.stop(); } catch (e) {} currentSource = null; } }
+        function togglePlayback() { if (isPlaying) { stopCurrentAudio(); document.getElementById('playPauseBtn').innerText = "PLAY"; } else { playSequentially(); } }
+        function skipAudio(direction) { stopCurrentAudio(); nextToPlay = Math.max(0, Math.min(totalSentences - 1, nextToPlay + direction)); playSequentially(); }
     </script>
 </body>
 </html>
