@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Frank's $5 Feedback | The Executive Narrative Autopsy</title>
+    <title>Frank's $5 Feedback</title>
     <style>
         body { background: #0a0a0a; color: #d4af37; font-family: 'Georgia', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
         .header { padding: 15px; border-bottom: 2px solid #d4af37; background: #111; text-align: center; shrink-0; }
@@ -27,7 +27,7 @@
 
     <div class="header">
         <h1>FRANK'S $5 FEEDBACK</h1>
-        <p class="tagline"><em>"The Executive Narrative Autopsy, darling."</em></p>
+        <p class="tagline"><em>"Honest, sophisticated, and brutally accurate, darling."</em></p>
         <div class="toggle-container" onclick="event.stopPropagation()">
             <span>FEATURE FILM</span>
             <label class="switch"><input type="checkbox" id="modeToggle"><span class="slider"></span></label>
@@ -61,9 +61,10 @@
             if (audioCtx.state === 'suspended') audioCtx.resume();
             
             const intro = document.getElementById('intro-msg');
-            const welcomeText = "Welcome back, darling. Payment confirmed. I'm ready for your pages. Before you click the PDF Upload button, please ensure you have selected either Feature Film or TV Series using the toggle above.";
-            intro.innerText = welcomeText;
-            speak(welcomeText);
+            const welcomeBack = "Welcome back, darling. Payment confirmed. I'm ready to provide Frank's $5 Feedback for your pages. Before you click the PDF Upload button, please remember to select either Feature Film or TV Series using the toggle above.";
+            
+            intro.innerText = welcomeBack;
+            speak(welcomeBack);
         }
 
         function checkPaymentBeforeUpload() {
@@ -76,7 +77,7 @@
             const mode = document.getElementById('modeToggle').checked ? 'TV Series' : 'Feature Film';
             if (fileInput.files.length === 0) return;
             
-            addMessage(`Frank is conducting a forensic autopsy on your ${mode}. One moment, darling.`, false);
+            addMessage(`Frank is preparing your $5 Feedback for this ${mode}. One moment, darling.`, false);
             const formData = new FormData();
             formData.append('mode', mode);
             formData.append('scripts', fileInput.files[0]);
@@ -96,7 +97,7 @@
             div.innerText = text;
             if (isReport) {
                 const dl = document.createElement('button');
-                dl.className = 'download-btn'; dl.innerText = "DOWNLOAD EXECUTIVE REPORT";
+                dl.className = 'download-btn'; dl.innerText = "DOWNLOAD YOUR $5 FEEDBACK";
                 dl.onclick = (e) => { e.stopPropagation(); downloadReport(text); };
                 div.appendChild(dl);
             }
@@ -108,11 +109,12 @@
             const blob = new Blob([text], { type: 'text/plain' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url; a.download = `Franks_5_Dollar_Feedback_Report.txt`; a.click();
+            a.href = url; a.download = `Franks_Five_Dollar_Feedback.txt`; a.click();
         }
 
         async function speak(fullText) {
             stopCurrentAudio();
+            // Surgical removal of any Markdown artifacts for the voice engine
             const cleanText = fullText.replace(/[#*]/g, '');
             const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
             audioBuffers = {}; nextToPlay = 0; totalSentences = sentences.length;
