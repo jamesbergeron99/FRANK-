@@ -1,9 +1,23 @@
+const express = require('express');
+const multer = require('multer');
+const pdf = require('pdf-parse');
+const path = require('path');
+const cors = require('cors'); 
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+require('dotenv').config();
+
+const app = express();
+app.use(cors()); 
+app.use(express.json({limit: '50mb'})); 
+const upload = multer({ storage: multer.memoryStorage() });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+
 const FRANK_IDENTITY = `You are Frank, a sophisticated, flamboyant, and Truman Capote-esque AI Script Consultant. 
 
 THE FRANK MANDATE:
 - You are NOT a summarizer. You are an interrogator of text.
 - $5 feedback must feel like a $500 professional coverage report. 
-- MINIMUM LENGTH: You must produce a massive, exhaustive report. If a section feels "brief," expand it with direct quotes and "Frank-Approved" rewrites.
+- MINIMUM LENGTH: Your coverage must be massive. Use multiple paragraphs for every section. If a section feels "brief," expand it with direct quotes and "Frank-Approved" rewrites.
 - THE "10-PAGE RULE": You must analyze the script in 10-page increments (Pages 1-10, 11-20, etc.) to ensure no beat is missed.
 
 STRICT OUTPUT CONTRACT - FOLLOW THIS EXACT STRUCTURE:
@@ -39,9 +53,51 @@ IV. PRODUCTION, MARKET, & CONTINUITY
 
 V. THE FINAL VERDICT
 1. DECLARATION: GREEN LIGHT, CONSIDER, or PASS.
-2. JUSTIFICATION: A massive, multi-paragraph closing argument. Use "Market Comps" (e.g., "This is 'Euphoria' meets 'The Wire'").
+2. JUSTIFICATION: A massive, multi-paragraph defense using narrative data and archetypal cross-referencing.
 
 GLOBAL RULES:
 - TONE: Elegant, flamboyant, witty, and brutally honest.
 - NO SUMMARIES: Only deep-tissue analysis. 
 - QUOTES: Use direct quotes from the script as evidence for every single critique.`;
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
+
+app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
+    const mode = req.body.mode || 'Feature';
+    if (!req.files || req.files.length === 0) return res.status(400).json({ message: "Where are the pages, darling?" });
+    
+    try {
+        let fullText = "";
+        for (const file of req.files) {
+            const data = await pdf(file.buffer);
+            fullText += `\n--- SCRIPT FILE: ${file.originalname} ---\n` + data.text;
+        }
+
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-1.5-flash", 
+            systemInstruction: FRANK_IDENTITY 
+        });
+        
+        const contextPrompt = mode === 'TV Series' 
+            ? `TV MODE: This is a sequence of scripts. Apply sequential logic and track character/plot continuity across these pages.` 
+            : `FEATURE MODE: Apply standalone three-act structural analysis.`;
+
+        const result = await model.generateContent(`${contextPrompt}\n\nPerform your exhaustive analysis and SPAG check:\n\n${fullText.substring(0, 90000)}`);
+        res.json({ message: result.response.text() });
+    } catch (err) {
+        res.status(500).json({ message: "Frank is indisposed. Error: " + err.message });
+    }
+});
+
+app.post('/chat', async (req, res) => {
+    try {
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", systemInstruction: FRANK_IDENTITY });
+        const result = await model.generateContent(`CONVERSATIONAL MODE: Talk shop about: ${req.body.message}`);
+        res.json({ message: result.response.text() });
+    } catch (err) { res.status(500).json({ message: "Busy, darling." }); }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => console.log(`Frank is active on port ${PORT}`));
