@@ -32,7 +32,7 @@
 <body onclick="playIntroOnce()">
 
     <div id="paywall-overlay">
-        <h2>"Quality costs, darling. Five dollars for the autopsy."</h2>
+        <h2>"Quality costs, darling. Five dollars for the full autopsy."</h2>
         <form action="https://www.paypal.com/ncp/payment/NUT3KZBHA2Q74" method="post" target="_blank" style="display:inline-grid;justify-items:center;gap:1rem;">
             <input class="pp-NUT3KZBHA2Q74" type="submit" value="Buy Now" />
             <img src="https://www.paypalobjects.com/images/Debit_Credit_APM.svg" alt="cards" />
@@ -78,7 +78,8 @@
             window.history.replaceState({}, document.title, window.location.pathname);
         }
 
-        const GREETING = "Hello, darling. I’m Frank. I’m an AI executive engineered to perform a forensic autopsy on your script. For five dollars, I provide an exhaustive report covering formatting, structural pacing in ten-page blocks, character trajectories, and dialogue subtext. To receive your full executive coverage, click the PDF Upload button to settle the bill, and let's get to work.";
+        // RESTORED: THE ORIGINAL THEATRICAL GREETING
+        const GREETING = "Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per feedback, I perform a comprehensive narrative autopsy. I provide a rigorous spelling and grammar check, a strict formatting audit, a punchy logline, and a detailed synopsis. Then, I dive deep into your character arcs, pacing, and originality. If you're working on a series, I track multiple storylines and trajectories across every episode to ensure your continuity is flawless. Click anywhere again to proceed to payment and let's get to work.";
 
         function playIntroOnce() {
             if (hasGreeted) return;
@@ -109,7 +110,7 @@
             const mode = document.getElementById('modeToggle').checked ? 'TV Series' : 'Feature';
             if (fileInput.files.length === 0) return;
             
-            addMessage(`Frank is conducting a deep-tissue ${mode} autopsy. One moment, darling...`, false);
+            addMessage(`Frank is initiating a ${mode} scan... One moment, darling.`, false);
             const formData = new FormData();
             formData.append('mode', mode);
             formData.append('scripts', fileInput.files[0]);
