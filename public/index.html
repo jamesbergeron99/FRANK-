@@ -1,185 +1,185 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Frank's $5 Feedback</title>
-    <style>
-        body { background: #0a0a0a; color: #d4af37; font-family: 'Georgia', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
-        .header { padding: 25px 15px; border-bottom: 2px solid #d4af37; background: #111; text-align: center; shrink-0; }
-        h1 { margin: 0; font-style: italic; letter-spacing: 3px; text-transform: uppercase; font-size: 2.2rem; }
-        
-        /* Paywall Overlay */
-        #paywall-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.97); z-index: 9999; display: none; flex-direction: column; justify-content: center; align-items: center; text-align: center; color: #d4af37; padding: 20px; }
-        .pp-button { text-align:center; border:none; border-radius:0.25rem; min-width:11.625rem; padding: 0 2rem; height:2.625rem; font-weight:bold; background-color:#FFD140; color:#000000; font-family:"Helvetica Neue",Arial,sans-serif; font-size:1rem; cursor:pointer; margin-bottom: 15px; }
+    <meta charset="UTF-8">
+    <title>Frank's $5 Feedback</title>
+    <style>
+        body { background: #0a0a0a; color: #d4af37; font-family: 'Georgia', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
+        .header { padding: 25px 15px; border-bottom: 2px solid #d4af37; background: #111; text-align: center; shrink-0; }
+        h1 { margin: 0; font-style: italic; letter-spacing: 3px; text-transform: uppercase; font-size: 2.2rem; }
+        
+        /* Paywall Overlay */
+        #paywall-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.97); z-index: 9999; display: none; flex-direction: column; justify-content: center; align-items: center; text-align: center; color: #d4af37; padding: 20px; }
+        .pp-button { text-align:center; border:none; border-radius:0.25rem; min-width:11.625rem; padding: 0 2rem; height:2.625rem; font-weight:bold; background-color:#FFD140; color:#000000; font-family:"Helvetica Neue",Arial,sans-serif; font-size:1rem; cursor:pointer; margin-bottom: 15px; }
 
-        #chat-window { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; background: #050505; scroll-behavior: smooth; padding-bottom: 150px; }
-        .msg { max-width: 95%; padding: 30px; border-radius: 10px; line-height: 1.8; font-size: 1.15rem; white-space: pre-wrap; align-self: flex-start; background: #1a1a1a; border-left: 5px solid #d4af37; color: #eee; }
-        
-        .download-btn { display: inline-block; margin-top: 25px; padding: 15px 25px; background: #d4af37; color: #000; font-weight: bold; cursor: pointer; border: none; text-transform: uppercase; }
-        .controls { padding: 25px; background: #111; border-top: 2px solid #d4af37; display: flex; justify-content: center; gap: 30px; shrink-0; }
-        .media-bar { background: #1a1a1a; border-top: 1px solid #333; padding: 12px; display: flex; justify-content: center; gap: 25px; align-items: center; }
-        .media-btn { background: none; border: 1px solid #d4af37; color: #d4af37; padding: 6px 20px; cursor: pointer; font-size: 0.85rem; text-transform: uppercase; }
-        .btn { background: #d4af37; color: #000; padding: 18px 50px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 1.2rem; }
-        
-        .toggle-container { margin-top: 15px; display: flex; justify-content: center; align-items: center; gap: 15px; font-size: 0.9rem; font-weight: bold; }
-        .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
-        .switch input { opacity: 0; width: 0; height: 0; }
-        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 26px; border: 1px solid #d4af37; }
-        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 3px; background-color: #d4af37; transition: .4s; border-radius: 50%; }
-        input:checked + .slider:before { transform: translateX(24px); }
-    </style>
+        #chat-window { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; background: #050505; scroll-behavior: smooth; padding-bottom: 150px; }
+        .msg { max-width: 95%; padding: 30px; border-radius: 10px; line-height: 1.8; font-size: 1.15rem; white-space: pre-wrap; align-self: flex-start; background: #1a1a1a; border-left: 5px solid #d4af37; color: #eee; }
+        
+        .download-btn { display: inline-block; margin-top: 25px; padding: 15px 25px; background: #d4af37; color: #000; font-weight: bold; cursor: pointer; border: none; text-transform: uppercase; }
+        .controls { padding: 25px; background: #111; border-top: 2px solid #d4af37; display: flex; justify-content: center; gap: 30px; shrink-0; }
+        .media-bar { background: #1a1a1a; border-top: 1px solid #333; padding: 12px; display: flex; justify-content: center; gap: 25px; align-items: center; }
+        .media-btn { background: none; border: 1px solid #d4af37; color: #d4af37; padding: 6px 20px; cursor: pointer; font-size: 0.85rem; text-transform: uppercase; }
+        .btn { background: #d4af37; color: #000; padding: 18px 50px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 1.2rem; }
+        
+        .toggle-container { margin-top: 15px; display: flex; justify-content: center; align-items: center; gap: 15px; font-size: 0.9rem; font-weight: bold; }
+        .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 26px; border: 1px solid #d4af37; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 3px; background-color: #d4af37; transition: .4s; border-radius: 50%; }
+        input:checked + .slider:before { transform: translateX(24px); }
+    </style>
 </head>
 <body onclick="playIntroOnce()">
 
-    <div id="paywall-overlay">
-        <h2>"Quality costs, darling. Five dollars for the full forensic feedback."</h2>
-        <p>You will be redirected back here to upload your script after payment.</p>
-        <form action="https://www.paypal.com/ncp/payment/NUT3KZBHA2Q74" method="post" target="_blank" style="display:inline-grid;justify-items:center;gap:1rem;">
-            <input class="pp-button" type="submit" value="Buy Now" />
-            <img src="https://www.paypalobjects.com/images/Debit_Credit_APM.svg" alt="cards" />
-        </form>
-        <button class="media-btn" style="margin-top:30px;" onclick="event.stopPropagation(); document.getElementById('paywall-overlay').style.display='none'">CANCEL</button>
-    </div>
+    <div id="paywall-overlay">
+        <h2>"Quality costs, darling. Five dollars for the full forensic feedback."</h2>
+        <p>You will be redirected back here to upload your script after payment.</p>
+        <form action="https://www.paypal.com/ncp/payment/NUT3KZBHA2Q74" method="post" target="_blank" style="display:inline-grid;justify-items:center;gap:1rem;">
+            <input class="pp-button" type="submit" value="Buy Now" />
+            <img src="https://www.paypalobjects.com/images/Debit_Credit_APM.svg" alt="cards" />
+        </form>
+        <button class="media-btn" style="margin-top:30px;" onclick="event.stopPropagation(); document.getElementById('paywall-overlay').style.display='none'">CANCEL</button>
+    </div>
 
-    <div class="header">
-        <h1>FRANK'S $5 FEEDBACK</h1>
-        <div class="toggle-container" onclick="event.stopPropagation()">
-            <span>FEATURE FILM</span>
-            <label class="switch"><input type="checkbox" id="modeToggle"><span class="slider"></span></label>
-            <span>TV SERIES</span>
-        </div>
-    </div>
+    <div class="header">
+        <h1>FRANK'S $5 FEEDBACK</h1>
+        <div class="toggle-container" onclick="event.stopPropagation()">
+            <span>FEATURE FILM</span>
+            <label class="switch"><input type="checkbox" id="modeToggle"><span class="slider"></span></label>
+            <span>TV SERIES</span>
+        </div>
+    </div>
 
-    <div id="chat-window">
-        <div class="msg" id="intro-msg">"Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. Click anywhere to hear what I can do for you."</div>
-    </div>
+    <div id="chat-window">
+        <div class="msg" id="intro-msg">"Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. Click anywhere to hear what I can do for you."</div>
+    </div>
 
-    <div class="media-bar" onclick="event.stopPropagation()">
-        <button class="media-btn" onclick="skipAudio(-1)">« BACK</button>
-        <button class="media-btn" id="playPauseBtn" onclick="togglePlayback()">PAUSE</button>
-        <button class="media-btn" onclick="skipAudio(1)">NEXT »</button>
-    </div>
+    <div class="media-bar" onclick="event.stopPropagation()">
+        <button class="media-btn" onclick="skipAudio(-1)">« BACK</button>
+        <button class="media-btn" id="playPauseBtn" onclick="togglePlayback()">PAUSE</button>
+        <button class="media-btn" onclick="skipAudio(1)">NEXT »</button>
+    </div>
 
-    <div class="controls" onclick="event.stopPropagation()">
-        <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadFiles()">
-        <button class="btn" onclick="checkPaymentBeforeUpload()">PDF UPLOAD</button>
-    </div>
+    <div class="controls" onclick="event.stopPropagation()">
+        <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadFiles()">
+        <button class="btn" onclick="checkPaymentBeforeUpload()">PDF UPLOAD</button>
+    </div>
 
-    <script>
-        const chatWindow = document.getElementById('chat-window');
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-        let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, hasGreeted = false, totalSentences = 0;
+    <script>
+        const chatWindow = document.getElementById('chat-window');
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, hasGreeted = false, totalSentences = 0;
 
-        // Check if user is returning from PayPal
-        const urlParams = new URLSearchParams(window.location.search);
-        const hasPaidParam = urlParams.has('amt') || urlParams.has('tx') || urlParams.has('st') || urlParams.has('status');
-        if (hasPaidParam) { localStorage.setItem('frank_paid', 'true'); }
+        // Check if user is returning from PayPal
+        const urlParams = new URLSearchParams(window.location.search);
+        const hasPaidParam = urlParams.has('amt') || urlParams.has('tx') || urlParams.has('st') || urlParams.has('status');
+        if (hasPaidParam) { localStorage.setItem('frank_paid', 'true'); }
 
-        const GREETING = "Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per feedback, I perform a comprehensive narrative autopsy using eighteen industry-standard parameters. I provide a rigorous spelling and grammar check, a strict formatting audit, a punchy Log-line, and a detailed synopsis. Then, I dive deep into your character arcs, pacing, and commercial viability. Click the PDF Upload button to begin the transaction and let's get to work.";
+        const GREETING = "Hello, darling. I’m Frank. I’m a sophisticated AI engine engineered to scan the DNA of your story. For a mere five dollars per feedback, I perform a comprehensive narrative autopsy using eighteen industry-standard parameters. I provide a rigorous spelling and grammar check, a strict formatting audit, a punchy Log-line, and a detailed synopsis. Then, I dive deep into your character arcs, pacing, and commercial viability. Click the PDF Upload button to begin the transaction and let's get to work.";
 
-        function playIntroOnce() {
-            if (hasGreeted) return;
-            hasGreeted = true;
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            
-            const intro = document.getElementById('intro-msg');
-            if (localStorage.getItem('frank_paid') === 'true') {
-                const welcomeBack = "Welcome back, darling. Payment confirmed. I'm ready to provide Frank's $5 Feedback for your pages. Before you click the PDF Upload button, please remember to select either Feature Film or TV Series using the toggle above.";
-                intro.innerText = welcomeBack;
-                speak(welcomeBack);
-            } else {
-                intro.innerText = GREETING;
-                speak(GREETING);
-            }
-        }
+        function playIntroOnce() {
+            if (hasGreeted) return;
+            hasGreeted = true;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const intro = document.getElementById('intro-msg');
+            if (localStorage.getItem('frank_paid') === 'true') {
+                const welcomeBack = "Welcome back, darling. Payment confirmed. I'm ready to provide Frank's $5 Feedback for your pages. Before you click the PDF Upload button, please remember to select either Feature Film or TV Series using the toggle above.";
+                intro.innerText = welcomeBack;
+                speak(welcomeBack);
+            } else {
+                intro.innerText = GREETING;
+                speak(GREETING);
+            }
+        }
 
-        function checkPaymentBeforeUpload() {
-            stopCurrentAudio();
-            if (localStorage.getItem('frank_paid') === 'true') {
-                document.getElementById('scriptInput').click();
-            } else {
-                document.getElementById('paywall-overlay').style.display = 'flex';
-            }
-        }
+        function checkPaymentBeforeUpload() {
+            stopCurrentAudio();
+            if (localStorage.getItem('frank_paid') === 'true') {
+                document.getElementById('scriptInput').click();
+            } else {
+                document.getElementById('paywall-overlay').style.display = 'flex';
+            }
+        }
 
-        async function uploadFiles() {
-            const fileInput = document.getElementById('scriptInput');
-            const mode = document.getElementById('modeToggle').checked ? 'TV Series' : 'Feature Film';
-            if (fileInput.files.length === 0) return;
-            
-            addMessage(`Frank is preparing your $5 Feedback for this ${mode}. One moment, darling.`, false);
-            const formData = new FormData();
-            formData.append('mode', mode);
-            formData.append('scripts', fileInput.files[0]);
-            try {
-                const response = await fetch('/analyze', { method: 'POST', body: formData });
-                const data = await response.json();
-                addMessage(data.message, true); 
-                speak(data.message);
-                localStorage.removeItem('frank_paid'); // Reset after use
-            } catch (err) { 
-                addMessage("Frank is indisposed. Try once more in 30 seconds.", true); 
-            }
-        }
+        async function uploadFiles() {
+            const fileInput = document.getElementById('scriptInput');
+            const mode = document.getElementById('modeToggle').checked ? 'TV Series' : 'Feature Film';
+            if (fileInput.files.length === 0) return;
+            
+            addMessage(`Frank is preparing your $5 Feedback for this ${mode}. One moment, darling.`, false);
+            const formData = new FormData();
+            formData.append('mode', mode);
+            formData.append('scripts', fileInput.files[0]);
+            try {
+                const response = await fetch('/analyze', { method: 'POST', body: formData });
+                const data = await response.json();
+                addMessage(data.message, true); 
+                speak(data.message);
+                localStorage.removeItem('frank_paid'); // Reset after use
+            } catch (err) { 
+                addMessage("Frank is indisposed. Try once more in 30 seconds.", true); 
+            }
+        }
 
-        function addMessage(text, isReport = false) {
-            const div = document.createElement('div');
-            div.className = 'msg';
-            div.innerText = text;
-            if (isReport) {
-                const dl = document.createElement('button');
-                dl.className = 'download-btn'; dl.innerText = "DOWNLOAD YOUR $5 FEEDBACK";
-                dl.onclick = (e) => { e.stopPropagation(); downloadReport(text); };
-                div.appendChild(dl);
-            }
-            chatWindow.appendChild(div);
-            chatWindow.scrollTop = chatWindow.scrollHeight;
-        }
+        function addMessage(text, isReport = false) {
+            const div = document.createElement('div');
+            div.className = 'msg';
+            div.innerText = text;
+            if (isReport) {
+                const dl = document.createElement('button');
+                dl.className = 'download-btn'; dl.innerText = "DOWNLOAD YOUR $5 FEEDBACK";
+                dl.onclick = (e) => { e.stopPropagation(); downloadReport(text); };
+                div.appendChild(dl);
+            }
+            chatWindow.appendChild(div);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
 
-        function downloadReport(text) {
-            const blob = new Blob([text], { type: 'text/plain' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = `Franks_Five_Dollar_Feedback.txt`; a.click();
-        }
+        function downloadReport(text) {
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `Franks_Five_Dollar_Feedback.txt`; a.click();
+        }
 
-        async function speak(fullText) {
-            stopCurrentAudio();
-            const cleanText = fullText.replace(/[#*]/g, '').replace(/LOGLINE/gi, "LOG-LINE").replace(/TV/gi, "T.V.");
-            const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
-            audioBuffers = {}; nextToPlay = 0; totalSentences = sentences.length;
-            sentences.forEach(async (sentence, index) => {
-                try {
-                    const settingsResp = await fetch('/voice-settings');
-                    const settings = await settingsResp.json();
-                    const ttsResponse = await fetch("https://api.inworld.ai/tts/v1/voice", {
-                        method: "POST",
-                        headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: sentence, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
-                    });
-                    const data = await ttsResponse.json();
-                    const audioData = Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer;
-                    audioBuffers[index] = await audioCtx.decodeAudioData(audioData);
-                    if (!isPlaying && index === nextToPlay) playSequentially();
-                } catch (e) { console.error(e); }
-            });
-        }
+        async function speak(fullText) {
+            stopCurrentAudio();
+            const cleanText = fullText.replace(/[#*]/g, '').replace(/LOGLINE/gi, "LOG-LINE").replace(/TV/gi, "T.V.");
+            const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
+            audioBuffers = {}; nextToPlay = 0; totalSentences = sentences.length;
+            sentences.forEach(async (sentence, index) => {
+                try {
+                    const settingsResp = await fetch('/voice-settings');
+                    const settings = await settingsResp.json();
+                    const ttsResponse = await fetch("https://api.inworld.ai/tts/v1/voice", {
+                        method: "POST",
+                        headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ text: sentence, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                    });
+                    const data = await ttsResponse.json();
+                    const audioData = Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer;
+                    audioBuffers[index] = await audioCtx.decodeAudioData(audioData);
+                    if (!isPlaying && index === nextToPlay) playSequentially();
+                } catch (e) { console.error(e); }
+            });
+        }
 
-        function playSequentially() {
-            if (nextToPlay >= totalSentences) { isPlaying = false; document.getElementById('playPauseBtn').innerText = "PLAY"; return; }
-            if (audioBuffers[nextToPlay]) {
-                isPlaying = true; document.getElementById('playPauseBtn').innerText = "PAUSE";
-                currentSource = audioCtx.createBufferSource();
-                currentSource.buffer = audioBuffers[nextToPlay];
-                currentSource.connect(audioCtx.destination);
-                currentSource.onended = () => { if (isPlaying) { nextToPlay++; playSequentially(); } };
-                currentSource.start();
-            } else { setTimeout(playSequentially, 150); }
-        }
+        function playSequentially() {
+            if (nextToPlay >= totalSentences) { isPlaying = false; document.getElementById('playPauseBtn').innerText = "PLAY"; return; }
+            if (audioBuffers[nextToPlay]) {
+                isPlaying = true; document.getElementById('playPauseBtn').innerText = "PAUSE";
+                currentSource = audioCtx.createBufferSource();
+                currentSource.buffer = audioBuffers[nextToPlay];
+                currentSource.connect(audioCtx.destination);
+                currentSource.onended = () => { if (isPlaying) { nextToPlay++; playSequentially(); } };
+                currentSource.start();
+            } else { setTimeout(playSequentially, 150); }
+        }
 
-        function stopCurrentAudio() { isPlaying = false; if (currentSource) { try { currentSource.stop(); } catch (e) {} currentSource = null; } }
-        function togglePlayback() { if (isPlaying) { stopCurrentAudio(); document.getElementById('playPauseBtn').innerText = "PLAY"; } else { playSequentially(); } }
-        function skipAudio(direction) { stopCurrentAudio(); nextToPlay = Math.max(0, Math.min(totalSentences - 1, nextToPlay + direction)); playSequentially(); }
-    </script>
+        function stopCurrentAudio() { isPlaying = false; if (currentSource) { try { currentSource.stop(); } catch (e) {} currentSource = null; } }
+        function togglePlayback() { if (isPlaying) { stopCurrentAudio(); document.getElementById('playPauseBtn').innerText = "PLAY"; } else { playSequentially(); } }
+        function skipAudio(direction) { stopCurrentAudio(); nextToPlay = Math.max(0, Math.min(totalSentences - 1, nextToPlay + direction)); playSequentially(); }
+    </script>
 </body>
 </html>
