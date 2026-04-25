@@ -75,8 +75,9 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             fullText += `\n--- SCRIPT FILE: ${file.originalname} ---\n` + data.text;
         }
 
+        // RESTORED TO GEMINI-3-FLASH-PREVIEW
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash", 
+            model: "gemini-3-flash-preview", 
             systemInstruction: FRANK_IDENTITY 
         });
         
@@ -91,13 +92,5 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     }
 });
 
-app.post('/chat', async (req, res) => {
-    try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", systemInstruction: FRANK_IDENTITY });
-        const result = await model.generateContent(`CONVERSATIONAL MODE: Talk shop about: ${req.body.message}`);
-        res.json({ message: result.response.text() });
-    } catch (err) { res.status(500).json({ message: "Busy, darling." }); }
-});
-
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => console.log(`Frank is active on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`Frank is active.`));
