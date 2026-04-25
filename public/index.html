@@ -59,17 +59,10 @@
 
         window.onload = () => {
             const urlParams = new URLSearchParams(window.location.search);
-            // Check for PayPal return or existing paid session
             if (urlParams.has('st') || localStorage.getItem('frank_paid') === 'true') {
                 localStorage.setItem('frank_paid', 'true');
                 document.getElementById('auth-check').style.display = 'none';
-                
-                // Greeting changes if Frank remembers previous work
-                const hasMemory = localStorage.getItem('frank_last_feedback');
-                const welcome = hasMemory 
-                    ? "Welcome back, darling. I've still got the taste of your last script in my mouth. Let's see if the next installment holds up."
-                    : "Welcome back, darling. I've cleared my schedule. Select your format and upload your pages whenever you're ready.";
-                
+                const welcome = "Welcome back, darling. I've cleared my schedule. Select your format above and upload your pages whenever you're ready.";
                 addMessage(welcome);
                 speak(welcome);
             } else {
@@ -85,6 +78,7 @@
             
             if (fileInput.files.length === 0) return;
 
+            // LOCK THE DOOR: Disable button during processing
             uploadBtn.disabled = true;
             uploadBtn.innerText = "SESSION IN PROGRESS...";
 
@@ -92,29 +86,19 @@
             const formData = new FormData();
             formData.append('mode', mode);
             formData.append('scripts', fileInput.files[0]);
-            
-            // ATTACH MEMORY: Send previous feedback so Frank remembers context
-            const memory = localStorage.getItem('frank_last_feedback');
-            if (memory) {
-                formData.append('previousContext', memory);
-            }
 
             try {
                 const response = await fetch('/analyze', { method: 'POST', body: formData });
                 const data = await response.json();
                 
-                // SAVE FEEDBACK TO MEMORY for the next episode/sequel
-                localStorage.setItem('frank_last_feedback', data.message);
-                
                 addMessage(data.message, true); 
                 speak(data.message);
                 
-                // REVOLVING DOOR: Update button for the next sale
+                // THE FRANCHISE LOOP: Update button for the next sale
                 uploadBtn.disabled = false;
                 uploadBtn.innerText = isTV ? "START NEXT EPISODE ($5)" : "START SEQUEL / TRILOGY ($5)";
                 uploadBtn.onclick = () => {
-                    // REPLACE THE URL BELOW WITH YOUR DIRECT PAYPAL LINK
-                    window.location.href = "YOUR_DIRECT_PAYPAL_PAYMENT_URL_HERE"; 
+                    window.location.href = "https://www.scriptread.ca"; 
                 };
 
                 localStorage.removeItem('frank_paid'); 
