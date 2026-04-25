@@ -63,7 +63,7 @@
                 localStorage.setItem('frank_paid', 'true');
                 document.getElementById('auth-check').style.display = 'none';
                 
-                // LOGIC FIX: Check for real memory before greeting
+                // FIXED LOGIC: No more fake "tastes". Only welcome back if data exists.
                 const hasMemory = localStorage.getItem('frank_last_feedback');
                 const welcome = hasMemory 
                     ? "Welcome back. I've reviewed your previous notes. Let's see if this next installment shows some growth."
@@ -92,7 +92,6 @@
             formData.append('mode', mode);
             formData.append('scripts', fileInput.files[0]);
 
-            // MEMORY BRIDGE: Send previous context
             const memory = localStorage.getItem('frank_last_feedback');
             if (memory) { formData.append('previousContext', memory); }
 
@@ -100,7 +99,6 @@
                 const response = await fetch('/analyze', { method: 'POST', body: formData });
                 const data = await response.json();
                 
-                // SAVE MEMORY for next time
                 localStorage.setItem('frank_last_feedback', data.message);
                 
                 addMessage(data.message, true); 
@@ -109,7 +107,7 @@
                 uploadBtn.disabled = false;
                 uploadBtn.innerText = isTV ? "START NEXT EPISODE ($5)" : "START SEQUEL / TRILOGY ($5)";
                 uploadBtn.onclick = () => {
-                    localStorage.removeItem('frank_paid'); // Clear auth for fresh pay loop
+                    localStorage.removeItem('frank_paid'); 
                     window.location.href = "https://www.paypal.com/ncp/payment/VRYUFK4H8K6M6"; 
                 };
 
