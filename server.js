@@ -8,8 +8,16 @@ require('dotenv').config();
 
 const app = express();
 app.use(cors()); 
-app.use(express.json({limit: '50mb'})); 
-const upload = multer({ storage: multer.memoryStorage() });
+
+// Increased limits to handle massive scripts and detailed returns
+app.use(express.json({limit: '100mb'})); 
+app.use(express.urlencoded({limit: '100mb', extended: true}));
+
+const upload = multer({ 
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
+});
+
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 const FRANK_IDENTITY = `You are Frank, a sophisticated, theatrical, and brutally honest AI Script Executive. 
@@ -70,14 +78,20 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             systemInstruction: FRANK_IDENTITY 
         });
         
-        const prompt = `${mode} Mode. Provide an EXHAUSTIVE, multi-page deep dive report. Cite specific dialogue and page numbers: \n\n ${fullText.substring(0, 100000)}`;
+        // Explicitly telling the AI to generate a massive response
+        const prompt = `${mode} Mode. Provide an EXHAUSTIVE, multi-page deep dive report. It must be at least 3,000 words. Cite specific dialogue and page numbers: \n\n ${fullText.substring(0, 100000)}`;
 
         const result = await model.generateContent(prompt);
-        res.json({ message: result.response.text() });
+        const responseText = await result.response.text();
+        
+        res.json({ message: responseText });
     } catch (err) {
+        console.error("ANALYSIS ERROR:", err);
         res.status(500).json({ message: "Frank is indisposed. Error: " + err.message });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => console.log(\`Frank active on \${PORT}\`));
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Frank active on port ${PORT}`);
+});
