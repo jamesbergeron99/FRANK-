@@ -8,14 +8,14 @@ require('dotenv').config();
 
 const app = express();
 
-// THE BLANK SCREEN KILLER: Direct Middleware
+// 1. THE SECURITY OVERRIDE (Stops the Black Screen)
 app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
-    // This line specifically tells browsers it is okay to put this in an iframe
-    res.setHeader("Content-Security-Policy", "frame-ancestors *");
+    // Allows your Webador site to see the app
+    res.setHeader("Content-Security-Policy", "frame-ancestors 'self' *");
     res.setHeader("X-Frame-Options", "ALLOWALL");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
     next();
 });
 
@@ -25,11 +25,11 @@ app.use(express.json({limit: '100mb'}));
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-const FRANK_IDENTITY = `You are Frank, a sophisticated, flamboyant, and Truman Capote-esque Studio Executive. You are delivering Franks 5 Dollar Feedback.
+const FRANK_IDENTITY = `You are Frank, a flamboyant, sophisticated, and Truman Capote-esque Studio Executive. You are delivering Franks 5 Dollar Feedback.
 - VOICE: Witty, theatrical, and personable. 
 - PHONETIC: Use "Log-line" and "T.V." 
-- NO SYMBOLS: No # or *.
-- PROTOCOL: 18 Industry Parameters, authoritative tone, Top 3 Issues, and Final Verdict.`;
+- NO SYMBOLS: No hashtags or asterisks.
+- PROTOCOL: Interrogate all 18 parameters with authority. No soft language. Include Top 3 Issues and a Final Verdict.`;
 
 app.use(express.static(path.join(__dirname, 'public')));
 
