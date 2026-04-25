@@ -13,24 +13,21 @@
         .msg { max-width: 95%; padding: 30px; border-radius: 10px; line-height: 1.8; font-size: 1.15rem; white-space: pre-wrap; align-self: flex-start; background: #1a1a1a; border-left: 5px solid #d4af37; color: #eee; }
         .download-btn { display: inline-block; margin-top: 25px; padding: 15px 25px; background: #d4af37; color: #000; font-weight: bold; cursor: pointer; border: none; text-transform: uppercase; }
         .media-bar { background: #1a1a1a; border-top: 1px solid #333; padding: 15px; display: flex; justify-content: center; gap: 25px; align-items: center; shrink-0; }
-        .media-btn { background: none; border: 1px solid #d4af37; color: #d4af37; padding: 10px 25px; cursor: pointer; font-size: 0.9rem; text-transform: uppercase; font-weight: bold; min-width: 100px; }
-        .media-btn:hover { background: #d4af37; color: #000; }
+        .media-btn { background: none; border: 1px solid #d4af37; color: #d4af37; padding: 10px 25px; cursor: pointer; font-size: 0.9rem; text-transform: uppercase; font-weight: bold; }
         .controls { padding: 25px; background: #111; border-top: 2px solid #d4af37; display: flex; justify-content: center; gap: 30px; shrink-0; }
-        .btn { background: #d4af37; color: #000; padding: 18px 50px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 1.2rem; }
+        .btn { background: #d4af37; color: #000; padding: 18px 50px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 1.2rem; transition: 0.3s; }
+        .btn:disabled { background: #444; color: #888; cursor: not-allowed; border-color: #444; }
         .toggle-container { margin-top: 15px; display: flex; justify-content: center; align-items: center; gap: 15px; font-size: 0.9rem; font-weight: bold; }
         .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 26px; border: 1px solid #d4af37; }
         .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 3px; background-color: #d4af37; transition: .4s; border-radius: 50%; }
         input:checked + .slider:before { transform: translateX(24px); }
-        .spinner { border: 4px solid rgba(212, 175, 55, 0.1); border-left-color: #d4af37; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
     <div id="auth-check">
-        <div class="spinner"></div>
-        <p style="margin-top: 20px; letter-spacing: 2px;">VERIFYING CREDENTIALS, DARLING...</p>
+        <p>VERIFYING CREDENTIALS, DARLING...</p>
     </div>
 
     <div class="header">
@@ -52,7 +49,7 @@
 
     <div class="controls">
         <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadFiles()">
-        <button class="btn" onclick="document.getElementById('scriptInput').click()">UPLOAD YOUR PAGES</button>
+        <button class="btn" id="uploadBtn" onclick="document.getElementById('scriptInput').click()">UPLOAD YOUR PAGES</button>
     </div>
 
     <script>
@@ -62,34 +59,48 @@
 
         window.onload = () => {
             const urlParams = new URLSearchParams(window.location.search);
-            // Checking for the PayPal return signal or local session
-            if (urlParams.has('st') || urlParams.has('amt') || localStorage.getItem('frank_paid') === 'true') {
+            if (urlParams.has('st') || localStorage.getItem('frank_paid') === 'true') {
                 localStorage.setItem('frank_paid', 'true');
                 document.getElementById('auth-check').style.display = 'none';
                 const welcome = "Welcome back, darling. I've cleared my schedule. Select your format above and upload your pages whenever you're ready.";
                 addMessage(welcome);
                 speak(welcome);
             } else {
-                // REDIRECT TO YOUR ACTUAL LANDING PAGE
                 window.location.href = "https://www.scriptread.ca";
             }
         };
 
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
+            const uploadBtn = document.getElementById('uploadBtn');
             const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
+            
             if (fileInput.files.length === 0) return;
+
+            // LOCK THE DOOR: Disable button immediately
+            uploadBtn.disabled = true;
+            uploadBtn.innerText = "SESSION IN PROGRESS...";
+
             addMessage(`Preparing your forensic audit for this ${mode}...`, false);
             const formData = new FormData();
             formData.append('mode', mode);
             formData.append('scripts', fileInput.files[0]);
+
             try {
                 const response = await fetch('/analyze', { method: 'POST', body: formData });
                 const data = await response.json();
+                
                 addMessage(data.message, true); 
                 speak(data.message);
-                localStorage.removeItem('frank_paid');
-            } catch (err) { addMessage("Frank is indisposed, honey."); }
+                
+                // FINAL STATE: Session over
+                uploadBtn.innerText = "SESSION COMPLETE";
+                localStorage.removeItem('frank_paid'); 
+            } catch (err) { 
+                addMessage("Frank is indisposed, honey.");
+                uploadBtn.disabled = false;
+                uploadBtn.innerText = "RETRY UPLOAD";
+            }
         }
 
         function addMessage(text, isReport = false) {
