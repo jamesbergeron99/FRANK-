@@ -114,7 +114,6 @@
 
         async function speak(fullText) {
             stopCurrentAudio();
-            // Surgical removal of any Markdown artifacts for the voice engine
             const cleanText = fullText.replace(/[#*]/g, '');
             const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
             audioBuffers = {}; nextToPlay = 0; totalSentences = sentences.length;
