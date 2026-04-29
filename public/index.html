@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Frank's Interactive Office</title>
+    <title>Frank's Private Office</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -20,8 +20,8 @@
         .mic-btn { color: #d4af37; cursor: pointer; font-size: 1.2rem; }
         .mic-active { color: #ff3b3b; text-shadow: 0 0 10px #ff3b3b; }
         .action-btn { background: #d4af37; color: #000; border: none; padding: 12px 25px; font-weight: bold; cursor: pointer; border-radius: 5px; }
-        .download-btn { margin-top: 15px; padding: 10px; background: #d4af37; color: #000; border: none; cursor: pointer; font-weight: bold; }
-        .toggle-container { margin-top: 10px; font-size: 0.8rem; }
+        .download-btn { margin-top: 15px; padding: 10px; background: #d4af37; color: #000; border: none; cursor: pointer; font-weight: bold; display: block; }
+        .toggle-container { margin-top: 10px; font-size: 0.8rem; display: flex; justify-content: center; align-items: center; gap: 10px; }
     </style>
 </head>
 <body onclick="initAudio()">
@@ -41,7 +41,7 @@
     </div>
 
     <div class="input-area">
-        <button class="action-btn" onclick="document.getElementById('scriptInput').click()"><i class="fas fa-file-upload"></i></button>
+        <button class="action-btn" id="uploadBtn" onclick="document.getElementById('scriptInput').click()"><i class="fas fa-file-upload"></i></button>
         <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadFiles()">
         
         <div class="pill">
@@ -56,18 +56,20 @@
         const chatWindow = document.getElementById('chat-window');
         const textInput = document.getElementById('textInput');
         const micBtn = document.getElementById('micBtn');
+        const uploadBtn = document.getElementById('uploadBtn');
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSentences = 0;
         let recognition, isMicOn = false, finalTranscript = "";
 
-        // AUTH REMOVED: Opens directly
+        fetch('/voice-settings').then(r => r.json()).then(data => voiceSettings = data);
+
+        // PAYPAL REDIRECT REMOVED: Loads immediately
         window.onload = () => {
-            const welcome = "Welcome to my office, darling. Upload your pages, or if we've already spoken, ask me anything about your script.";
+            const welcome = "Welcome to my office, darling. Upload your pages whenever you're ready, or just tell me what's on your mind.";
             addMessage(welcome);
             speak(welcome);
         };
 
-        // DICTATION LOGIC
         if ('webkitSpeechRecognition' in window) {
             recognition = new webkitSpeechRecognition();
             recognition.continuous = true;
@@ -83,7 +85,7 @@
         }
 
         function toggleMic() {
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+            initAudio();
             if (!isMicOn) { isMicOn = true; micBtn.classList.add('mic-active'); finalTranscript = ""; recognition.start(); }
             else { isMicOn = false; micBtn.classList.remove('mic-active'); recognition.stop(); }
         }
@@ -93,15 +95,23 @@
             const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
             if (fileInput.files.length === 0) return;
 
-            addMessage(`Scanning your pages for this ${mode}...`, false);
+            uploadBtn.disabled = true;
+            addMessage(`Scanning your ${mode} pages now, honey. Give me a moment...`, false);
+            
             const formData = new FormData();
             formData.append('mode', mode);
             formData.append('scripts', fileInput.files[0]);
 
-            const response = await fetch('/analyze', { method: 'POST', body: formData });
-            const data = await response.json();
-            addMessage(data.message, true);
-            speak(data.message);
+            try {
+                const response = await fetch('/analyze', { method: 'POST', body: formData });
+                const data = await response.json();
+                addMessage(data.message, true);
+                speak(data.message);
+                uploadBtn.disabled = false;
+            } catch (err) {
+                addMessage("Frank is indisposed, darling. Try that upload again.");
+                uploadBtn.disabled = false;
+            }
         }
 
         async function sendBanter() {
@@ -109,6 +119,7 @@
             if (!val) return;
             textInput.value = ''; finalTranscript = "";
             addMessage(val, false, true);
+            
             const response = await fetch('/chat', { 
                 method: 'POST', 
                 headers: { 'Content-Type': 'application/json' }, 
@@ -134,7 +145,7 @@
         }
 
         async function speak(fullText) {
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+            initAudio();
             stopCurrentAudio();
             const cleanText = fullText.replace(/[#*]/g, '');
             const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
@@ -173,7 +184,7 @@
         function togglePlayback() { if (isPlaying) { stopCurrentAudio(); } else { playSequentially(); } }
         function downloadPDF(text) {
             const element = document.createElement('div');
-            element.innerHTML = `<div style="padding:40px; border:2px solid #d4af37; background:#000; color:#fff;"><h1>FRANK'S AUDIT</h1><p>${text}</p></div>`;
+            element.innerHTML = `<div style="padding:40px; border:2px solid #d4af37; background:#000; color:#fff; font-family:serif;"><h1>FRANK'S AUDIT</h1><p style="white-space:pre-wrap;">${text}</p></div>`;
             html2pdf().from(element).save();
         }
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
