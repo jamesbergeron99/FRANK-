@@ -16,55 +16,76 @@ app.use(express.static(path.join(__dirname, 'public')));
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-// THE CORE IDENTITY: Mandatory Paragraphs & Citations
-const FRANK_IDENTITY = `You are Frank, the $5 Forensic Script Doctor. You are an elite, flamboyant, and brutally honest Studio Executive. You provide professional-grade narrative autopsies.
+// THE MEMORY UPGRADE: Persistent context for chat banter
+let scriptMemory = "";
+
+const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
+TONE: Flamboyant, sassy, and forensic. 
+CONTEXT: ${type}.
+ROLLING MEMORY: ${memory || "No previous pages processed yet."}
 
 STRICT RESPONSE RULES:
-1. NO POINT FORM: Every response must be a substantial, multi-sentence narrative paragraph. Combined sentences are required to show flow.
-2. PAGE & QUOTE CITATIONS: You MUST cite a Page Number and provide a Direct Quote from the script for every critique to prove your point.
-3. PROBLEM/CONSEQUENCE/FIX: Every audit point must explain what is wrong, why it kills the script's commercial viability, and exactly how to fix it.
-4. ORDER OF URGENCY: Your "Top 3 Issues" must be presented in a dedicated section, ranked by what must be fixed first to save the project.
+1. NO POINT FORM: Every response must be a substantial narrative paragraph.
+2. PAGE & QUOTE CITATIONS: You MUST cite Page Numbers and provide Direct Quotes.
+3. INTERACTIVE: You are now a chat partner. If the user asks a question, answer it using your forensic knowledge of their script.
+4. AUDIT STRUCTURE: Technicals, Logline, Synopsis, Top 3 Fixes, 18-Point Deep Dive.
 
-THE AUDIT STRUCTURE:
-- SECTION 1: SPELLING, GRAMMAR & FORMATTING (Cite specific page violations).
-- SECTION 2: LOG-LINE & SYNOPSIS (Studio-ready).
-- SECTION 3: TOP 3 FIXES (In order of extreme urgency).
-- SECTION 4: 18-POINT FORENSIC AUDIT (18 deep paragraphs covering Structure, Pacing, Character Arcs, Dialogue, Commerciality, etc.).
-- SECTION 5: FINAL VERDICT (RECOMMEND, CONSIDER, or PASS).`;
+VOICE: Plain text only. No markdown, hashtags, or asterisks.`;
+
+async function compressMemory(text) {
+    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    const result = await model.generateContent(`Summarize this script context for Frank's memory (under 1000 chars): ${text}`);
+    return result.response.text();
+}
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
-    const mode = req.body.mode || 'Feature Film';
-    if (!req.files || req.files.length === 0) return res.status(400).json({ message: "No pages, honey." });
-    
     try {
-        let fullText = "";
-        for (const file of req.files) {
-            const data = await pdf(file.buffer);
-            fullText += data.text;
+        const mode = req.body.mode || 'Feature Film';
+        const data = await pdf(req.files[0].buffer);
+        const scriptText = data.text;
+        
+        // CHUNKING LOGIC: Handles 120+ pages by breaking them into 25k char blocks
+        const CHUNK_SIZE = 25000; 
+        const chunks = [];
+        for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) {
+            chunks.push(scriptText.substring(i, i + CHUNK_SIZE));
         }
 
-        const model = genAI.getGenerativeModel({ 
-            model: "gemini-3-flash-preview", 
-            systemInstruction: FRANK_IDENTITY,
-            generationConfig: {
-                maxOutputTokens: 8192, // Mandatory: Gives the AI enough room to write long paragraphs.
-                temperature: 0.8 // Keeps the executive voice sharp and critical.
-            }
-        });
-        
-        const prompt = `Format: ${mode}. 
-        Perform the full Kandi Land Forensic Audit. 
-        I want zero point-form answers. I want deep narrative paragraphs. 
-        Every single point must include a Page Number and a Direct Quote as evidence.
-        Explain the problem, the consequence, and the fix for every audit parameter.
-        Audit the following script: \n\n ${fullText.substring(0, 100000)}`;
+        let combinedInsights = "";
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
-        const result = await model.generateContent(prompt);
-        res.json({ message: result.response.text() });
+        for (let i = 0; i < chunks.length; i++) {
+            const result = await model.generateContent({
+                systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
+                contents: [{ role: "user", parts: [{ text: `Analyze Section ${i+1}: ${chunks[i]}` }] }]
+            });
+            const summary = result.response.text();
+            combinedInsights += summary;
+            scriptMemory = await compressMemory(scriptMemory + summary);
+        }
+
+        const finalResult = await model.generateContent({
+            systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
+            contents: [{ role: "user", parts: [{ text: `Generate the COMPLETE Forensic Audit based on these insights: ${combinedInsights}` }] }]
+        });
+
+        res.json({ message: finalResult.response.text() });
     } catch (err) {
+        console.error(err);
         res.status(500).json({ message: "Frank is indisposed, darling." });
     }
 });
 
+app.post('/chat', async (req, res) => {
+    try {
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+        const result = await model.generateContent({
+            systemInstruction: "You are Frank. Answer the user's question about their script. Be sassy and brief. Memory: " + scriptMemory,
+            contents: [{ role: "user", parts: [{ text: req.body.message }] }]
+        });
+        res.json({ message: result.response.text() });
+    } catch (err) { res.status(500).json({ message: "Frank is at a premiere." }); }
+});
+
 app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
-app.listen(PORT, '0.0.0.0', () => console.log("Frank is on the clock. Paragraph mode enabled."));
+app.listen(PORT, '0.0.0.0', () => console.log("Frank's Interactive Office is Open."));
