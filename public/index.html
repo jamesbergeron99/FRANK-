@@ -2,36 +2,35 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Frank's Forensic Suite</title>
+    <title>Frank's Forensic Office</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        :root { --gold: #d4af37; --bg: #050505; --card: #151515; }
+        :root { --gold: #d4af37; --bg: #050505; --card: #121212; }
         body { background: var(--bg); color: #eee; font-family: 'Segoe UI', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
-        .header { padding: 20px; border-bottom: 2px solid var(--gold); background: #111; text-align: center; }
-        h1 { margin: 0; font-style: italic; letter-spacing: 2px; color: var(--gold); font-size: 1.6rem; }
+        .header { padding: 15px; border-bottom: 2px solid var(--gold); background: #111; text-align: center; }
+        h1 { margin: 0; font-style: italic; color: var(--gold); letter-spacing: 2px; font-size: 1.5rem; }
         
-        /* Premium Toggle Switch */
-        .toggle-box { display: flex; align-items: center; justify-content: center; gap: 15px; margin-top: 10px; font-weight: bold; font-size: 0.9rem; }
-        .switch { position: relative; display: inline-block; width: 60px; height: 30px; }
+        /* Premium Toggle */
+        .toggle-box { display: flex; align-items: center; justify-content: center; gap: 15px; margin-top: 10px; font-weight: bold; font-size: 0.8rem; }
+        .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
         .switch input { opacity: 0; width: 0; height: 0; }
-        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 34px; border: 1px solid var(--gold); }
-        .slider:before { position: absolute; content: ""; height: 22px; width: 22px; left: 4px; bottom: 3px; background-color: var(--gold); transition: .4s; border-radius: 50%; }
-        input:checked + .slider { background-color: #1a1a1a; }
-        input:checked + .slider:before { transform: translateX(28px); }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 24px; border: 1px solid var(--gold); }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 3px; background-color: var(--gold); transition: .4s; border-radius: 50%; }
+        input:checked + .slider:before { transform: translateX(24px); }
 
-        #chat-window { flex-grow: 1; overflow-y: auto; padding: 30px; display: flex; flex-direction: column; gap: 20px; background: radial-gradient(circle at center, #111, #050505); }
-        .msg { max-width: 90%; padding: 25px; border-radius: 12px; line-height: 1.8; font-size: 1.1rem; white-space: pre-wrap; background: var(--card); border-left: 4px solid var(--gold); }
+        #chat-window { flex-grow: 1; overflow-y: auto; padding: 25px; display: flex; flex-direction: column; gap: 20px; background: #080808; }
+        .msg { max-width: 90%; padding: 25px; border-radius: 10px; line-height: 1.8; font-size: 1.1rem; white-space: pre-wrap; background: var(--card); border-left: 4px solid var(--gold); }
         .user-msg { align-self: flex-end; border-left: none; border-right: 4px solid var(--gold); background: #222; }
 
-        .media-bar { background: #111; border-top: 1px solid #333; padding: 15px; display: flex; justify-content: center; gap: 40px; align-items: center; }
-        .media-btn { background: none; border: 1px solid var(--gold); color: var(--gold); width: 45px; height: 45px; border-radius: 50%; cursor: pointer; font-size: 1.2rem; transition: 0.3s; }
+        .media-bar { background: #111; padding: 10px; display: flex; justify-content: center; gap: 35px; border-top: 1px solid #333; }
+        .media-btn { background: none; border: 1px solid var(--gold); color: var(--gold); width: 42px; height: 42px; border-radius: 50%; cursor: pointer; font-size: 1rem; transition: 0.2s; }
         .media-btn:hover { background: var(--gold); color: #000; }
 
-        .input-area { padding: 20px 40px; background: #111; border-top: 2px solid var(--gold); display: flex; gap: 20px; align-items: center; }
-        .pill { flex-grow: 1; display: flex; background: #000; border: 1px solid var(--gold); border-radius: 40px; padding: 5px 25px; align-items: center; }
-        #textInput { flex-grow: 1; background: transparent; border: none; color: #fff; padding: 15px 0; outline: none; font-size: 1.1rem; }
-        .btn-icon { background: none; border: none; color: var(--gold); cursor: pointer; font-size: 1.5rem; }
+        .input-area { padding: 15px 30px; background: #111; border-top: 2px solid var(--gold); display: flex; gap: 15px; align-items: center; }
+        .pill { flex-grow: 1; display: flex; background: #000; border: 1px solid var(--gold); border-radius: 40px; padding: 5px 20px; align-items: center; }
+        #textInput { flex-grow: 1; background: transparent; border: none; color: #fff; padding: 12px 0; outline: none; font-size: 1rem; }
+        .icon-btn { background: none; border: none; color: var(--gold); cursor: pointer; font-size: 1.4rem; }
         .mic-active { color: #ff3b3b; text-shadow: 0 0 10px #ff3b3b; }
     </style>
 </head>
@@ -54,16 +53,14 @@
     </div>
 
     <div class="input-area">
-        <button class="btn-icon" onclick="document.getElementById('scriptInput').click()"><i class="fas fa-file-upload"></i></button>
+        <button class="icon-btn" onclick="document.getElementById('scriptInput').click()"><i class="fas fa-file-upload"></i></button>
         <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadFiles()">
-        
         <div class="pill">
             <input type="text" id="textInput" placeholder="Consult Frank..." onkeypress="if(event.key==='Enter') sendBanter()">
-            <i class="fas fa-microphone btn-icon" id="micBtn" onclick="toggleMic()"></i>
+            <i class="fas fa-microphone icon-btn" id="micBtn" onclick="toggleMic()"></i>
         </div>
-        
-        <button class="btn-icon" onclick="sendBanter()"><i class="fas fa-paper-plane"></i></button>
-        <button class="btn-icon" onclick="downloadPDFManual()"><i class="fas fa-file-pdf"></i></button>
+        <button class="icon-btn" onclick="sendBanter()"><i class="fas fa-paper-plane"></i></button>
+        <button class="icon-btn" onclick="downloadPDF()"><i class="fas fa-file-pdf"></i></button>
     </div>
 
     <script>
@@ -74,10 +71,7 @@
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSentences = 0;
         let recognition, isMicOn = false, finalTranscript = "";
 
-        window.onload = () => {
-            const welcome = "Welcome to the suite. Upload your script for a forensic 18-point audit. I'm ready when you are.";
-            addMessage(welcome); speak(welcome);
-        };
+        window.onload = () => { addMessage("Welcome back. I've tuned my forensic sensors. Upload your script whenever you're ready."); };
 
         if ('webkitSpeechRecognition' in window) {
             recognition = new webkitSpeechRecognition();
@@ -103,7 +97,7 @@
             const fileInput = document.getElementById('scriptInput');
             const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
             if (fileInput.files.length === 0) return;
-            addMessage(`Beginning forensic audit for this ${mode}...`, false);
+            addMessage(`Performing a deep forensic audit for this ${mode}. This takes a few moments, darling...`, false);
             const formData = new FormData();
             formData.append('mode', mode);
             formData.append('scripts', fileInput.files[0]);
@@ -114,7 +108,7 @@
 
         async function sendBanter() {
             const val = textInput.value; if (!val) return;
-            textInput.value = ''; finalTranscript = ""; addMessage(val, false, true);
+            textInput.value = ''; finalTranscript = ""; addMessage(val, true);
             const response = await fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) });
             const data = await response.json();
             addMessage(data.message); speak(data.message);
@@ -123,15 +117,12 @@
         function addMessage(text, isUser = false) {
             const div = document.createElement('div');
             div.className = isUser ? 'msg user-msg' : 'msg';
-            div.innerText = text;
-            chatWindow.appendChild(div);
-            chatWindow.scrollTop = chatWindow.scrollHeight;
+            div.innerText = text; chatWindow.appendChild(div); chatWindow.scrollTop = chatWindow.scrollHeight;
         }
 
         async function speak(fullText) {
             initAudio(); stopCurrentAudio();
-            const cleanText = fullText.replace(/[#*]/g, '');
-            const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
+            const sentences = fullText.replace(/[#*]/g, '').match(/[^.!?]+[.!?]+/g) || [fullText];
             audioBuffers = {}; nextToPlay = 0; totalSentences = sentences.length;
             sentences.forEach(async (sentence, index) => {
                 try {
@@ -164,10 +155,10 @@
         function togglePlayback() { if (isPlaying) { stopCurrentAudio(); document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>'; } else { playSequentially(); } }
         function skipAudio(dir) { stopCurrentAudio(); nextToPlay = Math.max(0, Math.min(totalSentences - 1, nextToPlay + dir)); playSequentially(); }
         
-        function downloadPDFManual() {
+        function downloadPDF() {
             const element = document.createElement('div');
-            element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; border:2px solid #d4af37; font-family:serif;"><h1>FRANK'S AUDIT REPORT</h1>${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m => `<p style="margin-bottom:20px; line-height:1.6;">${m.innerText}</p>`).join('')}</div>`;
-            html2pdf().from(element).save('Franks_Forensic_Audit.pdf');
+            element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; border:2px solid #d4af37; font-family:serif;"><h1>FRANK'S EXECUTIVE AUDIT</h1>${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m => `<p style="line-height:1.6; margin-bottom:15px;">${m.innerText}</p>`).join('')}</div>`;
+            html2pdf().from(element).save('Franks_Audit.pdf');
         }
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
     </script>
