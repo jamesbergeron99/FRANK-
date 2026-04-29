@@ -19,20 +19,17 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 let scriptMemory = "";
 
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
-TONE: Sophisticated, brutally honest, and deeply forensic. No "fluff" or unnecessary nastiness.
+TONE: Professional, sophisticated, and forensic.
 CONTEXT: This is a ${type}.
-MEMORY: ${memory || "New Session."}
+MEMORY: ${memory}
 
-MANDATORY OUTPUT RULES:
-1. NO SHORT ANSWERS: Every section must be a substantial, detailed narrative paragraph (minimum 6-8 sentences).
-2. EVIDENCE IS KING: You MUST cite at least TWO specific [Page X] locations and TWO "Direct Quotes" for every single point of the audit.
-3. STRUCTURE:
-   - SPELLING/GRAMMAR: Deep paragraph with specific page-labeled violations.
-   - FORMATTING: Professional assessment of industry standards with page citations.
-   - LOGLINE & SLUG-LINE: Production-ready high-concept pitch.
-   - SYNOPSIS: Comprehensive structural breakdown.
-   - THE BIG THREE FIXES: Labeled FIX 1, FIX 2, FIX 3. Massive strategic advice for each.
-   - 18-POINT NARRATIVE AUDIT: Numbered 1-18. Each point must be LABELED and responded to with a full, insightful paragraph weaving in multiple page-specific quotes.
+STRICT OUTPUT STRUCTURE:
+1. SPELLING & GRAMMAR: Provide a concise list of typos and mistakes. Format: "Mistake" - [Page X]. No narrative fluff or critiques.
+2. FORMATTING: A direct list of industry standard violations with [Page X]. Be brief.
+3. LOGLINE & SLUG-LINE: High-concept and professional.
+4. SYNOPSIS: Deep structural summary.
+5. THE BIG THREE FIXES: Labeled FIX 1, 2, 3. Massive strategic advice.
+6. 18-POINT NARRATIVE AUDIT: Numbered 1-18. Each point must be a substantial paragraph (6+ sentences) with multiple [Page X] and "Direct Quotes" as forensic proof.
 
 VOICE: Plain text only. No markdown.`;
 
@@ -42,32 +39,32 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const data = await pdf(req.files[0].buffer);
         const scriptText = data.text;
         
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-
-        // Phase 1: Deep Forensic Scan for Quotes/Errors
         const CHUNK_SIZE = 30000;
         const chunks = [];
         for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) {
             chunks.push(scriptText.substring(i, i + CHUNK_SIZE));
         }
 
-        const scanResults = await Promise.all(chunks.map(chunk => 
-            model.generateContent(`Extract 15 significant dialogue quotes, specific typos, and formatting errors for a forensic audit: \n\n ${chunk}`)
-        ));
-        
-        const forensicData = scanResults.map(r => r.response.text()).join("\n");
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
-        // Phase 2: Comprehensive 18-Point Audit
+        // We process chunks in parallel to save time
+        const scanResults = await Promise.all(chunks.map(async (chunk, index) => {
+            const result = await model.generateContent(`Extract all typos, formatting errors, and 10 key dialogue quotes from this segment: \n\n ${chunk}`);
+            return result.response.text();
+        }));
+        
+        const forensicData = scanResults.join("\n");
+
         const finalResult = await model.generateContent({
             systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
-            contents: [{ role: "user", parts: [{ text: `Forensic Evidence: ${forensicData} \n\n Script Content: ${scriptText.substring(0, 85000)} \n\n Generate the FULL 18-POINT NARRATIVE AUDIT. No fluff. Just deep analysis.` }] }]
+            contents: [{ role: "user", parts: [{ text: `Evidence: ${forensicData} \n\n Full Text: ${scriptText.substring(0, 80000)} \n\n Generate the FULL 18-POINT AUDIT now.` }] }]
         });
 
         const feedback = finalResult.response.text();
-        scriptMemory = feedback.substring(0, 1500);
+        scriptMemory = feedback.substring(0, 1200);
         res.json({ message: feedback });
     } catch (err) {
-        res.status(500).json({ message: "Frank had a technical glitch. Try again, darling." });
+        res.status(500).json({ message: "Technical glitch, darling." });
     }
 });
 
@@ -75,11 +72,11 @@ app.post('/chat', async (req, res) => {
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
         const result = await model.generateContent({
-            systemInstruction: "You are Frank. Answer follow-ups based on this memory: " + scriptMemory,
+            systemInstruction: "You are Frank. Answer follow-up questions using memory: " + scriptMemory,
             contents: [{ role: "user", parts: [{ text: req.body.message }] }]
         });
         res.json({ message: result.response.text() });
-    } catch (err) { res.status(500).json({ message: "I'm in a meeting." }); }
+    } catch (err) { res.status(500).json({ message: "Busy." }); }
 });
 
 app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
