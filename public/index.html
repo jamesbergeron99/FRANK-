@@ -2,61 +2,80 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Frank's Private Office</title>
+    <title>Frank's Forensic Suite</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        body { background: #0a0a0a; color: #d4af37; font-family: 'Georgia', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
-        .header { padding: 20px; border-bottom: 2px solid #d4af37; background: #111; text-align: center; }
-        h1 { margin: 0; font-style: italic; letter-spacing: 3px; text-transform: uppercase; font-size: 1.8rem; }
-        #chat-window { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; background: #050505; padding-bottom: 150px; }
-        .msg { max-width: 90%; padding: 20px; border-radius: 10px; line-height: 1.7; font-size: 1.1rem; white-space: pre-wrap; align-self: flex-start; background: #1a1a1a; border-left: 5px solid #d4af37; color: #eee; }
-        .user-msg { align-self: flex-end; border-left: none; border-right: 5px solid #d4af37; background: #222; }
-        .media-bar { background: #111; padding: 10px; display: flex; justify-content: center; gap: 20px; border-top: 1px solid #333; }
-        .media-btn { background: none; border: 1px solid #d4af37; color: #d4af37; padding: 8px 15px; cursor: pointer; font-size: 0.8rem; text-transform: uppercase; }
-        .input-area { padding: 20px; background: #111; border-top: 2px solid #d4af37; display: flex; gap: 15px; align-items: center; }
-        .pill { flex-grow: 1; display: flex; background: #000; border: 1px solid #d4af37; border-radius: 30px; padding: 5px 20px; align-items: center; }
-        #textInput { flex-grow: 1; background: transparent; border: none; color: #fff; padding: 12px; outline: none; font-size: 1rem; }
-        .mic-btn { color: #d4af37; cursor: pointer; font-size: 1.2rem; }
+        :root { --gold: #d4af37; --bg: #050505; --card: #151515; }
+        body { background: var(--bg); color: #eee; font-family: 'Segoe UI', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
+        .header { padding: 20px; border-bottom: 2px solid var(--gold); background: #111; text-align: center; }
+        h1 { margin: 0; font-style: italic; letter-spacing: 2px; color: var(--gold); font-size: 1.6rem; }
+        
+        /* Premium Toggle Switch */
+        .toggle-box { display: flex; align-items: center; justify-content: center; gap: 15px; margin-top: 10px; font-weight: bold; font-size: 0.9rem; }
+        .switch { position: relative; display: inline-block; width: 60px; height: 30px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 34px; border: 1px solid var(--gold); }
+        .slider:before { position: absolute; content: ""; height: 22px; width: 22px; left: 4px; bottom: 3px; background-color: var(--gold); transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #1a1a1a; }
+        input:checked + .slider:before { transform: translateX(28px); }
+
+        #chat-window { flex-grow: 1; overflow-y: auto; padding: 30px; display: flex; flex-direction: column; gap: 20px; background: radial-gradient(circle at center, #111, #050505); }
+        .msg { max-width: 90%; padding: 25px; border-radius: 12px; line-height: 1.8; font-size: 1.1rem; white-space: pre-wrap; background: var(--card); border-left: 4px solid var(--gold); }
+        .user-msg { align-self: flex-end; border-left: none; border-right: 4px solid var(--gold); background: #222; }
+
+        .media-bar { background: #111; border-top: 1px solid #333; padding: 15px; display: flex; justify-content: center; gap: 40px; align-items: center; }
+        .media-btn { background: none; border: 1px solid var(--gold); color: var(--gold); width: 45px; height: 45px; border-radius: 50%; cursor: pointer; font-size: 1.2rem; transition: 0.3s; }
+        .media-btn:hover { background: var(--gold); color: #000; }
+
+        .input-area { padding: 20px 40px; background: #111; border-top: 2px solid var(--gold); display: flex; gap: 20px; align-items: center; }
+        .pill { flex-grow: 1; display: flex; background: #000; border: 1px solid var(--gold); border-radius: 40px; padding: 5px 25px; align-items: center; }
+        #textInput { flex-grow: 1; background: transparent; border: none; color: #fff; padding: 15px 0; outline: none; font-size: 1.1rem; }
+        .btn-icon { background: none; border: none; color: var(--gold); cursor: pointer; font-size: 1.5rem; }
         .mic-active { color: #ff3b3b; text-shadow: 0 0 10px #ff3b3b; }
-        .action-btn { background: #d4af37; color: #000; border: none; padding: 12px 25px; font-weight: bold; cursor: pointer; border-radius: 5px; }
-        .download-btn { margin-top: 15px; padding: 10px; background: #d4af37; color: #000; border: none; cursor: pointer; font-weight: bold; display: block; }
-        .toggle-container { margin-top: 10px; font-size: 0.8rem; display: flex; justify-content: center; align-items: center; gap: 10px; }
     </style>
 </head>
 <body onclick="initAudio()">
     <div class="header">
         <h1>FRANK'S PRIVATE OFFICE</h1>
-        <div class="toggle-container">
+        <div class="toggle-box">
             <span>FEATURE</span>
-            <input type="checkbox" id="modeToggle">
+            <label class="switch"><input type="checkbox" id="modeToggle"><span class="slider"></span></label>
             <span>T.V. SERIES</span>
         </div>
     </div>
+
     <div id="chat-window"></div>
+
     <div class="media-bar">
-        <button class="media-btn" id="playPauseBtn" onclick="togglePlayback()">PAUSE</button>
+        <button class="media-btn" onclick="skipAudio(-1)"><i class="fas fa-backward"></i></button>
+        <button class="media-btn" id="playPauseBtn" onclick="togglePlayback()"><i class="fas fa-pause"></i></button>
+        <button class="media-btn" onclick="skipAudio(1)"><i class="fas fa-forward"></i></button>
     </div>
+
     <div class="input-area">
-        <button class="action-btn" id="uploadBtn" onclick="document.getElementById('scriptInput').click()"><i class="fas fa-file-upload"></i></button>
+        <button class="btn-icon" onclick="document.getElementById('scriptInput').click()"><i class="fas fa-file-upload"></i></button>
         <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadFiles()">
+        
         <div class="pill">
-            <input type="text" id="textInput" placeholder="Ask Frank..." onkeypress="if(event.key==='Enter') sendBanter()">
-            <i class="fas fa-microphone mic-btn" id="micBtn" onclick="toggleMic()"></i>
+            <input type="text" id="textInput" placeholder="Consult Frank..." onkeypress="if(event.key==='Enter') sendBanter()">
+            <i class="fas fa-microphone btn-icon" id="micBtn" onclick="toggleMic()"></i>
         </div>
-        <button class="action-btn" onclick="sendBanter()"><i class="fas fa-paper-plane"></i></button>
+        
+        <button class="btn-icon" onclick="sendBanter()"><i class="fas fa-paper-plane"></i></button>
+        <button class="btn-icon" onclick="downloadPDFManual()"><i class="fas fa-file-pdf"></i></button>
     </div>
+
     <script>
         const chatWindow = document.getElementById('chat-window');
         const textInput = document.getElementById('textInput');
         const micBtn = document.getElementById('micBtn');
-        const uploadBtn = document.getElementById('uploadBtn');
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSentences = 0;
         let recognition, isMicOn = false, finalTranscript = "";
 
         window.onload = () => {
-            const welcome = "Welcome to the office, darling. Upload your pages when you're ready.";
+            const welcome = "Welcome to the suite. Upload your script for a forensic 18-point audit. I'm ready when you are.";
             addMessage(welcome); speak(welcome);
         };
 
@@ -84,49 +103,35 @@
             const fileInput = document.getElementById('scriptInput');
             const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
             if (fileInput.files.length === 0) return;
-            uploadBtn.disabled = true;
-            addMessage("Scanning pages now. This takes a few minutes for a deep audit, darling...", false);
+            addMessage(`Beginning forensic audit for this ${mode}...`, false);
             const formData = new FormData();
             formData.append('mode', mode);
             formData.append('scripts', fileInput.files[0]);
-            try {
-                const response = await fetch('/analyze', { method: 'POST', body: formData });
-                const data = await response.json();
-                addMessage(data.message, true);
-                speak(data.message);
-                uploadBtn.disabled = false;
-            } catch (err) {
-                addMessage("Frank is indisposed.");
-                uploadBtn.disabled = false;
-            }
+            const response = await fetch('/analyze', { method: 'POST', body: formData });
+            const data = await response.json();
+            addMessage(data.message); speak(data.message);
         }
 
         async function sendBanter() {
             const val = textInput.value; if (!val) return;
-            textInput.value = ''; finalTranscript = "";
-            addMessage(val, false, true);
+            textInput.value = ''; finalTranscript = ""; addMessage(val, false, true);
             const response = await fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) });
             const data = await response.json();
             addMessage(data.message); speak(data.message);
         }
 
-        function addMessage(text, isReport = false, isUser = false) {
+        function addMessage(text, isUser = false) {
             const div = document.createElement('div');
             div.className = isUser ? 'msg user-msg' : 'msg';
             div.innerText = text;
-            if (isReport) {
-                const dl = document.createElement('button');
-                dl.className = 'download-btn'; dl.innerText = "DOWNLOAD PDF";
-                dl.onclick = () => downloadPDF(text);
-                div.appendChild(dl);
-            }
             chatWindow.appendChild(div);
             chatWindow.scrollTop = chatWindow.scrollHeight;
         }
 
         async function speak(fullText) {
             initAudio(); stopCurrentAudio();
-            const sentences = fullText.replace(/[#*]/g, '').match(/[^.!?]+[.!?]+/g) || [fullText];
+            const cleanText = fullText.replace(/[#*]/g, '');
+            const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
             audioBuffers = {}; nextToPlay = 0; totalSentences = sentences.length;
             sentences.forEach(async (sentence, index) => {
                 try {
@@ -137,17 +142,16 @@
                         body: JSON.stringify({ text: sentence, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                     });
                     const data = await ttsResp.json();
-                    const audioData = Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer;
-                    audioBuffers[index] = await audioCtx.decodeAudioData(audioData);
+                    audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
                     if (!isPlaying && index === 0) playSequentially();
                 } catch (e) {}
             });
         }
 
         function playSequentially() {
-            if (nextToPlay >= totalSentences) { isPlaying = false; return; }
+            if (nextToPlay >= totalSentences) { isPlaying = false; document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>'; return; }
             if (audioBuffers[nextToPlay]) {
-                isPlaying = true;
+                isPlaying = true; document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
                 currentSource = audioCtx.createBufferSource();
                 currentSource.buffer = audioBuffers[nextToPlay];
                 currentSource.connect(audioCtx.destination);
@@ -157,11 +161,13 @@
         }
 
         function stopCurrentAudio() { isPlaying = false; if (currentSource) { try { currentSource.stop(); } catch (e) {} currentSource = null; } }
-        function togglePlayback() { if (isPlaying) { stopCurrentAudio(); } else { playSequentially(); } }
-        function downloadPDF(text) {
+        function togglePlayback() { if (isPlaying) { stopCurrentAudio(); document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>'; } else { playSequentially(); } }
+        function skipAudio(dir) { stopCurrentAudio(); nextToPlay = Math.max(0, Math.min(totalSentences - 1, nextToPlay + dir)); playSequentially(); }
+        
+        function downloadPDFManual() {
             const element = document.createElement('div');
-            element.innerHTML = `<div style="padding:40px; border:2px solid #d4af37; background:#000; color:#fff;"><h1>FRANK'S AUDIT</h1><p>${text}</p></div>`;
-            html2pdf().from(element).save();
+            element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; border:2px solid #d4af37; font-family:serif;"><h1>FRANK'S AUDIT REPORT</h1>${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m => `<p style="margin-bottom:20px; line-height:1.6;">${m.innerText}</p>`).join('')}</div>`;
+            html2pdf().from(element).save('Franks_Forensic_Audit.pdf');
         }
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
     </script>
