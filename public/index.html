@@ -33,25 +33,19 @@
             <span>T.V. SERIES</span>
         </div>
     </div>
-
     <div id="chat-window"></div>
-
     <div class="media-bar">
         <button class="media-btn" id="playPauseBtn" onclick="togglePlayback()">PAUSE</button>
     </div>
-
     <div class="input-area">
         <button class="action-btn" id="uploadBtn" onclick="document.getElementById('scriptInput').click()"><i class="fas fa-file-upload"></i></button>
         <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadFiles()">
-        
         <div class="pill">
-            <input type="text" id="textInput" placeholder="Ask Frank about your script..." onkeypress="if(event.key==='Enter') sendBanter()">
+            <input type="text" id="textInput" placeholder="Ask Frank..." onkeypress="if(event.key==='Enter') sendBanter()">
             <i class="fas fa-microphone mic-btn" id="micBtn" onclick="toggleMic()"></i>
         </div>
-        
         <button class="action-btn" onclick="sendBanter()"><i class="fas fa-paper-plane"></i></button>
     </div>
-
     <script>
         const chatWindow = document.getElementById('chat-window');
         const textInput = document.getElementById('textInput');
@@ -61,13 +55,9 @@
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSentences = 0;
         let recognition, isMicOn = false, finalTranscript = "";
 
-        fetch('/voice-settings').then(r => r.json()).then(data => voiceSettings = data);
-
-        // PAYPAL REDIRECT REMOVED: Loads immediately
         window.onload = () => {
-            const welcome = "Welcome to my office, darling. Upload your pages whenever you're ready, or just tell me what's on your mind.";
-            addMessage(welcome);
-            speak(welcome);
+            const welcome = "Welcome to the office, darling. Upload your pages when you're ready.";
+            addMessage(welcome); speak(welcome);
         };
 
         if ('webkitSpeechRecognition' in window) {
@@ -94,14 +84,11 @@
             const fileInput = document.getElementById('scriptInput');
             const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
             if (fileInput.files.length === 0) return;
-
             uploadBtn.disabled = true;
-            addMessage(`Scanning your ${mode} pages now, honey. Give me a moment...`, false);
-            
+            addMessage("Scanning pages now. This takes a few minutes for a deep audit, darling...", false);
             const formData = new FormData();
             formData.append('mode', mode);
             formData.append('scripts', fileInput.files[0]);
-
             try {
                 const response = await fetch('/analyze', { method: 'POST', body: formData });
                 const data = await response.json();
@@ -109,25 +96,18 @@
                 speak(data.message);
                 uploadBtn.disabled = false;
             } catch (err) {
-                addMessage("Frank is indisposed, darling. Try that upload again.");
+                addMessage("Frank is indisposed.");
                 uploadBtn.disabled = false;
             }
         }
 
         async function sendBanter() {
-            const val = textInput.value;
-            if (!val) return;
+            const val = textInput.value; if (!val) return;
             textInput.value = ''; finalTranscript = "";
             addMessage(val, false, true);
-            
-            const response = await fetch('/chat', { 
-                method: 'POST', 
-                headers: { 'Content-Type': 'application/json' }, 
-                body: JSON.stringify({ message: val }) 
-            });
+            const response = await fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) });
             const data = await response.json();
-            addMessage(data.message);
-            speak(data.message);
+            addMessage(data.message); speak(data.message);
         }
 
         function addMessage(text, isReport = false, isUser = false) {
@@ -145,19 +125,15 @@
         }
 
         async function speak(fullText) {
-            initAudio();
-            stopCurrentAudio();
-            const cleanText = fullText.replace(/[#*]/g, '');
-            const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
+            initAudio(); stopCurrentAudio();
+            const sentences = fullText.replace(/[#*]/g, '').match(/[^.!?]+[.!?]+/g) || [fullText];
             audioBuffers = {}; nextToPlay = 0; totalSentences = sentences.length;
-            
             sentences.forEach(async (sentence, index) => {
                 try {
                     const settingsResp = await fetch('/voice-settings');
                     const settings = await settingsResp.json();
                     const ttsResp = await fetch("https://api.inworld.ai/tts/v1/voice", {
-                        method: "POST",
-                        headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                        method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
                         body: JSON.stringify({ text: sentence, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                     });
                     const data = await ttsResp.json();
@@ -184,7 +160,7 @@
         function togglePlayback() { if (isPlaying) { stopCurrentAudio(); } else { playSequentially(); } }
         function downloadPDF(text) {
             const element = document.createElement('div');
-            element.innerHTML = `<div style="padding:40px; border:2px solid #d4af37; background:#000; color:#fff; font-family:serif;"><h1>FRANK'S AUDIT</h1><p style="white-space:pre-wrap;">${text}</p></div>`;
+            element.innerHTML = `<div style="padding:40px; border:2px solid #d4af37; background:#000; color:#fff;"><h1>FRANK'S AUDIT</h1><p>${text}</p></div>`;
             html2pdf().from(element).save();
         }
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
