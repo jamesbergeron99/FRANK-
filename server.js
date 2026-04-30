@@ -18,18 +18,18 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 let scriptMemory = "";
 
-const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
-TONE: Professional, sophisticated, and forensic.
-CONTEXT: This is a ${type}.
+const FRANK_IDENTITY = (type, memory) => `You are Frank, elite Studio Executive. 
+TONE: Professional, sophisticated, honest.
+CONTEXT: ${type}. 
+NOTE: If this is a T.V. Series, it is a PILOT. Do not critque "unanswered questions" that belong in future episodes. Focus on the hook and series potential.
 MEMORY: ${memory}
 
 STRICT OUTPUT STRUCTURE:
-1. SPELLING & GRAMMAR: Provide a concise list of typos and mistakes. Format: "Mistake" - [Page X]. No narrative fluff or critiques.
-2. FORMATTING: A direct list of industry standard violations with [Page X]. Be brief.
-3. LOGLINE & SLUG-LINE: High-concept and professional.
-4. SYNOPSIS: Deep structural summary.
-5. THE BIG THREE FIXES: Labeled FIX 1, 2, 3. Massive strategic advice.
-6. 18-POINT NARRATIVE AUDIT: Numbered 1-18. Each point must be a substantial paragraph (6+ sentences) with multiple [Page X] and "Direct Quotes" as forensic proof.
+1. SPELLING & GRAMMAR: Concise list. Format: "Mistake" - [Page X]. (NO FORMATTING CHECK).
+2. LOGLINE & SLUG-LINE: Sharp, industry-standard.
+3. SYNOPSIS: Structural breakdown of these specific pages.
+4. THE BIG THREE FIXES: Labeled FIX 1, 2, 3. Strategic advice.
+5. 18-POINT NARRATIVE AUDIT: Numbered 1-18. Substantial paragraphs (6+ sentences) with multiple [Page X] and "Direct Quotes" proving you read the text.
 
 VOICE: Plain text only. No markdown.`;
 
@@ -39,17 +39,16 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const data = await pdf(req.files[0].buffer);
         const scriptText = data.text;
         
-        const CHUNK_SIZE = 30000;
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+
+        const CHUNK_SIZE = 35000;
         const chunks = [];
         for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) {
             chunks.push(scriptText.substring(i, i + CHUNK_SIZE));
         }
 
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-
-        // We process chunks in parallel to save time
-        const scanResults = await Promise.all(chunks.map(async (chunk, index) => {
-            const result = await model.generateContent(`Extract all typos, formatting errors, and 10 key dialogue quotes from this segment: \n\n ${chunk}`);
+        const scanResults = await Promise.all(chunks.map(async (chunk) => {
+            const result = await model.generateContent(`Extract all typos and 12 key dialogue quotes for an 18-point audit: \n\n ${chunk}`);
             return result.response.text();
         }));
         
@@ -57,7 +56,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 
         const finalResult = await model.generateContent({
             systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
-            contents: [{ role: "user", parts: [{ text: `Evidence: ${forensicData} \n\n Full Text: ${scriptText.substring(0, 80000)} \n\n Generate the FULL 18-POINT AUDIT now.` }] }]
+            contents: [{ role: "user", parts: [{ text: `Evidence: ${forensicData} \n\n Full Text: ${scriptText.substring(0, 85000)} \n\n Generate the 18-POINT AUDIT.` }] }]
         });
 
         const feedback = finalResult.response.text();
@@ -72,7 +71,7 @@ app.post('/chat', async (req, res) => {
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
         const result = await model.generateContent({
-            systemInstruction: "You are Frank. Answer follow-up questions using memory: " + scriptMemory,
+            systemInstruction: "You are Frank. Answer follow-ups using memory: " + scriptMemory,
             contents: [{ role: "user", parts: [{ text: req.body.message }] }]
         });
         res.json({ message: result.response.text() });
