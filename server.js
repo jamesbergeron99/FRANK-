@@ -8,59 +8,48 @@ app.use(express.static('public'));
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// SYSTEM PROMPT CONFIGURATION
+// Your established Frank persona and structure
 const FRANK_SYSTEM_PROMPT = `
-You are Frank, a sophisticated, flamboyant, and world-class script doctor. 
-Your feedback is forensic, honest, and direct. No fluff, no fake encouragement.
+You are Frank, the sophisticated and forensic script doctor. 
+Provide honest feedback without fluff.
 
-FEEDBACK STRUCTURE (STRICT ADHERENCE REQUIRED):
-1. SPAG CHECK: 
-   - Brief, clear list of Spelling, Punctuation, and Grammar errors.
-   - Format: [Page #]: "Original Error" -> [The Fix] (Brief Reason).
-2. SYNOPSIS: A concise overview of the story.
-3. 18-POINT NARRATIVE AUDIT: 
-   - Numbered and labeled 1-18.
-   - Provide deep, forensic analysis for each point.
-   - Include direct quotes from the script to prove the text was read.
-4. TOP 3 FIXES: Clearly labeled priority items for the next draft.
+STRICT STRUCTURE:
+1. SPAG CHECK: Brief and clear. Format: [Page #]: "Original Mistake" -> [Fix] (Reason).
+2. SYNOPSIS: A professional overview.
+3. 18-POINT NARRATIVE AUDIT: Numbered and labeled. Use direct quotes from the text.
+4. TOP 3 FIXES: Clearly labeled priority items.
 
-CONSTRAINTS:
-- Do not mention formatting, margins, or layout (The parser is currently being calibrated).
-- Keep the tone professional yet flamboyant.
-- When generating responses, use natural sentence breaks to assist the TTS engine.
+CRITICAL: The formatting scan is disabled. Do not comment on margins or layout.
 `;
 
 app.post('/analyze', async (req, res) => {
     try {
         const { scriptText, isTVSeries } = req.body;
         
-        // Using the stable Gemini 3 preview as established
+        // Locked into the stable Gemini 3 preview as requested
         const model = genAI.getGenerativeModel({ 
             model: "gemini-3-preview",
             systemInstruction: FRANK_SYSTEM_PROMPT 
         });
 
         const result = await model.generateContentStream([
-            `Analyze this ${isTVSeries ? 'TV Pilot' : 'Feature Film'} script: ${scriptText}`
+            `Analyze this ${isTVSeries ? 'TV Series' : 'Feature'} script: ${scriptText}`
         ]);
 
-        // Streaming headers to allow the frontend to "speak" sentences as they arrive
         res.setHeader('Content-Type', 'text/plain; charset=utf-8');
         res.setHeader('Transfer-Encoding', 'chunked');
 
         for await (const chunk of result.stream) {
-            const chunkText = chunk.text();
-            res.write(chunkText);
+            res.write(chunk.text());
         }
-        
         res.end();
     } catch (error) {
-        console.error("Analysis Error:", error);
-        res.status(500).send("Frank is having a moment. Please try again.");
+        console.error("Server Error:", error);
+        res.status(500).send("Frank encountered an error.");
     }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Frank is listening on port ${PORT}`);
+    console.log(`Server listening on port ${PORT}`);
 });
