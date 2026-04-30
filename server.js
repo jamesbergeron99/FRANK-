@@ -16,20 +16,24 @@ app.use(express.static(path.join(__dirname, 'public')));
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-let scriptMemory = "";
+// THE SEQUENTIAL MEMORY UPGRADE
+let storySoFar = ""; 
 
-const FRANK_IDENTITY = (type, memory) => `You are Frank, elite Studio Executive. 
-TONE: Professional, sophisticated, honest.
-CONTEXT: ${type}. 
-NOTE: If this is a T.V. Series, it is a PILOT. Do not critque "unanswered questions" that belong in future episodes. Focus on the hook and series potential.
-MEMORY: ${memory}
+const FRANK_IDENTITY = (type, history) => `You are Frank, elite Studio Executive. 
+CONTEXT: This is a ${type}. 
+STORY PROGRESSION: ${history || "This is the very first set of pages."}
 
-STRICT OUTPUT STRUCTURE:
-1. SPELLING & GRAMMAR: Concise list. Format: "Mistake" - [Page X]. (NO FORMATTING CHECK).
-2. LOGLINE & SLUG-LINE: Sharp, industry-standard.
-3. SYNOPSIS: Structural breakdown of these specific pages.
-4. THE BIG THREE FIXES: Labeled FIX 1, 2, 3. Strategic advice.
-5. 18-POINT NARRATIVE AUDIT: Numbered 1-18. Substantial paragraphs (6+ sentences) with multiple [Page X] and "Direct Quotes" proving you read the text.
+STRICT SEQUENTIAL RULES:
+1. CONTINUITY: If history exists, do NOT critique character introductions or world-building already established. Focus on how these NEW pages progress the existing arc.
+2. NARRATIVE FLOW: Analyze the transition from the previous episode to this one.
+3. NO REPEATS: Focus on new typos and new plot points.
+
+STRUCTURE:
+1. SPELLING & GRAMMAR: Concise list [Page X].
+2. SYNOPSIS: Breakdown of THIS specific episode/segment.
+3. CONTINUITY CHECK: One paragraph on how well this follows the previous pages.
+4. THE BIG THREE FIXES: Urgent advice for this segment.
+5. 18-POINT AUDIT: Numbered 1-18. Deep narrative paragraphs (6+ sentences) with [Page X] and "Quotes".
 
 VOICE: Plain text only. No markdown.`;
 
@@ -41,6 +45,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
+        // Phase 1: Fast Parallel Scan
         const CHUNK_SIZE = 35000;
         const chunks = [];
         for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) {
@@ -54,13 +59,18 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         
         const forensicData = scanResults.join("\n");
 
+        // Phase 2: Generate Audit with History
         const finalResult = await model.generateContent({
-            systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
-            contents: [{ role: "user", parts: [{ text: `Evidence: ${forensicData} \n\n Full Text: ${scriptText.substring(0, 85000)} \n\n Generate the 18-POINT AUDIT.` }] }]
+            systemInstruction: FRANK_IDENTITY(mode, storySoFar),
+            contents: [{ role: "user", parts: [{ text: `NEW PAGES Evidence: ${forensicData} \n\n NEW PAGES Text: ${scriptText.substring(0, 85000)} \n\n Generate the 18-POINT AUDIT as a progression of the story.` }] }]
         });
 
         const feedback = finalResult.response.text();
-        scriptMemory = feedback.substring(0, 1200);
+        
+        // Update storySoFar for the NEXT upload
+        const summaryResult = await model.generateContent(`Summarize the key plot progression and character changes in these pages for long-term memory: ${feedback.substring(0, 5000)}`);
+        storySoFar += "\n" + summaryResult.response.text();
+
         res.json({ message: feedback });
     } catch (err) {
         res.status(500).json({ message: "Technical glitch, darling." });
@@ -71,7 +81,7 @@ app.post('/chat', async (req, res) => {
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
         const result = await model.generateContent({
-            systemInstruction: "You are Frank. Answer follow-ups using memory: " + scriptMemory,
+            systemInstruction: "You are Frank. Answer questions based on the Story So Far: " + storySoFar,
             contents: [{ role: "user", parts: [{ text: req.body.message }] }]
         });
         res.json({ message: result.response.text() });
