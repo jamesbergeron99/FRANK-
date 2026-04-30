@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Frank's Private Office</title>
+    <title>Frank's Forensic Suite</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -19,9 +19,10 @@
         input:checked + .slider:before { transform: translateX(24px); }
 
         #chat-window { flex-grow: 1; overflow-y: auto; padding: 25px; display: flex; flex-direction: column; gap: 20px; background: #080808; }
-        .msg { max-width: 90%; padding: 25px; border-radius: 10px; line-height: 1.8; font-size: 1.1rem; white-space: pre-wrap; background: #151515; border-left: 4px solid var(--gold); }
+        .msg { max-width: 90%; padding: 25px; border-radius: 10px; line-height: 1.8; font-size: 1.1rem; white-space: pre-wrap; background: #151515; border-left: 4px solid var(--gold); position: relative; }
         .user-msg { align-self: flex-end; border-left: none; border-right: 4px solid var(--gold); background: #222; }
 
+        /* Thinking Indicator */
         .loader { display: none; align-items: center; gap: 10px; color: var(--gold); font-style: italic; margin-top: 10px; font-size: 0.9rem; }
         .dot-flashing { position: relative; width: 10px; height: 10px; border-radius: 5px; background-color: var(--gold); animation: dot-flashing 1s infinite linear alternate; animation-delay: .5s; }
         @keyframes dot-flashing { 0% { background-color: var(--gold); } 50%, 100% { background-color: #333; } }
@@ -76,18 +77,9 @@
         const loader = document.getElementById('frank-loader');
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSentences = 0;
-        let recognition, isMicOn = false, finalTranscript = "", hasGreeted = false;
+        let recognition, isMicOn = false, finalTranscript = "";
 
-        // Auto-greeting logic
-        function initAudio() {
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            if (!hasGreeted) {
-                hasGreeted = true;
-                const welcome = "Hey there, this is Frank. I'm your AI script doctor. I'm here to help you with your script. My feedback is honest and at times brutal, but only to help you make your work the best it can be, darling. Please upload a script to begin and give me a few minutes to process it.";
-                addMessage(welcome);
-                speak(welcome);
-            }
-        }
+        window.onload = () => { addMessage("Welcome back. Upload your script for the forensic 18-point audit."); };
 
         if ('webkitSpeechRecognition' in window) {
             recognition = new webkitSpeechRecognition();
@@ -104,7 +96,7 @@
         }
 
         function toggleMic() {
-            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
             if (!isMicOn) { isMicOn = true; micBtn.classList.add('mic-active'); finalTranscript = ""; recognition.start(); }
             else { isMicOn = false; micBtn.classList.remove('mic-active'); recognition.stop(); }
         }
@@ -147,7 +139,7 @@
         }
 
         async function speak(fullText) {
-            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
             stopCurrentAudio();
             const sentences = fullText.replace(/[#*]/g, '').match(/[^.!?]+[.!?]+/g) || [fullText];
             audioBuffers = {}; nextToPlay = 0; totalSentences = sentences.length;
@@ -186,6 +178,7 @@
             element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; border:2px solid #d4af37;"><h1>FRANK'S AUDIT</h1>${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m => `<p>${m.innerText}</p>`).join('')}</div>`;
             html2pdf().from(element).save();
         }
+        function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
     </script>
 </body>
 </html>
