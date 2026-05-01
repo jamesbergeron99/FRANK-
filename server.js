@@ -16,7 +16,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-// This variable handles the connective memory for TV Series
+// Variable for TV Series connective memory
 let scriptMemory = "";
 
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
@@ -42,7 +42,6 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const data = await pdf(req.files[0].buffer);
         const scriptText = data.text;
         
-        // Using Gemini 3 Preview as your stable model
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
         const CHUNK_SIZE = 30000;
@@ -64,11 +63,11 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 
         const feedback = finalResult.response.text();
         
-        // Update memory ONLY for TV Series mode to ensure ongoing cohesion
+        // Update memory only in TV mode
         if (mode === 'T.V. Series') {
             scriptMemory += "\n" + feedback.substring(0, 1500);
         } else {
-            scriptMemory = ""; // Keep memory empty for Features to ensure a fresh session
+            scriptMemory = ""; 
         }
 
         res.json({ message: feedback });
@@ -77,7 +76,6 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     }
 });
 
-// Specific route for the TV Toggle Greeting to maintain Inworld TTS flow
 app.post('/tv-greeting', (req, res) => {
     const greeting = "I'm customized not only to give you an eighteen-point audit on each episode of your series, but to track continuity, character arc, and series arc to ensure you have a cohesive story. Start with the first episode and my feedback will continue over multiple episodes.";
     res.json({ message: greeting });
