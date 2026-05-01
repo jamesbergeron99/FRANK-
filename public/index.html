@@ -10,27 +10,22 @@
         body { background: var(--bg); color: #eee; font-family: 'Segoe UI', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
         .header { padding: 15px; border-bottom: 2px solid var(--gold); background: #111; text-align: center; }
         h1 { margin: 0; font-style: italic; color: var(--gold); letter-spacing: 2px; font-size: 1.5rem; }
-        
         .toggle-box { display: flex; align-items: center; justify-content: center; gap: 15px; margin-top: 10px; font-weight: bold; font-size: 0.8rem; }
         .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 24px; border: 1px solid var(--gold); }
         .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 3px; background-color: var(--gold); transition: .4s; border-radius: 50%; }
         input:checked + .slider:before { transform: translateX(24px); }
-
         #chat-window { flex-grow: 1; overflow-y: auto; padding: 25px; display: flex; flex-direction: column; gap: 20px; background: #080808; }
         .msg { max-width: 90%; padding: 25px; border-radius: 10px; line-height: 1.8; font-size: 1.1rem; white-space: pre-wrap; background: var(--card); border-left: 4px solid var(--gold); }
         .user-msg { align-self: flex-end; border-left: none; border-right: 4px solid var(--gold); background: #222; }
-
         .media-bar { background: #111; padding: 10px; display: flex; justify-content: center; gap: 35px; border-top: 1px solid #333; }
         .media-btn { background: none; border: 1px solid var(--gold); color: var(--gold); width: 42px; height: 42px; border-radius: 50%; cursor: pointer; font-size: 1rem; transition: 0.2s; }
         .media-btn:hover { background: var(--gold); color: #000; }
-
         .input-area { padding: 15px 30px; background: #111; border-top: 2px solid var(--gold); display: flex; gap: 15px; align-items: center; }
         .pill { flex-grow: 1; display: flex; background: #000; border: 1px solid var(--gold); border-radius: 40px; padding: 5px 20px; align-items: center; }
         #textInput { flex-grow: 1; background: transparent; border: none; color: #fff; padding: 12px 0; outline: none; font-size: 1rem; }
         .icon-btn { background: none; border: none; color: var(--gold); cursor: pointer; font-size: 1.4rem; }
-        .mic-active { color: #ff3b3b; text-shadow: 0 0 10px #ff3b3b; }
     </style>
 </head>
 <body onclick="initAudio()">
@@ -42,83 +37,39 @@
             <span>T.V. SERIES</span>
         </div>
     </div>
-
     <div id="chat-window"></div>
-
     <div class="media-bar">
         <button class="media-btn" onclick="skipAudio(-1)"><i class="fas fa-backward"></i></button>
         <button class="media-btn" id="playPauseBtn" onclick="togglePlayback()"><i class="fas fa-pause"></i></button>
         <button class="media-btn" onclick="skipAudio(1)"><i class="fas fa-forward"></i></button>
     </div>
-
     <div class="input-area">
         <button class="icon-btn" onclick="document.getElementById('scriptInput').click()"><i class="fas fa-file-upload"></i></button>
         <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadFiles()">
         <div class="pill">
             <input type="text" id="textInput" placeholder="Consult Frank..." onkeypress="if(event.key==='Enter') sendBanter()">
-            <i class="fas fa-microphone icon-btn" id="micBtn" onclick="toggleMic()"></i>
         </div>
         <button class="icon-btn" onclick="sendBanter()"><i class="fas fa-paper-plane"></i></button>
-        <button class="icon-btn" onclick="downloadPDF()"><i class="fas fa-file-pdf"></i></button>
     </div>
 
     <script>
         const chatWindow = document.getElementById('chat-window');
         const textInput = document.getElementById('textInput');
-        const micBtn = document.getElementById('micBtn');
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSentences = 0;
-        let recognition, isMicOn = false, finalTranscript = "";
 
-        // Welcome greeting restored exactly as requested
         window.onload = () => { 
             localStorage.clear();
-            sessionStorage.clear();
-            
             const welcome = "Hey, this is Frank your script doctor. I'm here to make your scripts the best it can be. My feedback is no fluff or false encouragement. It's honest. Upload a feature or switch to TV series mode to begin. It takes a few minutes to process your work, darling.";
-            
             addMessage(welcome); 
             speak(welcome);
         };
-
-        document.getElementById('modeToggle').addEventListener('change', async function() {
-            if (this.checked) {
-                const response = await fetch('/tv-greeting', { method: 'POST' });
-                const data = await response.json();
-                addMessage(data.message);
-                speak(data.message);
-            } else {
-                const featureMsg = "Feature mode activated. A clean slate for a standalone project.";
-                addMessage(featureMsg);
-                speak(featureMsg);
-            }
-        });
-
-        if ('webkitSpeechRecognition' in window) {
-            recognition = new webkitSpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.onresult = (e) => {
-                let interim = "";
-                for (let i = e.resultIndex; i < e.results.length; ++i) {
-                    if (e.results[i].isFinal) finalTranscript += e.results[i][0].transcript + " ";
-                    else interim += e.results[i][0].transcript;
-                }
-                textInput.value = finalTranscript + interim;
-            };
-        }
-
-        function toggleMic() {
-            initAudio();
-            if (!isMicOn) { isMicOn = true; micBtn.classList.add('mic-active'); finalTranscript = ""; recognition.start(); }
-            else { isMicOn = false; micBtn.classList.remove('mic-active'); recognition.stop(); }
-        }
 
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
             const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
             if (fileInput.files.length === 0) return;
-            addMessage(`Performing a deep forensic audit for this ${mode}. This takes a few moments, darling...`, false);
+            addMessage(`Analyzing ${mode}...`, false);
             const formData = new FormData();
             formData.append('mode', mode);
             formData.append('scripts', fileInput.files[0]);
@@ -129,7 +80,7 @@
 
         async function sendBanter() {
             const val = textInput.value; if (!val) return;
-            textInput.value = ''; finalTranscript = ""; addMessage(val, true);
+            textInput.value = ''; addMessage(val, true);
             const response = await fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) });
             const data = await response.json();
             addMessage(data.message); speak(data.message);
@@ -161,9 +112,9 @@
         }
 
         function playSequentially() {
-            if (nextToPlay >= totalSentences) { isPlaying = false; document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>'; return; }
+            if (nextToPlay >= totalSentences) { isPlaying = false; return; }
             if (audioBuffers[nextToPlay]) {
-                isPlaying = true; document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
+                isPlaying = true;
                 currentSource = audioCtx.createBufferSource();
                 currentSource.buffer = audioBuffers[nextToPlay];
                 currentSource.connect(audioCtx.destination);
@@ -173,16 +124,8 @@
         }
 
         function stopCurrentAudio() { isPlaying = false; if (currentSource) { try { currentSource.stop(); } catch (e) {} currentSource = null; } }
-        function togglePlayback() { if (isPlaying) { stopCurrentAudio(); document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>'; } else { playSequentially(); } }
-        
-        // FIX: stopCurrentAudio is now called to prevent audio overlap
+        function togglePlayback() { if (isPlaying) { stopCurrentAudio(); } else { playSequentially(); } }
         function skipAudio(dir) { stopCurrentAudio(); nextToPlay = Math.max(0, Math.min(totalSentences - 1, nextToPlay + dir)); playSequentially(); }
-        
-        function downloadPDF() {
-            const element = document.createElement('div');
-            element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; border:2px solid #d4af37; font-family:serif;"><h1>FRANK'S EXECUTIVE AUDIT</h1>${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m => `<p style="line-height:1.6; margin-bottom:15px;">${m.innerText}</p>`).join('')}</div>`;
-            html2pdf().from(element).save('Franks_Audit.pdf');
-        }
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
     </script>
 </body>
