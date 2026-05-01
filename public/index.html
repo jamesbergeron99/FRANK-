@@ -11,7 +11,6 @@
         .header { padding: 15px; border-bottom: 2px solid var(--gold); background: #111; text-align: center; }
         h1 { margin: 0; font-style: italic; color: var(--gold); letter-spacing: 2px; font-size: 1.5rem; }
         
-        /* Premium Toggle */
         .toggle-box { display: flex; align-items: center; justify-content: center; gap: 15px; margin-top: 10px; font-weight: bold; font-size: 0.8rem; }
         .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
         .switch input { opacity: 0; width: 0; height: 0; }
@@ -71,7 +70,26 @@
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSentences = 0;
         let recognition, isMicOn = false, finalTranscript = "";
 
-        window.onload = () => { addMessage("Welcome back. I've tuned my forensic sensors. Upload your script whenever you're ready."); };
+        // Reset session memory on every page load to ensure privacy
+        window.onload = () => { 
+            localStorage.clear();
+            sessionStorage.clear();
+            addMessage("Welcome back. I've tuned my forensic sensors. Upload your script whenever you're ready."); 
+        };
+
+        // Handle the T.V. Series Toggle with specific verbal greeting
+        document.getElementById('modeToggle').addEventListener('change', async function() {
+            if (this.checked) {
+                const response = await fetch('/tv-greeting', { method: 'POST' });
+                const data = await response.json();
+                addMessage(data.message);
+                speak(data.message);
+            } else {
+                const featureMsg = "Feature mode activated. A clean slate for a standalone project.";
+                addMessage(featureMsg);
+                speak(featureMsg);
+            }
+        });
 
         if ('webkitSpeechRecognition' in window) {
             recognition = new webkitSpeechRecognition();
