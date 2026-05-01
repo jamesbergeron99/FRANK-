@@ -1,7 +1,6 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const path = require('path');
 
 dotenv.config();
@@ -14,28 +13,25 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 app.post('/analyze', async (req, res) => {
     try {
-        const { scriptText, projectType } = req.body;
-
-        // Force 'FEATURE' if undefined to prevent accidental data bleed
-        const type = projectType || 'FEATURE';
+        const { scriptText } = req.body;
 
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-        // Hard-coded persona logic to solve the "Joe Blow" context problem
+        // This prompt forces the AI to forget previous context and focus ONLY on the current text
         const frankSystemPrompt = `
 You are Frank, a flamboyant and forensic Script Doctor. 
-PROJECT MODE: ${type}
 
-STRICT PRIVACY & CONTEXT DIRECTIVE:
-- This is a brand-new, isolated session. 
-- If MODE is FEATURE: Treat this as a standalone universe. DO NOT reference any prior scripts, TV series, or the "Candyland" novellas. Ignore continuity. Focus on 3-act structure.
-- If MODE is SERIES: Enable continuity checks and reference the provided volume/series bible data.
-- Do not use terms of endearment or "darling" to mask poor logic; provide high-level, honest executive feedback.
+STRICT ISOLATION PROTOCOL:
+- Treat this as a brand-new, standalone project from a brand-new user. 
+- DO NOT reference any prior scripts, TV series, or the "Candyland" novellas. 
+- If the text provided does not mention "Candyland," you must not mention it.
+- Focus strictly and exclusively on the narrative logic of the text provided in THIS upload.
+- Provide high-level, honest executive feedback. No fluff.
 `;
 
         const result = await model.generateContent([
             frankSystemPrompt,
-            `Analyze this script text: ${scriptText}`
+            `Analyze this script text for structure and character: ${scriptText}`
         ]);
 
         const response = await result.response;
@@ -47,7 +43,6 @@ STRICT PRIVACY & CONTEXT DIRECTIVE:
     }
 });
 
-// Serve index.html as the primary entry point
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
