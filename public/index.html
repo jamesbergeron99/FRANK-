@@ -50,6 +50,7 @@
             <input type="text" id="textInput" placeholder="Consult Frank..." onkeypress="if(event.key==='Enter') sendBanter()">
         </div>
         <button class="icon-btn" onclick="sendBanter()"><i class="fas fa-paper-plane"></i></button>
+        <button class="icon-btn" onclick="downloadPDF()"><i class="fas fa-file-pdf"></i></button>
     </div>
 
     <script>
@@ -60,7 +61,7 @@
 
         window.onload = () => { 
             localStorage.clear();
-            const welcome = "Hey, this is Frank your script doctor. I'm here to make your scripts the best it can be. My feedback is no fluff or false encouragement. It's honest. Upload a feature or switch to TV series mode to begin. It takes a few minutes to process your work, darling.";
+            const welcome = "Hey there. I'm Frank, your script doctor, your AI script doctor. I'm here to give you actionable feedback to help you make your script the best it can be. I'm not here for fluff or false encouragement, but honest feedback that is at times brutal when necessary. But it's all in the spirit of creative perfection, darling. So upload your feature, or shift to TV series mode and give me a few minutes to analyze your work.";
             addMessage(welcome); 
             speak(welcome);
         };
@@ -72,9 +73,8 @@
                 addMessage(data.message);
                 speak(data.message);
             } else {
-                const featureMsg = "Feature mode activated. A clean slate for a standalone project.";
-                addMessage(featureMsg);
-                speak(featureMsg);
+                addMessage("Feature mode. Standalone project audit initiated.");
+                speak("Feature mode. Standalone project audit initiated.");
             }
         });
 
@@ -136,9 +136,36 @@
             } else { setTimeout(playSequentially, 150); }
         }
 
-        function stopCurrentAudio() { isPlaying = false; if (currentSource) { try { currentSource.stop(); } catch (e) {} currentSource = null; } }
-        function togglePlayback() { if (isPlaying) { stopCurrentAudio(); } else { playSequentially(); } }
-        function skipAudio(dir) { stopCurrentAudio(); nextToPlay = Math.max(0, Math.min(totalSentences - 1, nextToPlay + dir)); playSequentially(); }
+        function stopCurrentAudio() { 
+            isPlaying = false; 
+            if (currentSource) { 
+                try { currentSource.stop(); currentSource.disconnect(); } catch (e) {} 
+                currentSource = null; 
+            } 
+        }
+
+        function togglePlayback() { 
+            if (isPlaying) { 
+                stopCurrentAudio(); 
+                document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
+            } else { 
+                playSequentially(); 
+                document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
+            } 
+        }
+
+        function skipAudio(dir) { 
+            stopCurrentAudio(); 
+            nextToPlay = Math.max(0, Math.min(totalSentences - 1, nextToPlay + dir)); 
+            playSequentially(); 
+        }
+
+        function downloadPDF() {
+            const element = document.createElement('div');
+            element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; border:2px solid #d4af37; font-family:serif;"><h1>FRANK'S EXECUTIVE AUDIT</h1>${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m => `<p style="line-height:1.6; margin-bottom:15px;">${m.innerText}</p>`).join('')}</div>`;
+            html2pdf().from(element).save('Franks_Audit.pdf');
+        }
+
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
     </script>
 </body>
