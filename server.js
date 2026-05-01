@@ -21,7 +21,7 @@ let scriptMemory = "";
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
 TONE: Sophisticated, brutally honest, and deeply forensic.
 CONTEXT: This is a ${type}.
-MEMORY PROTOCOL: ${type === 'T.V. Series' ? "ENABLE CONNECTIVE MEMORY. Refer to this context: " + memory : "STRICT ISOLATION. Every session is brand new. Do not reference previous scripts or sessions."}
+MEMORY PROTOCOL: ${type === 'T.V. Series' ? "ENABLE CONNECTIVE MEMORY. Refer to this context: " + memory : "STRICT ISOLATION. Every session is brand new."}
 
 MANDATORY OUTPUT RULES:
 1. SPELLING/GRAMMAR/PUNCTUATION: DO NOT USE BANTER. Use a strict list form:
@@ -57,7 +57,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 
         const finalResult = await model.generateContent({
             systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
-            contents: [{ role: "user", parts: [{ text: `Forensic Evidence: ${forensicData} \n\n Script Content: ${scriptText.substring(0, 85000)} \n\n Generate the FULL 18-POINT NARRATIVE AUDIT. No fluff. Just deep analysis.` }] }]
+            contents: [{ role: "user", parts: [{ text: `Forensic Evidence: ${forensicData} \n\n Script Content: ${scriptText.substring(0, 85000)} \n\n Generate the FULL 18-POINT NARRATIVE AUDIT.` }] }]
         });
 
         const feedback = finalResult.response.text();
