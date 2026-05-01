@@ -70,14 +70,15 @@
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSentences = 0;
         let recognition, isMicOn = false, finalTranscript = "";
 
-        // Reset session memory on every page load to ensure privacy
+        // Welcome greeting with Inworld voice restored
         window.onload = () => { 
             localStorage.clear();
             sessionStorage.clear();
-            addMessage("Welcome back. I've tuned my forensic sensors. Upload your script whenever you're ready."); 
+            const welcome = "Welcome back. I've tuned my forensic sensors. Upload your script whenever you're ready.";
+            addMessage(welcome); 
+            speak(welcome);
         };
 
-        // Handle the T.V. Series Toggle with specific verbal greeting
         document.getElementById('modeToggle').addEventListener('change', async function() {
             if (this.checked) {
                 const response = await fetch('/tv-greeting', { method: 'POST' });
