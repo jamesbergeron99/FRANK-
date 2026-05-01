@@ -1,94 +1,187 @@
-const express = require('express');
-const multer = require('multer');
-const pdf = require('pdf-parse');
-const path = require('path');
-const cors = require('cors'); 
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-require('dotenv').config();
-
-const app = express();
-const PORT = process.env.PORT || 10000;
-
-app.use(cors()); 
-app.use(express.json({limit: '100mb'})); 
-app.use(express.static(path.join(__dirname, 'public')));
-
-const upload = multer({ storage: multer.memoryStorage() });
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-
-let scriptMemory = "";
-
-const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
-TONE: Sophisticated, brutally honest, and deeply forensic.
-CONTEXT: This is a ${type}.
-MEMORY PROTOCOL: ${type === 'T.V. Series' ? "ENABLE CONNECTIVE MEMORY. Refer to this context: " + memory : "STRICT ISOLATION. Every session is brand new."}
-
-MANDATORY OUTPUT RULES:
-1. SPELLING/GRAMMAR/PUNCTUATION: DO NOT USE BANTER. Use a strict list form:
-   - Mistake [Number]: [The Error]
-   - Page: [Page Number]
-   - Fix: [Corrected Text]
-
-2. LOGLINE & SYNOPSIS: Transition back to your opinionated, flamboyant, and forensic persona here.
-
-3. 18-POINT NARRATIVE AUDIT: Numbered 1-18. Each point must be LABELED and responded to with a full, insightful, flamboyant paragraph weaving in multiple page-specific quotes. Cite at least TWO specific [Page X] locations for every point.
-
-VOICE: Plain text only. No markdown.`;
-
-app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
-    try {
-        const mode = req.body.mode || 'Feature Film';
-        const data = await pdf(req.files[0].buffer);
-        const scriptText = data.text;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Frank's Forensic Office</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root { --gold: #d4af37; --bg: #050505; --card: #121212; }
+        body { background: var(--bg); color: #eee; font-family: 'Segoe UI', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
+        .header { padding: 15px; border-bottom: 2px solid var(--gold); background: #111; text-align: center; }
+        h1 { margin: 0; font-style: italic; color: var(--gold); letter-spacing: 2px; font-size: 1.5rem; }
         
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+        .toggle-box { display: flex; align-items: center; justify-content: center; gap: 15px; margin-top: 10px; font-weight: bold; font-size: 0.8rem; }
+        .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 24px; border: 1px solid var(--gold); }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 3px; background-color: var(--gold); transition: .4s; border-radius: 50%; }
+        input:checked + .slider:before { transform: translateX(24px); }
 
-        const CHUNK_SIZE = 30000;
-        const chunks = [];
-        for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) {
-            chunks.push(scriptText.substring(i, i + CHUNK_SIZE));
-        }
+        #chat-window { flex-grow: 1; overflow-y: auto; padding: 25px; display: flex; flex-direction: column; gap: 20px; background: #080808; }
+        .msg { max-width: 90%; padding: 25px; border-radius: 10px; line-height: 1.8; font-size: 1.1rem; white-space: pre-wrap; background: var(--card); border-left: 4px solid var(--gold); }
+        .user-msg { align-self: flex-end; border-left: none; border-right: 4px solid var(--gold); background: #222; }
 
-        const scanResults = await Promise.all(chunks.map(chunk => 
-            model.generateContent(`Extract 15 significant dialogue quotes, specific typos, and formatting errors for a forensic audit: \n\n ${chunk}`)
-        ));
-        
-        const forensicData = scanResults.map(r => r.response.text()).join("\n");
+        .media-bar { background: #111; padding: 10px; display: flex; justify-content: center; gap: 35px; border-top: 1px solid #333; }
+        .media-btn { background: none; border: 1px solid var(--gold); color: var(--gold); width: 42px; height: 42px; border-radius: 50%; cursor: pointer; font-size: 1rem; transition: 0.2s; }
+        .media-btn:hover { background: var(--gold); color: #000; }
 
-        const finalResult = await model.generateContent({
-            systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
-            contents: [{ role: "user", parts: [{ text: `Forensic Evidence: ${forensicData} \n\n Script Content: ${scriptText.substring(0, 85000)} \n\n Generate the FULL 18-POINT NARRATIVE AUDIT.` }] }]
+        .input-area { padding: 15px 30px; background: #111; border-top: 2px solid var(--gold); display: flex; gap: 15px; align-items: center; }
+        .pill { flex-grow: 1; display: flex; background: #000; border: 1px solid var(--gold); border-radius: 40px; padding: 5px 20px; align-items: center; }
+        #textInput { flex-grow: 1; background: transparent; border: none; color: #fff; padding: 12px 0; outline: none; font-size: 1rem; }
+        .icon-btn { background: none; border: none; color: var(--gold); cursor: pointer; font-size: 1.4rem; }
+        .mic-active { color: #ff3b3b; text-shadow: 0 0 10px #ff3b3b; }
+    </style>
+</head>
+<body onclick="initAudio()">
+    <div class="header">
+        <h1>FRANK'S PRIVATE OFFICE</h1>
+        <div class="toggle-box">
+            <span>FEATURE</span>
+            <label class="switch"><input type="checkbox" id="modeToggle"><span class="slider"></span></label>
+            <span>T.V. SERIES</span>
+        </div>
+    </div>
+
+    <div id="chat-window"></div>
+
+    <div class="media-bar">
+        <button class="media-btn" onclick="skipAudio(-1)"><i class="fas fa-backward"></i></button>
+        <button class="media-btn" id="playPauseBtn" onclick="togglePlayback()"><i class="fas fa-pause"></i></button>
+        <button class="media-btn" onclick="skipAudio(1)"><i class="fas fa-forward"></i></button>
+    </div>
+
+    <div class="input-area">
+        <button class="icon-btn" onclick="document.getElementById('scriptInput').click()"><i class="fas fa-file-upload"></i></button>
+        <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadFiles()">
+        <div class="pill">
+            <input type="text" id="textInput" placeholder="Consult Frank..." onkeypress="if(event.key==='Enter') sendBanter()">
+            <i class="fas fa-microphone icon-btn" id="micBtn" onclick="toggleMic()"></i>
+        </div>
+        <button class="icon-btn" onclick="sendBanter()"><i class="fas fa-paper-plane"></i></button>
+        <button class="icon-btn" onclick="downloadPDF()"><i class="fas fa-file-pdf"></i></button>
+    </div>
+
+    <script>
+        const chatWindow = document.getElementById('chat-window');
+        const textInput = document.getElementById('textInput');
+        const micBtn = document.getElementById('micBtn');
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSentences = 0;
+        let recognition, isMicOn = false, finalTranscript = "";
+
+        // Immediate Page Load Logic
+        window.onload = () => { 
+            localStorage.clear();
+            sessionStorage.clear();
+            
+            const welcome = "Hey there. I'm Frank, your script doctor. I'm here to help you make your work the best it can be by giving you no fluff or false encouragement, just honest feedback that is at times brutal when necessary. Upload your feature to begin, or pick TV series for multiple episode continuity. I can take a few minutes to process your work. Be patient, darling.";
+            
+            addMessage(welcome); 
+            speak(welcome);
+        };
+
+        document.getElementById('modeToggle').addEventListener('change', async function() {
+            if (this.checked) {
+                const response = await fetch('/tv-greeting', { method: 'POST' });
+                const data = await response.json();
+                addMessage(data.message);
+                speak(data.message);
+            } else {
+                const featureMsg = "Feature mode activated. A clean slate for a standalone project.";
+                addMessage(featureMsg);
+                speak(featureMsg);
+            }
         });
 
-        const feedback = finalResult.response.text();
-        
-        if (mode === 'T.V. Series') {
-            scriptMemory += "\n" + feedback.substring(0, 1500);
-        } else {
-            scriptMemory = ""; 
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.onresult = (e) => {
+                let interim = "";
+                for (let i = e.resultIndex; i < e.results.length; ++i) {
+                    if (e.results[i].isFinal) finalTranscript += e.results[i][0].transcript + " ";
+                    else interim += e.results[i][0].transcript;
+                }
+                textInput.value = finalTranscript + interim;
+            };
         }
 
-        res.json({ message: feedback });
-    } catch (err) {
-        res.status(500).json({ message: "Frank had a technical glitch. Try again, darling." });
-    }
-});
+        function toggleMic() {
+            initAudio();
+            if (!isMicOn) { isMicOn = true; micBtn.classList.add('mic-active'); finalTranscript = ""; recognition.start(); }
+            else { isMicOn = false; micBtn.classList.remove('mic-active'); recognition.stop(); }
+        }
 
-app.post('/tv-greeting', (req, res) => {
-    const greeting = "I'm customized not only to give you an eighteen-point audit on each episode of your series, but to track continuity, character arc, and series arc to ensure you have a cohesive story. Start with the first episode and my feedback will continue over multiple episodes.";
-    res.json({ message: greeting });
-});
+        async function uploadFiles() {
+            const fileInput = document.getElementById('scriptInput');
+            const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
+            if (fileInput.files.length === 0) return;
+            addMessage(`Performing a deep forensic audit for this ${mode}. This takes a few moments, darling...`, false);
+            const formData = new FormData();
+            formData.append('mode', mode);
+            formData.append('scripts', fileInput.files[0]);
+            const response = await fetch('/analyze', { method: 'POST', body: formData });
+            const data = await response.json();
+            addMessage(data.message); speak(data.message);
+        }
 
-app.post('/chat', async (req, res) => {
-    try {
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-        const result = await model.generateContent({
-            systemInstruction: "You are Frank. Answer follow-ups based on this memory: " + scriptMemory,
-            contents: [{ role: "user", parts: [{ text: req.body.message }] }]
-        });
-        res.json({ message: result.response.text() });
-    } catch (err) { res.status(500).json({ message: "I'm in a meeting." }); }
-});
+        async function sendBanter() {
+            const val = textInput.value; if (!val) return;
+            textInput.value = ''; finalTranscript = ""; addMessage(val, true);
+            const response = await fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) });
+            const data = await response.json();
+            addMessage(data.message); speak(data.message);
+        }
 
-app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
-app.listen(PORT, '0.0.0.0');
+        function addMessage(text, isUser = false) {
+            const div = document.createElement('div');
+            div.className = isUser ? 'msg user-msg' : 'msg';
+            div.innerText = text; chatWindow.appendChild(div); chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        async function speak(fullText) {
+            initAudio(); stopCurrentAudio();
+            const sentences = fullText.replace(/[#*]/g, '').match(/[^.!?]+[.!?]+/g) || [fullText];
+            audioBuffers = {}; nextToPlay = 0; totalSentences = sentences.length;
+            sentences.forEach(async (sentence, index) => {
+                try {
+                    const settingsResp = await fetch('/voice-settings');
+                    const settings = await settingsResp.json();
+                    const ttsResp = await fetch("https://api.inworld.ai/tts/v1/voice", {
+                        method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ text: sentence, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                    });
+                    const data = await ttsResp.json();
+                    audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
+                    if (!isPlaying && index === 0) playSequentially();
+                } catch (e) {}
+            });
+        }
+
+        function playSequentially() {
+            if (nextToPlay >= totalSentences) { isPlaying = false; document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>'; return; }
+            if (audioBuffers[nextToPlay]) {
+                isPlaying = true; document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
+                currentSource = audioCtx.createBufferSource();
+                currentSource.buffer = audioBuffers[nextToPlay];
+                currentSource.connect(audioCtx.destination);
+                currentSource.onended = () => { if (isPlaying) { nextToPlay++; playSequentially(); } };
+                currentSource.start();
+            } else { setTimeout(playSequentially, 150); }
+        }
+
+        function stopCurrentAudio() { isPlaying = false; if (currentSource) { try { currentSource.stop(); } catch (e) {} currentSource = null; } }
+        function togglePlayback() { if (isPlaying) { stopCurrentAudio(); document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>'; } else { playSequentially(); } }
+        function skipAudio(dir) { stopCurrentAudio(); nextToPlay = Math.max(0, Math.min(totalSentences - 1, nextToPlay + dir)); playSequentially(); }
+        
+        function downloadPDF() {
+            const element = document.createElement('div');
+            element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; border:2px solid #d4af37; font-family:serif;"><h1>FRANK'S EXECUTIVE AUDIT</h1>${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m => `<p style="line-height:1.6; margin-bottom:15px;">${m.innerText}</p>`).join('')}</div>`;
+            html2pdf().from(element).save('Franks_Audit.pdf');
+        }
+        function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
+    </script>
+</body>
+</html>
