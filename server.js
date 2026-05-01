@@ -1,69 +1,86 @@
 const express = require('express');
-const dotenv = require('dotenv');
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const axios = require('axios'); // For ElevenLabs
+const multer = require('multer');
+const pdf = require('pdf-parse');
 const path = require('path');
-
-dotenv.config();
+const cors = require('cors'); 
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+require('dotenv').config();
 
 const app = express();
-app.use(express.json());
-app.use(express.static('public'));
+const PORT = process.env.PORT || 10000;
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+app.use(cors()); 
+app.use(express.json({limit: '100mb'})); 
+app.use(express.static(path.join(__dirname, 'public')));
 
-// --- VOICE LOGIC (Restored) ---
-app.post('/speak', async (req, res) => {
+const upload = multer({ storage: multer.memoryStorage() });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+
+let scriptMemory = "";
+
+const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
+TONE: Sophisticated, brutally honest, and deeply forensic. No "fluff" or unnecessary nastiness.
+CONTEXT: This is a ${type}.
+MEMORY: ${memory || "New Session."}
+
+MANDATORY OUTPUT RULES:
+1. NO SHORT ANSWERS: Every section must be a substantial, detailed narrative paragraph (minimum 6-8 sentences).
+2. EVIDENCE IS KING: You MUST cite at least TWO specific [Page X] locations and TWO "Direct Quotes" for every single point of the audit.
+3. STRUCTURE:
+   - SPELLING/GRAMMAR: Deep paragraph with specific page-labeled violations.
+   - FORMATTING: Professional assessment of industry standards with page citations.
+   - LOGLINE & SLUG-LINE: Production-ready high-concept pitch.
+   - SYNOPSIS: Comprehensive structural breakdown.
+   - THE BIG THREE FIXES: Labeled FIX 1, FIX 2, FIX 3. Massive strategic advice for each.
+   - 18-POINT NARRATIVE AUDIT: Numbered 1-18. Each point must be LABELED and responded to with a full, insightful paragraph weaving in multiple page-specific quotes.
+
+VOICE: Plain text only. No markdown.`;
+
+app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     try {
-        const { text } = req.body;
-        const response = await axios({
-            method: 'post',
-            url: `https://api.elevenlabs.io/v1/text-to-speech/${process.env.VOICE_ID}`,
-            headers: {
-                'accept': 'audio/mpeg',
-                'xi-api-key': process.env.ELEVENLABS_API_KEY,
-                'Content-Type': 'application/json',
-            },
-            data: {
-                text: text,
-                model_id: "eleven_monolingual_v1",
-                voice_settings: { stability: 0.5, similarity_boost: 0.5 }
-            },
-            responseType: 'arraybuffer'
+        const mode = req.body.mode || 'Feature Film';
+        const data = await pdf(req.files[0].buffer);
+        const scriptText = data.text;
+        
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+
+        // Phase 1: Deep Forensic Scan for Quotes/Errors
+        const CHUNK_SIZE = 30000;
+        const chunks = [];
+        for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) {
+            chunks.push(scriptText.substring(i, i + CHUNK_SIZE));
+        }
+
+        const scanResults = await Promise.all(chunks.map(chunk => 
+            model.generateContent(`Extract 15 significant dialogue quotes, specific typos, and formatting errors for a forensic audit: \n\n ${chunk}`)
+        ));
+        
+        const forensicData = scanResults.map(r => r.response.text()).join("\n");
+
+        // Phase 2: Comprehensive 18-Point Audit
+        const finalResult = await model.generateContent({
+            systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
+            contents: [{ role: "user", parts: [{ text: `Forensic Evidence: ${forensicData} \n\n Script Content: ${scriptText.substring(0, 85000)} \n\n Generate the FULL 18-POINT NARRATIVE AUDIT. No fluff. Just deep analysis.` }] }]
         });
-        res.set('Content-Type', 'audio/mpeg');
-        res.send(response.data);
-    } catch (error) {
-        console.error("Voice Error:", error);
-        res.status(500).send("Voice failed");
+
+        const feedback = finalResult.response.text();
+        scriptMemory = feedback.substring(0, 1500);
+        res.json({ message: feedback });
+    } catch (err) {
+        res.status(500).json({ message: "Frank had a technical glitch. Try again, darling." });
     }
 });
 
-// --- ANALYSIS LOGIC (Fixed Memory) ---
-app.post('/analyze', async (req, res) => {
+app.post('/chat', async (req, res) => {
     try {
-        const { scriptText, projectType } = req.body;
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-        const frankSystemPrompt = `
-You are Frank, a flamboyant and forensic Script Doctor. 
-MODE: ${projectType}
-
-STRICT PROTOCOL:
-- If FEATURE: This is a standalone project. WIPE ALL MEMORY of previous scripts or "Candyland". No continuity checks.
-- If SERIES: This is episodic. Activate the 18-point audit PLUS continuity and character arc tracking across multiple episodes.
-- Do not mention previous users or projects. Stay in the provided text.
-`;
-
-        const result = await model.generateContent([frankSystemPrompt, scriptText]);
-        const response = await result.response;
-        res.json({ feedback: response.text() });
-    } catch (error) {
-        res.status(500).json({ error: "Analysis failed" });
-    }
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+        const result = await model.generateContent({
+            systemInstruction: "You are Frank. Answer follow-ups based on this memory: " + scriptMemory,
+            contents: [{ role: "user", parts: [{ text: req.body.message }] }]
+        });
+        res.json({ message: result.response.text() });
+    } catch (err) { res.status(500).json({ message: "I'm in a meeting." }); }
 });
 
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Frank is live on ${PORT}`));
+app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
+app.listen(PORT, '0.0.0.0');
