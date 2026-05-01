@@ -8,12 +8,6 @@
     <style>
         :root { --gold: #d4af37; --bg: #050505; --card: #121212; }
         body { background: var(--bg); color: #eee; font-family: 'Segoe UI', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
-        
-        /* Entrance Overlay to enable Audio */
-        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: 0.5s; }
-        #startBtn { padding: 20px 40px; background: transparent; border: 2px solid var(--gold); color: var(--gold); font-size: 1.5rem; cursor: pointer; letter-spacing: 2px; font-style: italic; }
-        #startBtn:hover { background: var(--gold); color: #000; }
-
         .header { padding: 15px; border-bottom: 2px solid var(--gold); background: #111; text-align: center; }
         h1 { margin: 0; font-style: italic; color: var(--gold); letter-spacing: 2px; font-size: 1.5rem; }
         
@@ -39,12 +33,7 @@
         .mic-active { color: #ff3b3b; text-shadow: 0 0 10px #ff3b3b; }
     </style>
 </head>
-<body>
-    <!-- Overlay to ensure Frank speaks on entrance -->
-    <div id="overlay">
-        <button id="startBtn" onclick="enterOffice()">ENTER FRANK'S OFFICE</button>
-    </div>
-
+<body onclick="initAudio()">
     <div class="header">
         <h1>FRANK'S PRIVATE OFFICE</h1>
         <div class="toggle-box">
@@ -81,18 +70,16 @@
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSentences = 0;
         let recognition, isMicOn = false, finalTranscript = "";
 
-        // Triggered by the "Enter" button to solve browser audio blocks
-        function enterOffice() {
-            initAudio();
-            document.getElementById('overlay').style.display = 'none';
+        // Immediate Page Load Logic
+        window.onload = () => { 
             localStorage.clear();
             sessionStorage.clear();
             
-            const welcome = "I'm here to help you. Make your work the best it can be by giving you no fluff or false encouragement, just honest feedback that is at times brutal when necessary. Upload your feature to begin, or pick TV series for multiple episode continuity. I can take a few minutes to process your work. Be patient, darling.";
+            const welcome = "Hey there. I'm Frank, your script doctor. I'm here to help you make your work the best it can be by giving you no fluff or false encouragement, just honest feedback that is at times brutal when necessary. Upload your feature to begin, or pick TV series for multiple episode continuity. I can take a few minutes to process your work. Be patient, darling.";
             
             addMessage(welcome); 
             speak(welcome);
-        }
+        };
 
         document.getElementById('modeToggle').addEventListener('change', async function() {
             if (this.checked) {
