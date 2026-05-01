@@ -16,16 +16,16 @@ app.use(express.static(path.join(__dirname, 'public')));
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-// Global memory remains, but is strictly controlled by the mode toggle
+// This variable handles the connective memory for TV Series
 let scriptMemory = "";
 
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
 TONE: Sophisticated, brutally honest, and deeply forensic.
 CONTEXT: This is a ${type}.
-MEMORY PROTOCOL: ${type === 'T.V. Series' ? "ENABLE CONNECTIVE MEMORY. Refer to this context: " + memory : "STRICT ISOLATION. Every session is brand new. Do not reference previous scripts or 'Candyland'."}
+MEMORY PROTOCOL: ${type === 'T.V. Series' ? "ENABLE CONNECTIVE MEMORY. Refer to this context: " + memory : "STRICT ISOLATION. Every session is brand new. Do not reference previous scripts or sessions."}
 
 MANDATORY OUTPUT RULES:
-1. SPELLING/GRAMMAR/PUNCTUATION: DO NOT USE BANTER. Use a strict table/list form:
+1. SPELLING/GRAMMAR/PUNCTUATION: DO NOT USE BANTER. Use a strict list form:
    - Mistake [Number]: [The Error]
    - Page: [Page Number]
    - Fix: [Corrected Text]
@@ -42,7 +42,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const data = await pdf(req.files[0].buffer);
         const scriptText = data.text;
         
-        // Strictly using Gemini 3 Preview as requested
+        // Using Gemini 3 Preview as your stable model
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
         const CHUNK_SIZE = 30000;
@@ -52,23 +52,23 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         }
 
         const scanResults = await Promise.all(chunks.map(chunk => 
-            model.generateContent(`Extract significant dialogue quotes, specific typos, and formatting errors: \n\n ${chunk}`)
+            model.generateContent(`Extract 15 significant dialogue quotes, specific typos, and formatting errors for a forensic audit: \n\n ${chunk}`)
         ));
         
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
 
         const finalResult = await model.generateContent({
             systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
-            contents: [{ role: "user", parts: [{ text: `Forensic Evidence: ${forensicData} \n\n Script Content: ${scriptText.substring(0, 85000)} \n\n Generate the FULL AUDIT.` }] }]
+            contents: [{ role: "user", parts: [{ text: `Forensic Evidence: ${forensicData} \n\n Script Content: ${scriptText.substring(0, 85000)} \n\n Generate the FULL 18-POINT NARRATIVE AUDIT. No fluff. Just deep analysis.` }] }]
         });
 
         const feedback = finalResult.response.text();
         
-        // Only update connective memory if in TV Series mode
+        // Update memory ONLY for TV Series mode to ensure ongoing cohesion
         if (mode === 'T.V. Series') {
-            scriptMemory += "\n" + feedback.substring(0, 1000);
+            scriptMemory += "\n" + feedback.substring(0, 1500);
         } else {
-            scriptMemory = ""; // Keep memory empty for Features
+            scriptMemory = ""; // Keep memory empty for Features to ensure a fresh session
         }
 
         res.json({ message: feedback });
@@ -77,7 +77,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     }
 });
 
-// Added a route to handle the TV Toggle Greeting specifically
+// Specific route for the TV Toggle Greeting to maintain Inworld TTS flow
 app.post('/tv-greeting', (req, res) => {
     const greeting = "I'm customized not only to give you an eighteen-point audit on each episode of your series, but to track continuity, character arc, and series arc to ensure you have a cohesive story. Start with the first episode and my feedback will continue over multiple episodes.";
     res.json({ message: greeting });
@@ -87,7 +87,7 @@ app.post('/chat', async (req, res) => {
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
         const result = await model.generateContent({
-            systemInstruction: "You are Frank. Answer based on this memory: " + scriptMemory,
+            systemInstruction: "You are Frank. Answer follow-ups based on this memory: " + scriptMemory,
             contents: [{ role: "user", parts: [{ text: req.body.message }] }]
         });
         res.json({ message: result.response.text() });
