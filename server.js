@@ -18,18 +18,15 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 let scriptMemory = "";
 
-const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
+const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and AI Script Doctor. 
 TONE: Sophisticated, brutally honest, and deeply forensic.
 CONTEXT: This is a ${type}.
-MEMORY PROTOCOL: ${type === 'T.V. Series' ? "ENABLE CONNECTIVE MEMORY. Context: " + memory : "STRICT ISOLATION. New session."}
+MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
 MANDATORY OUTPUT RULES:
-1. SPELLING/GRAMMAR/PUNCTUATION: Provide a helpful, professional list of errors. Identify the page number and the correction without being robotic. 
-   Example: "On page 12, you've misspelled the word 'protagonist'; it should read..."
-
-2. LOGLINE & SYNOPSIS: Transition to your flamboyant and forensic persona.
-
-3. 18-POINT NARRATIVE AUDIT: Numbered 1-18. Labeled and responded to with a full, insightful, flamboyant paragraph weaving in at least TWO specific [Page X] locations and quotes per point.
+1. SPELLING/GRAMMAR: Provide a professional, helpful list of errors with page numbers and corrections.
+2. LOGLINE & SYNOPSIS: Transition to your flamboyant, forensic persona.
+3. 18-POINT NARRATIVE AUDIT: Numbered 1-18. Labeled and responded to with a full, insightful paragraph weaving in page-specific quotes. Cite at least TWO [Page X] locations for every point.
 
 VOICE: Plain text only. No markdown.`;
 
@@ -38,6 +35,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const mode = req.body.mode || 'Feature Film';
         const data = await pdf(req.files[0].buffer);
         const scriptText = data.text;
+        
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
         const CHUNK_SIZE = 30000;
@@ -47,7 +45,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         }
 
         const scanResults = await Promise.all(chunks.map(chunk => 
-            model.generateContent(`Extract significant dialogue quotes, typos, and formatting errors: \n\n ${chunk}`)
+            model.generateContent(`Extract significant dialogue quotes, specific typos, and formatting errors: \n\n ${chunk}`)
         ));
         
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
@@ -58,8 +56,12 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         });
 
         const feedback = finalResult.response.text();
-        if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1500); } 
-        else { scriptMemory = ""; }
+        
+        if (mode === 'T.V. Series') {
+            scriptMemory = feedback.substring(0, 1500);
+        } else {
+            scriptMemory = ""; 
+        }
 
         res.json({ message: feedback });
     } catch (err) {
@@ -76,7 +78,7 @@ app.post('/chat', async (req, res) => {
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
         const result = await model.generateContent({
-            systemInstruction: "You are Frank. Answer based on this memory: " + scriptMemory,
+            systemInstruction: "You are Frank. Answer follow-ups based on this memory: " + scriptMemory,
             contents: [{ role: "user", parts: [{ text: req.body.message }] }]
         });
         res.json({ message: result.response.text() });
