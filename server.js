@@ -16,7 +16,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-// Variable for TV Series connective memory
 let scriptMemory = "";
 
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
@@ -63,7 +62,6 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 
         const feedback = finalResult.response.text();
         
-        // Update memory only in TV mode
         if (mode === 'T.V. Series') {
             scriptMemory += "\n" + feedback.substring(0, 1500);
         } else {
