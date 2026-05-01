@@ -70,12 +70,12 @@
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSentences = 0;
         let recognition, isMicOn = false, finalTranscript = "";
 
-        // Immediate Page Load Logic
+        // Welcome greeting restored exactly as requested
         window.onload = () => { 
             localStorage.clear();
             sessionStorage.clear();
             
-            const welcome = "Hey there. I'm Frank, your script doctor. I'm here to help you make your work the best it can be by giving you no fluff or false encouragement, just honest feedback that is at times brutal when necessary. Upload your feature to begin, or pick TV series for multiple episode continuity. I can take a few minutes to process your work. Be patient, darling.";
+            const welcome = "Hey, this is Frank your script doctor. I'm here to make your scripts the best it can be. My feedback is no fluff or false encouragement. It's honest. Upload a feature or switch to TV series mode to begin. It takes a few minutes to process your work, darling.";
             
             addMessage(welcome); 
             speak(welcome);
@@ -174,6 +174,8 @@
 
         function stopCurrentAudio() { isPlaying = false; if (currentSource) { try { currentSource.stop(); } catch (e) {} currentSource = null; } }
         function togglePlayback() { if (isPlaying) { stopCurrentAudio(); document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>'; } else { playSequentially(); } }
+        
+        // FIX: stopCurrentAudio is now called to prevent audio overlap
         function skipAudio(dir) { stopCurrentAudio(); nextToPlay = Math.max(0, Math.min(totalSentences - 1, nextToPlay + dir)); playSequentially(); }
         
         function downloadPDF() {
