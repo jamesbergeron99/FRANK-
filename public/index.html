@@ -65,6 +65,19 @@
             speak(welcome);
         };
 
+        document.getElementById('modeToggle').addEventListener('change', async function() {
+            if (this.checked) {
+                const response = await fetch('/tv-greeting', { method: 'POST' });
+                const data = await response.json();
+                addMessage(data.message);
+                speak(data.message);
+            } else {
+                const featureMsg = "Feature mode activated. A clean slate for a standalone project.";
+                addMessage(featureMsg);
+                speak(featureMsg);
+            }
+        });
+
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
             const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
