@@ -46,6 +46,8 @@
         <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadFiles()">
         <div class="pill">
             <input type="text" id="textInput" placeholder="Consult Frank..." onkeypress="if(event.key==='Enter') sendBanter()">
+            <!-- DICTATION MIC ICON -->
+            <button class="icon-btn" id="micBtn"><i class="fas fa-microphone"></i></button>
         </div>
         <button class="icon-btn" onclick="sendBanter()"><i class="fas fa-paper-plane"></i></button>
         <button class="icon-btn" onclick="downloadPDF()"><i class="fas fa-file-pdf"></i></button>
@@ -90,7 +92,6 @@
 
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
 
-        // RE-CONNECTED TOGGLE LOGIC
         document.getElementById('modeToggle').addEventListener('change', async function() {
             if (this.checked) {
                 const response = await fetch('/tv-greeting', { method: 'POST' });
