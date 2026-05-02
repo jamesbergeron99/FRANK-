@@ -67,23 +67,34 @@
 
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
 
-        // MIC FIXED: CONTINUOUS LISTENING
+        // PERSISTENT MIC FIX:
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
         recognition.continuous = true; 
         recognition.interimResults = true;
-        
+        let currentTranscript = '';
+
         recognition.onresult = (e) => {
-            let finalTranscript = '';
+            let interimTranscript = '';
             for (let i = e.resultIndex; i < e.results.length; ++i) {
-                if (e.results[i].isFinal) finalTranscript += e.results[i][0].transcript;
+                if (e.results[i].isFinal) {
+                    currentTranscript += e.results[i][0].transcript + ' ';
+                } else {
+                    interimTranscript += e.results[i][0].transcript;
+                }
             }
-            if(finalTranscript) { textInput.value = finalTranscript; }
+            textInput.value = currentTranscript + interimTranscript;
         };
 
         function toggleMic() {
             const btn = document.getElementById('micBtn');
-            if (btn.classList.contains('recording')) { recognition.stop(); btn.classList.remove('recording'); }
-            else { textInput.value = ''; recognition.start(); btn.classList.add('recording'); }
+            if (btn.classList.contains('recording')) {
+                recognition.stop();
+                btn.classList.remove('recording');
+            } else {
+                currentTranscript = textInput.value ? textInput.value + ' ' : '';
+                recognition.start();
+                btn.classList.add('recording');
+            }
         }
 
         async function preWarmGreeting(text) {
@@ -122,7 +133,6 @@
 
         async function speak(fullText) {
             stopCurrentAudio();
-            // Split specifically by your mandatory headers to ensure full read
             const sections = fullText.split(/(?=SPELLING|LOGLINE|SYNOPSIS|WHAT’S WORKING|Concept|Structure|Pacing|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length;
             isSequenceActive = true;
