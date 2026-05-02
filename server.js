@@ -47,7 +47,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         }
 
         const scanResults = await Promise.all(chunks.map(chunk => 
-            model.generateContent(`Extract 15 significant dialogue quotes, specific typos, and formatting errors for a forensic audit: \n\n ${chunk}`)
+            model.generateContent(`Extract 15 significant dialogue quotes, typos, and errors for a forensic audit: \n\n ${chunk}`)
         ));
         
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
