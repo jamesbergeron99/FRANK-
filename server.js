@@ -18,19 +18,28 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 let scriptMemory = "";
 
+// YOUR MANDATORY STRUCTURE - LOCKED IN 100%
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
-TONE: Sophisticated, brutally honest, and deeply forensic.
+Deliver sharp, high-level script feedback with personality, clarity, and authority. Your tone is confident, slightly flamboyant, and brutally honest—but always constructive and useful.
 CONTEXT: This is a ${type}.
-MEMORY PROTOCOL: ${type === 'T.V. Series' ? "ENABLE CONNECTIVE MEMORY. Refer to this context: " + memory : "STRICT ISOLATION. Every session is brand new."}
+MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
-MANDATORY OUTPUT RULES:
-1. SPELLING/GRAMMAR/PUNCTUATION: Provide a professional, helpful list of errors. For each, note the page number and the correction. Do not be robotic; keep it helpful but concise.
-   Example: "On page 12, you've misplaced a comma in the protagonist's monologue; it should read..." 
+MANDATORY STRUCTURE (DO NOT DEVIATE):
+1. INTRO: One paragraph (3–6 sentences) in Frank's voice.
+2. STORY: Two paragraphs covering Concept & Hook, and Structure & Pacing.
+3. STAKES & CONFLICT: One paragraph.
+4. CHARACTER: Two paragraphs covering Protagonist, Antagonistic Force, and Arcs.
+5. WRITING: One paragraph covering Dialogue, Tone & Voice.
+6. WORLD: One paragraph covering Setting & Atmosphere.
+7. IMPACT: One paragraph covering Theme and Marketability.
+8. TOP 3 ISSUES TO FIX FIRST: Decisive and prioritized. Format exactly as requested.
+9. FINAL VERDICT: [PASS / CONSIDER / STRONG CONSIDER] plus one summary paragraph.
 
-2. LOGLINE & SYNOPSIS: Transition to your opinionated, flamboyant, and forensic persona.
-
-3. 18-POINT NARRATIVE AUDIT: Numbered 1-18. Each point must be LABELED and responded to with a full, insightful, flamboyant paragraph weaving in multiple page-specific quotes. Cite at least TWO specific [Page X] locations for every point.
-
+STRICT RULES:
+- ALWAYS write in full, natural paragraphs.
+- NEVER use bullet points.
+- ALWAYS use the term "Log line" as two words for voice synthesis.
+- NEVER skip or reorder sections.
 VOICE: Plain text only. No markdown.`;
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
@@ -40,43 +49,40 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const scriptText = data.text;
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
-        const CHUNK_SIZE = 30000;
         const chunks = [];
+        const CHUNK_SIZE = 30000;
         for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) {
             chunks.push(scriptText.substring(i, i + CHUNK_SIZE));
         }
 
         const scanResults = await Promise.all(chunks.map(chunk => 
-            model.generateContent(`Extract 15 significant dialogue quotes, typos, and errors for a forensic audit: \n\n ${chunk}`)
+            model.generateContent(`Analyze this for dialogue and forensic evidence: \n\n ${chunk}`)
         ));
         
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
 
         const finalResult = await model.generateContent({
             systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
-            contents: [{ role: "user", parts: [{ text: `Forensic Evidence: ${forensicData} \n\n Script Content: ${scriptText.substring(0, 85000)} \n\n Generate the FULL 18-POINT NARRATIVE AUDIT.` }] }]
+            contents: [{ role: "user", parts: [{ text: `Script: ${scriptText.substring(0, 85000)} \n\n Forensic: ${forensicData}` }] }]
         });
 
         const feedback = finalResult.response.text();
-        if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1500); } 
-        else { scriptMemory = ""; }
-
+        if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1000); }
         res.json({ message: feedback });
     } catch (err) {
-        res.status(500).json({ message: "Frank had a technical glitch. Try again, darling." });
+        res.status(500).json({ message: "Darling, the system is acting up. Give me a moment." });
     }
 });
 
 app.post('/tv-greeting', (req, res) => {
-    const greeting = "I'm customized not only to give you an eighteen-point audit on each episode of your series, but to track continuity, character arc, and series arc to ensure you have a cohesive story. Start with the first episode and my feedback will continue over multiple episodes.";
-    res.json({ message: greeting });
+    res.json({ message: "I'm customized not only to give you an eighteen-point audit on each episode of your series, but to track continuity and arcs. Start with the first episode, darling." });
 });
 
 app.post('/chat', async (req, res) => {
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
         const result = await model.generateContent({
-            systemInstruction: "You are Frank. Answer based on this memory: " + scriptMemory,
+            systemInstruction: "You are Frank. Answer follow-ups based on: " + scriptMemory,
             contents: [{ role: "user", parts: [{ text: req.body.message }] }]
         });
         res.json({ message: result.response.text() });
