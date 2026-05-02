@@ -18,7 +18,6 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 let scriptMemory = "";
 
-// FINAL MANDATORY PROTOCOL - LOCKED 100%
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
 Deliver professional script coverage with precision, authority, and personality. You are sharp, direct, and human. 
 CORE PRINCIPLE: Evaluate, do not encourage. Focus on what is not working.
@@ -36,7 +35,6 @@ INVISIBLE STRUCTURE RULE:
 Each section must naturally weave together what is not working, why it matters, and how to fix it. 
 - DO NOT use labels like "Problem," "Consequence," or "Fix."
 - Write as a continuous, natural explanation.
-- Vary sentence structure and introductions.
 
 EVIDENCE RULE (CRITICAL): 
 Every major critique must include a page reference, scene reference, or quoted example.
@@ -77,11 +75,12 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1000); }
         res.json({ message: feedback });
     } catch (err) {
-        res.status(500).json({ message: "Darling, the system is acting up. Give me a moment." });
+        res.status(500).json({ message: "Frank had a technical glitch." });
     }
 });
 
 app.post('/tv-greeting', (req, res) => {
+    // VERBATIM TV GREETING
     res.json({ message: "Oh, we’re doing a series now? Good. That’s where things get interesting—and where most writers lose control of the wheel. In here, I’m not just looking at one script. I’m tracking everything—character arcs, continuity, the slow unraveling or sharpening of your story over time. If something drifts, I’ll see it. If something builds properly, I’ll call it out. Start with episode one. Don’t skip ahead. I need to see how this world breathes before I judge how it evolves. Let’s see if you’ve got something that can actually sustain itself—or if it collapses under its own ambition." });
 });
 
