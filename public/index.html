@@ -59,7 +59,8 @@
         let isSequenceActive = false;
         let stallStartTime = null; 
 
-        const welcomeText = "Hey there, I'm Frank. Not just in name, but in spirit, I’m your AI script doctor. darling, it takes time to process brilliance, so chill and give me a minute.";
+        // WORD-FOR-WORD GREETING RESTORED
+        const welcomeText = "Ah—there you are. Come in, don’t hover in the doorway. If you’ve brought me a script, I assume you’re ready for the truth—or at least a version of it that’s useful. I’m Frank. Not just in name—by temperament. I don’t do vague encouragement, and I don’t hand out gold stars for effort. What I do is take your script apart, figure out what’s working, what’s not, and tell you exactly where the engine is stalling. You’ll get a full breakdown—structure, character, dialogue, tone—the works. More importantly, you’ll get the three things that actually matter. The fixes that move the needle. Upload your script. Give me a moment. And try not to flinch when I get to the good part.";
 
         window.onload = async () => { 
             localStorage.clear();
@@ -104,13 +105,11 @@
 
         async function speak(fullText) {
             stopCurrentAudio();
-            // CHUNKING BY YOUR NEW 10-SECTION HEADERS
             const sections = fullText.split(/(?=Concept & Hook|Structure & Pacing|Stakes & Conflict|Protagonist|Antagonistic Force|Character Dynamics|Dialogue|Tone & Voice|World & Atmosphere|Theme & Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length;
             isSequenceActive = true;
             const settingsResp = await fetch('/voice-settings');
             const settings = await settingsResp.json();
-            
             let triggered = false;
 
             sections.forEach(async (section, index) => {
@@ -123,7 +122,6 @@
                     });
                     const data = await ttsResp.json();
                     audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
-                    
                     if (!isPlaying && isSequenceActive && !triggered && index === 0) { 
                         triggered = true; playSequentially(); 
                     }
