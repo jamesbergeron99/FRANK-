@@ -60,14 +60,12 @@
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0;
         let isSequenceActive = false;
         
+        // FIXED GREETING TEXT
         const welcomeText = "Hey there, I'm Frank. Not just a name, but in spirit, I’m your AI script doctor. I’m here to give you actionable feedback on your features or TV series, including a full spelling and grammar check, logline, synopsis, and my 18-point forensic audit. Or, pick TV series for additional coverage over multiple episodes. Darling, it takes time to process brilliance, so chill and give me a minute.";
 
-        // THE FIX: PRE-WARM AUDIO
         window.onload = async () => { 
             localStorage.clear();
             addMessage(welcomeText);
-            
-            // Start fetching immediately, even before user click
             preWarmGreeting(welcomeText);
         };
 
@@ -81,12 +79,8 @@
                 });
                 const data = await ttsResp.json();
                 const buffer = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
-                
-                // Cache it as the first item
                 audioBuffers[0] = buffer;
                 totalSections = 1;
-                
-                // If context is already live, play immediately
                 if (audioCtx.state === 'running' && !isPlaying) {
                     isSequenceActive = true;
                     playSequentially();
@@ -97,7 +91,6 @@
         function initAudio() { 
             if (audioCtx.state === 'suspended') {
                 audioCtx.resume().then(() => {
-                    // Play cached buffer instantly on resume
                     if (audioBuffers[0] && !isPlaying) {
                         isSequenceActive = true;
                         playSequentially();
@@ -151,10 +144,8 @@
             const sections = fullText.split(/(?=\bLogline:|\bSynopsis:|\d+\.|\bOn page)/g);
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length;
             isSequenceActive = true;
-
             const settingsResp = await fetch('/voice-settings');
             const settings = await settingsResp.json();
-
             sections.forEach(async (section, index) => {
                 if (section.trim().length < 2) return;
                 try {
