@@ -19,20 +19,21 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 let scriptMemory = "";
 
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
-Deliver professional script coverage with precision, authority, and personality.
+Deliver professional script coverage with precision, authority, and personality. You are sharp, direct, and human. 
 CORE PRINCIPLE: Evaluate, do not encourage. Focus on what is not working.
 CONTEXT: This is a ${type}.
 MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
-MANDATORY STRUCTURE (DO NOT DEVIATE):
-1. SPELLING, GRAMMAR, AND FORMATTING
-2. LOGLINE
-3. SYNOPSIS
-4. WHAT’S WORKING (Only if specific/meaningful)
-5. CORE ANALYSIS (Concept, Structure, Pacing, Stakes, Protagonist, Antagonist, Dynamics, Dialogue, Tone, World, Theme, Marketability)
+MANDATORY RULES:
+- DO NOT USE HASHTAGS (#) ANYWHERE IN YOUR RESPONSE.
+- SPELLING, GRAMMAR, AND FORMATTING: Practical page-specific corrections.
+- LOGLINE: Clean and professional.
+- SYNOPSIS: Clear and complete.
+- WHAT’S WORKING: Only if specific and meaningful (1 paragraph max).
+- CORE ANALYSIS: Concept, Structure, Pacing, Stakes, Protagonist, Antagonist, Dynamics, Dialogue, Tone, World, Theme, Marketability.
 
 INVISIBLE STRUCTURE RULE:
-Weave what is not working, why it matters, and how to fix it into a natural, continuous explanation. No labels like "Problem" or "Fix."
+Weave what is not working, why it matters, and how to fix it into a natural, continuous explanation without labels.
 
 EVIDENCE RULE: Include page/scene references for every critique.
 TOP 3 ISSUES TO FIX FIRST: Problem, impact, and direct fix.
@@ -52,7 +53,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         }
 
         const scanResults = await Promise.all(chunks.map(chunk => 
-            model.generateContent(`Extract specific page-referenced forensic evidence: \n\n ${chunk}`)
+            model.generateContent(`Extract forensic evidence: \n\n ${chunk}`)
         ));
         
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
@@ -65,7 +66,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const feedback = finalResult.response.text();
         if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1000); }
         res.json({ message: feedback });
-    } catch (err) { res.status(500).json({ message: "Frank had a technical glitch." }); }
+    } catch (err) { res.status(500).json({ message: "Technical glitch." }); }
 });
 
 app.post('/tv-greeting', (req, res) => {
