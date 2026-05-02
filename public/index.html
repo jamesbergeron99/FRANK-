@@ -60,13 +60,13 @@
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0;
         let isSequenceActive = false;
         
-        // CORRECTED GREETING TEXT
+        // GREETING RECTIFIED TO "Not just in name, but in spirit"
         const welcomeText = "Hey there, I'm Frank. Not just in name, but in spirit, I’m your AI script doctor. I’m here to give you actionable feedback on your features or TV series, including a full spelling and grammar check, logline, synopsis, and my 18-point forensic audit. Or, pick TV series for additional coverage over multiple episodes. Darling, it takes time to process brilliance, so chill and give me a minute.";
 
         window.onload = async () => { 
             localStorage.clear();
             addMessage(welcomeText);
-            // Pre-warm starts network request immediately on load
+            // Instant Fetch
             preWarmGreeting(welcomeText);
         };
 
@@ -74,28 +74,31 @@
             try {
                 const settingsResp = await fetch('/voice-settings');
                 const settings = await settingsResp.json();
-                const ttsResp = await fetch("https://api.inworld.ai/tts/v1/voice", {
-                    method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ text: text, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
-                });
-                const data = await ttsResp.json();
-                const buffer = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
-                audioBuffers[0] = buffer;
-                totalSections = 1;
                 
-                // If user has already clicked, play immediately
-                if (audioCtx.state === 'running' && !isPlaying) {
-                    isSequenceActive = true;
-                    playSequentially();
-                }
-            } catch (e) { console.error("Pre-warm fail:", e); }
+                // Splitting welcome to get audio started faster
+                const parts = text.split(/(?<=\. )/); 
+                
+                parts.forEach(async (part, index) => {
+                    const ttsResp = await fetch("https://api.inworld.ai/tts/v1/voice", {
+                        method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ text: part, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                    });
+                    const data = await ttsResp.json();
+                    const buffer = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
+                    audioBuffers[index] = buffer;
+                    totalSections = parts.length;
+
+                    if (audioCtx.state === 'running' && index === 0 && !isPlaying) {
+                        isSequenceActive = true;
+                        playSequentially();
+                    }
+                });
+            } catch (e) { console.error("Greeting load error:", e); }
         }
 
-        // IMMEDIATE PLAY ON CLICK
         function initAudio() { 
             if (audioCtx.state === 'suspended') {
                 audioCtx.resume().then(() => {
-                    // Check if pre-warm buffer is ready and trigger instantly
                     if (audioBuffers[0] && !isPlaying) {
                         isSequenceActive = true;
                         playSequentially();
