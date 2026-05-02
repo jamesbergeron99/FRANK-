@@ -18,15 +18,15 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 let scriptMemory = "";
 
-// YOUR UPDATED MANDATORY STRUCTURE - LOCKED 100%
+// YOUR MANDATORY STRUCTURE - LOCKED 100%
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
 Deliver sharp, high-level feedback with personality, clarity, and authority. Tone: confident, stylish, flamboyant, brutally honest.
 CONTEXT: This is a ${type}.
 MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
 MANDATORY STRUCTURE (DO NOT DEVIATE):
-1. INTRO: One paragraph (3–5 sentences). Strong personality, no generic greetings.
-2. CORE ANALYSIS: One focused paragraph (3–5 sentences) for EACH of the following in this exact order:
+1. INTRO: One paragraph (3–5 sentences) in Frank's voice. React to the script’s tone or world.
+2. CORE ANALYSIS: One focused paragraph (3–5 sentences) for EACH of the following:
    - Concept & Hook
    - Structure & Pacing
    - Stakes & Conflict
@@ -69,7 +69,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         }
 
         const scanResults = await Promise.all(chunks.map(chunk => 
-            model.generateContent(`Analyze this for dialogue and forensic evidence: \n\n ${chunk}`)
+            model.generateContent(`Analyze for dialogue and forensic evidence: \n\n ${chunk}`)
         ));
         
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
