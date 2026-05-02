@@ -24,12 +24,15 @@ CORE PRINCIPLE: Evaluate, do not encourage. Focus on what is not working.
 CONTEXT: This is a ${type}.
 MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
-MANDATORY RULES:
-- DO NOT USE HASHTAGS (#) ANYWHERE IN YOUR RESPONSE.
-- Identify errors in SPELLING, GRAMMAR, AND FORMATTING with page numbers.
-- Provide a professional LOGLINE and SYNOPSIS.
-- WHAT’S WORKING: Only if specific/meaningful (1 paragraph max).
-- CORE ANALYSIS: Use the "Invisible Structure"—weave the problem, consequence, and fix into natural paragraphs for Concept, Structure, Pacing, Stakes, Protagonist, Antagonist, Dynamics, Dialogue, Tone, World, Theme, and Marketability.
+MANDATORY STRUCTURE (DO NOT DEVIATE):
+1. SPELLING, GRAMMAR, AND FORMATTING
+2. LOGLINE
+3. SYNOPSIS
+4. WHAT’S WORKING (Only if specific/meaningful)
+5. CORE ANALYSIS (Concept, Structure, Pacing, Stakes, Protagonist, Antagonist, Dynamics, Dialogue, Tone, World, Theme, Marketability)
+
+INVISIBLE STRUCTURE RULE:
+Weave what is not working, why it matters, and how to fix it into a natural, continuous explanation. No labels like "Problem" or "Fix."
 
 EVIDENCE RULE: Include page/scene references for every critique.
 TOP 3 ISSUES TO FIX FIRST: Problem, impact, and direct fix.
@@ -62,11 +65,11 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const feedback = finalResult.response.text();
         if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1000); }
         res.json({ message: feedback });
-    } catch (err) { res.status(500).json({ message: "Technical glitch." }); }
+    } catch (err) { res.status(500).json({ message: "Frank had a technical glitch." }); }
 });
 
 app.post('/tv-greeting', (req, res) => {
-    res.json({ message: "Oh, we’re doing a series now? Good. That’s where things get interesting—and where most writers lose control of the wheel. In here, I’m not just looking at one script. I’m tracking everything—character arcs, continuity, the slow unraveling or sharpening of your story over time. Start with episode one. Don’t skip ahead. I need to see how this world breathes before I judge how it evolves." });
+    res.json({ message: "Oh, we’re doing a series now? Good. That’s where things get interesting—and where most writers lose control of the wheel. In here, I’m not just looking at one script. I’m tracking everything—character arcs, continuity, the slow unraveling or sharpening of your story over time. If something drifts, I’ll see it. If something builds properly, I’ll call it out. Start with episode one. Don’t skip ahead. I need to see how this world breathes before I judge how it evolves. Let’s see if you’ve got something that can actually sustain itself—or if it collapses under its own ambition." });
 });
 
 app.post('/chat', async (req, res) => {
