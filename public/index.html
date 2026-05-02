@@ -90,6 +90,18 @@
 
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
 
+        // RE-CONNECTED TOGGLE LOGIC
+        document.getElementById('modeToggle').addEventListener('change', async function() {
+            if (this.checked) {
+                const response = await fetch('/tv-greeting', { method: 'POST' });
+                const data = await response.json();
+                addMessage(data.message); speak(data.message);
+            } else {
+                addMessage("Feature mode activated.");
+                speak("Ah, back to features. Let's see if you can tell a complete story in one sitting.");
+            }
+        });
+
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
             if (fileInput.files.length === 0) return;
