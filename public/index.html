@@ -131,7 +131,7 @@
 
         async function speak(fullText) {
             stopCurrentAudio();
-            // CHUNKING BY YOUR NEW HEADERS TO REDUCE LAG
+            // REFINED SPLIT: Detecting section headers to keep numbers intact
             const sections = fullText.split(/(?=STORY|CHARACTER|WRITING|WORLD|IMPACT|TOP 3 ISSUES|FINAL VERDICT)/g);
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length;
             isSequenceActive = true;
@@ -144,7 +144,7 @@
             sections.forEach(async (section, index) => {
                 if (section.trim().length < 2) return;
                 try {
-                    const vSection = section.replace(/Logline/gi, 'Log line');
+                    const vSection = section.replace(/Logline/gi, 'Log line').replace(/\bPOINT\b/gi, 'Point');
                     const ttsResp = await fetch("https://api.inworld.ai/tts/v1/voice", {
                         method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
                         body: JSON.stringify({ text: vSection, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
