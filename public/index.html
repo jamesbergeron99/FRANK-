@@ -60,12 +60,13 @@
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0;
         let isSequenceActive = false;
         
-        // FIXED GREETING TEXT
-        const welcomeText = "Hey there, I'm Frank. Not just in name, but in spirit, I’m your AI script doctor. I’m here to give you actionable feedback on your features or TV series, including a full spelling and grammar check, logline, synopsis, and my 18-point forensic audit. Or, pick TV series for additional coverage over multiple episodes. Darling, it takes time to process brilliance, so chill and give me a minute.";
+        // CORRECTED GREETING TEXT
+        const welcomeText = "Hey there, I'm Frank. Not just a name, but in spirit, I’m your AI script doctor. I’m here to give you actionable feedback on your features or TV series, including a full spelling and grammar check, logline, synopsis, and my 18-point forensic audit. Or, pick TV series for additional coverage over multiple episodes. Darling, it takes time to process brilliance, so chill and give me a minute.";
 
         window.onload = async () => { 
             localStorage.clear();
             addMessage(welcomeText);
+            // Pre-warm starts network request immediately on load
             preWarmGreeting(welcomeText);
         };
 
@@ -81,6 +82,8 @@
                 const buffer = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
                 audioBuffers[0] = buffer;
                 totalSections = 1;
+                
+                // If user has already clicked, play immediately
                 if (audioCtx.state === 'running' && !isPlaying) {
                     isSequenceActive = true;
                     playSequentially();
@@ -88,9 +91,11 @@
             } catch (e) { console.error("Pre-warm fail:", e); }
         }
 
+        // IMMEDIATE PLAY ON CLICK
         function initAudio() { 
             if (audioCtx.state === 'suspended') {
                 audioCtx.resume().then(() => {
+                    // Check if pre-warm buffer is ready and trigger instantly
                     if (audioBuffers[0] && !isPlaying) {
                         isSequenceActive = true;
                         playSequentially();
