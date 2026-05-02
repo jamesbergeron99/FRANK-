@@ -59,16 +59,15 @@
         const textInput = document.getElementById('textInput');
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0;
-        let isSequenceActive = false; // Master kill-switch for audio threads
+        let isSequenceActive = false;
 
-        window.onload = () => { 
-            const welcomeText = "Ah—there you are. Come in, don’t hover in the doorway..."; 
-            addMessage(welcomeText); 
-            speak(welcomeText); 
-        };
+        const welcomeText = "Ah—there you are. Come in, don’t hover in the doorway. If you’ve brought me a script, I assume you’re ready for the truth—or at least a version of it that’s useful. I’m Frank. Not just in name—by temperament. I don’t do vague encouragement, and I don’t hand out gold stars for effort. What I do is take your script apart, figure out what’s working, what’s not, and tell you exactly where the engine is stalling. You’ll get a full breakdown—structure, character, dialogue, tone—the works. More importantly, you’ll get the three things that actually matter. The fixes that move the needle. Upload your script. Give me a moment. And try not to flinch when I get to the good part.";
+
+        window.onload = () => { addMessage(welcomeText); preWarmGreeting(welcomeText); };
 
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
 
+        // PERSISTENT MIC FIX:
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
         recognition.continuous = true; 
         recognition.interimResults = true;
@@ -77,17 +76,48 @@
         recognition.onresult = (e) => {
             let interimTranscript = '';
             for (let i = e.resultIndex; i < e.results.length; ++i) {
-                if (e.results[i].isFinal) currentTranscript += e.results[i][0].transcript + ' ';
-                else interimTranscript += e.results[i][0].transcript;
+                if (e.results[i].isFinal) {
+                    currentTranscript += e.results[i][0].transcript + ' ';
+                } else {
+                    interimTranscript += e.results[i][0].transcript;
+                }
             }
             textInput.value = currentTranscript + interimTranscript;
         };
 
         function toggleMic() {
             const btn = document.getElementById('micBtn');
-            if (btn.classList.contains('recording')) { recognition.stop(); btn.classList.remove('recording'); }
-            else { currentTranscript = textInput.value ? textInput.value + ' ' : ''; recognition.start(); btn.classList.add('recording'); }
+            if (btn.classList.contains('recording')) {
+                recognition.stop();
+                btn.classList.remove('recording');
+            } else {
+                currentTranscript = textInput.value ? textInput.value + ' ' : '';
+                recognition.start();
+                btn.classList.add('recording');
+            }
         }
+
+        async function preWarmGreeting(text) {
+            const settings = await (await fetch('/voice-settings')).json();
+            const parts = text.split(/(?<=\. )/);
+            parts.forEach(async (part, i) => {
+                const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
+                    method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ text: part.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                });
+                const data = await res.json();
+                audioBuffers[i] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
+                totalSections = parts.length;
+                if (i === 0 && !isPlaying) { isSequenceActive = true; playSequentially(); }
+            });
+        }
+
+        document.getElementById('modeToggle').addEventListener('change', async function() {
+            if (this.checked) {
+                const data = await (await fetch('/tv-greeting', { method: 'POST' })).json();
+                addMessage(data.message); speak(data.message);
+            }
+        });
 
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
@@ -102,54 +132,48 @@
         }
 
         async function speak(fullText) {
-            // 1. HARD RESET: Kill all existing audio and sequence flags immediately
             stopCurrentAudio();
-            
             const sections = fullText.split(/(?=SPELLING|LOGLINE|SYNOPSIS|WHAT’S WORKING|Concept|Structure|Pacing|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length;
-            isSequenceActive = true; 
-
+            isSequenceActive = true;
             const settings = await (await fetch('/voice-settings')).json();
             
-            // 2. SEQUENTIAL PROCESSING: One section at a time prevents echo/overlap
-            for (let index = 0; index < sections.length; index++) {
-                const section = sections[index];
-                if (section.trim().length < 2 || !isSequenceActive) continue;
-
-                try {
-                    const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
-                        method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: section.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
-                    });
-                    const data = await res.json();
-                    audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
-                    if (!isPlaying && index === 0 && isSequenceActive) playSequentially();
-                } catch (e) { console.error("Audio Sequencing Error:", e); }
-            }
-        }
-
-        function stopCurrentAudio() { 
-            isSequenceActive = false; // Prevents pending for-loop chunks from starting
-            isPlaying = false;
-            nextToPlay = 0;
-            if (currentSource) { try { currentSource.stop(); } catch (e) {} currentSource = null; } 
-            document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
+            sections.forEach(async (section, index) => {
+                if (section.trim().length < 2) return;
+                const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
+                    method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ text: section.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                });
+                const data = await res.json();
+                audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
+                if (!isPlaying && index === 0) playSequentially();
+            });
         }
 
         function playSequentially() {
-            if (!isSequenceActive || nextToPlay >= totalSections) { isPlaying = false; return; }
+            if (!isSequenceActive || nextToPlay >= totalSections) { 
+                isPlaying = false; document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
+                return; 
+            }
             if (audioBuffers[nextToPlay]) {
-                isPlaying = true;
-                document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
+                isPlaying = true; document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
                 currentSource = audioCtx.createBufferSource();
                 currentSource.buffer = audioBuffers[nextToPlay];
                 currentSource.connect(audioCtx.destination);
-                currentSource.onended = () => { if (isSequenceActive && isPlaying) { nextToPlay++; playSequentially(); } };
+                currentSource.onended = () => { if (isPlaying) { nextToPlay++; playSequentially(); } };
                 currentSource.start();
-            } else { if (isSequenceActive) setTimeout(playSequentially, 100); }
+            } else { setTimeout(playSequentially, 100); }
         }
 
-        function togglePlayback() { if (isPlaying) stopCurrentAudio(); else { isSequenceActive = true; playSequentially(); } }
+        function stopCurrentAudio() { 
+            isPlaying = false; isSequenceActive = false;
+            if (currentSource) { try { currentSource.stop(); } catch (e) {} currentSource = null; } 
+        }
+
+        function togglePlayback() { 
+            if (isPlaying) stopCurrentAudio(); 
+            else { isSequenceActive = true; playSequentially(); } 
+        }
 
         function sendBanter() {
             const val = textInput.value; if (!val) return;
