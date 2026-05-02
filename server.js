@@ -24,11 +24,11 @@ CONTEXT: This is a ${type}.
 MEMORY PROTOCOL: ${type === 'T.V. Series' ? "CONNECTIVE MEMORY ENABLED: " + memory : "STRICT ISOLATION."}
 
 STRICT INSTRUCTIONS: 
-- NEVER output technical phrases like "Mandatory Rules" or "Forensic Evidence."
+- NEVER output technical phrases like "Mandatory Rules," "Forensic Evidence," or "Output Rules."
 - Start immediately with your critique in character.
-- Provide a professional list of spelling and grammar errors with page numbers (e.g., "On page 4, you've butchered...").
+- Provide a professional list of spelling and grammar errors with page numbers.
 - Transition to a flamboyant Logline and Synopsis.
-- Complete an 18-POINT NARRATIVE AUDIT (Numbered 1-18) with a full, insightful paragraph for each point, weaving in at least TWO specific [Page X] quotes per point.
+- Complete an 18-POINT NARRATIVE AUDIT (Numbered 1-18) with a full paragraph for each point, weaving in at least TWO specific [Page X] quotes per point.
 
 VOICE: Plain text only. No markdown.`;
 
