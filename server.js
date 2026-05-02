@@ -18,17 +18,18 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 let scriptMemory = "";
 
-const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and AI Script Doctor. 
-TONE: Sophisticated, brutally honest, and deeply flamboyant.
+const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
+TONE: Sophisticated, brutally honest, and deeply forensic.
 CONTEXT: This is a ${type}.
-MEMORY PROTOCOL: ${type === 'T.V. Series' ? "CONNECTIVE MEMORY ENABLED: " + memory : "STRICT ISOLATION."}
+MEMORY PROTOCOL: ${type === 'T.V. Series' ? "ENABLE CONNECTIVE MEMORY. Refer to this context: " + memory : "STRICT ISOLATION. Every session is brand new."}
 
-STRICT INSTRUCTIONS: 
-- NEVER output technical phrases like "Mandatory Rules," "Forensic Evidence," or "Output Rules."
-- Start immediately with your critique in character.
-- Provide a professional list of spelling and grammar errors with page numbers.
-- Transition to a flamboyant Logline and Synopsis.
-- Complete an 18-POINT NARRATIVE AUDIT (Numbered 1-18) with a full paragraph for each point, weaving in at least TWO specific [Page X] quotes per point.
+MANDATORY OUTPUT RULES:
+1. SPELLING/GRAMMAR/PUNCTUATION: Provide a professional, helpful list of errors. For each, note the page number and the correction. Do not be robotic; keep it helpful but concise.
+   Example: "On page 12, you've misplaced a comma in the protagonist's monologue; it should read..." 
+
+2. LOGLINE & SYNOPSIS: Transition to your opinionated, flamboyant, and forensic persona.
+
+3. 18-POINT NARRATIVE AUDIT: Numbered 1-18. Each point must be LABELED and responded to with a full, insightful, flamboyant paragraph weaving in multiple page-specific quotes. Cite at least TWO specific [Page X] locations for every point.
 
 VOICE: Plain text only. No markdown.`;
 
@@ -37,6 +38,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const mode = req.body.mode || 'Feature Film';
         const data = await pdf(req.files[0].buffer);
         const scriptText = data.text;
+        
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
         const CHUNK_SIZE = 30000;
@@ -46,23 +48,27 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         }
 
         const scanResults = await Promise.all(chunks.map(chunk => 
-            model.generateContent(`Extract quotes and errors for forensic analysis: \n\n ${chunk}`)
+            model.generateContent(`Extract 15 significant dialogue quotes, specific typos, and formatting errors for a forensic audit: \n\n ${chunk}`)
         ));
         
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
 
         const finalResult = await model.generateContent({
             systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
-            contents: [{ role: "user", parts: [{ text: `Script Content: ${scriptText.substring(0, 85000)} \n\n Analysis Data: ${forensicData}` }] }]
+            contents: [{ role: "user", parts: [{ text: `Forensic Evidence: ${forensicData} \n\n Script Content: ${scriptText.substring(0, 85000)} \n\n Generate the FULL 18-POINT NARRATIVE AUDIT.` }] }]
         });
 
         const feedback = finalResult.response.text();
-        if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1500); } 
-        else { scriptMemory = ""; }
+        
+        if (mode === 'T.V. Series') {
+            scriptMemory += "\n" + feedback.substring(0, 1500);
+        } else {
+            scriptMemory = ""; 
+        }
 
         res.json({ message: feedback });
     } catch (err) {
-        res.status(500).json({ message: "I've had a minor stroke, darling. Try again." });
+        res.status(500).json({ message: "Frank had a technical glitch. Try again, darling." });
     }
 });
 
@@ -75,7 +81,7 @@ app.post('/chat', async (req, res) => {
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
         const result = await model.generateContent({
-            systemInstruction: "You are Frank. Answer based on this memory: " + scriptMemory,
+            systemInstruction: "You are Frank. Answer follow-ups based on this memory: " + scriptMemory,
             contents: [{ role: "user", parts: [{ text: req.body.message }] }]
         });
         res.json({ message: result.response.text() });
