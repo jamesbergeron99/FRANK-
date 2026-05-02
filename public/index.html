@@ -75,7 +75,6 @@
                 let chunksReady = 0;
 
                 parts.forEach(async (part, index) => {
-                    // PRONUNCIATION FIXES
                     const vPart = part.replace(/Logline/gi, 'Log line').replace(/\bPOINT\b/gi, 'Point');
                     const ttsResp = await fetch("https://api.inworld.ai/tts/v1/voice", {
                         method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
@@ -86,7 +85,7 @@
                     chunksReady++;
                     totalSections = parts.length;
                     
-                    if (audioCtx.state === 'running' && index === 0 && !isPlaying && (chunksReady >= 2 || totalSections < 2)) {
+                    if (audioCtx.state === 'running' && !isPlaying && (chunksReady >= 2 || totalSections < 2)) {
                         isSequenceActive = true; playSequentially();
                     }
                 });
@@ -153,7 +152,6 @@
             sections.forEach(async (section, index) => {
                 if (section.trim().length < 2) return;
                 try {
-                    // PRONUNCIATION FIXES
                     const vSection = section.replace(/Logline/gi, 'Log line').replace(/\bPOINT\b/gi, 'Point');
                     const ttsResp = await fetch("https://api.inworld.ai/tts/v1/voice", {
                         method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
@@ -164,7 +162,7 @@
                     audioBuffers[index] = buffer;
                     chunksReady++;
                     
-                    if (!isPlaying && (chunksReady >= 2 || totalSections < 2) && index === 0) { 
+                    if (!isPlaying && isSequenceActive && (chunksReady >= 2 || totalSections < 2)) { 
                         playSequentially(); 
                     }
                 } catch (e) {}
@@ -193,7 +191,6 @@
                 const timeStalled = Date.now() - stallStartTime;
 
                 if (timeStalled > 3000) {
-                    console.warn("Chunk timeout - skipping section " + nextToPlay);
                     nextToPlay++;
                     stallStartTime = null;
                     playSequentially();
