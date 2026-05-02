@@ -60,7 +60,7 @@
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0;
         let isSequenceActive = false;
 
-        // FIXED: AUTOMATIC GREETING ON LOAD
+        // AUTOMATIC GREETING ON LOAD
         window.onload = () => { 
             localStorage.clear();
             const welcome = "Hey there, I'm Frank. Not just a name, but in spirit, I’m your AI script doctor. I’m here to give you actionable feedback on your features or TV series, including a full spelling and grammar check, logline, synopsis, and my 18-point forensic audit. Or, pick TV series for additional coverage over multiple episodes. Darling, it takes time to process brilliance, so chill and give me a minute.";
@@ -112,19 +112,27 @@
             initAudio(); stopCurrentAudio();
             const sections = fullText.split(/(?=\bLogline:|\bSynopsis:|\d+\.|\bOn page)/g);
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length;
+            isSequenceActive = true;
+
+            // Fetch settings once for the entire batch
+            const settingsResp = await fetch('/voice-settings');
+            const settings = await settingsResp.json();
+
+            // Process sections with a priority on the first one
             sections.forEach(async (section, index) => {
                 if (section.trim().length < 2) return;
                 try {
-                    const settingsResp = await fetch('/voice-settings');
-                    const settings = await settingsResp.json();
                     const ttsResp = await fetch("https://api.inworld.ai/tts/v1/voice", {
                         method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
                         body: JSON.stringify({ text: section, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                     });
                     const data = await ttsResp.json();
-                    audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
-                    if (!isPlaying && index === 0) { isSequenceActive = true; playSequentially(); }
-                } catch (e) {}
+                    const buffer = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
+                    audioBuffers[index] = buffer;
+                    
+                    // Trigger playback immediately if it's the first section
+                    if (!isPlaying && index === 0) { playSequentially(); }
+                } catch (e) { console.error("TTS Error:", e); }
             });
         }
 
@@ -142,7 +150,10 @@
                 currentSource.connect(audioCtx.destination);
                 currentSource.onended = () => { if (isPlaying && isSequenceActive) { nextToPlay++; playSequentially(); } };
                 currentSource.start();
-            } else { setTimeout(playSequentially, 150); }
+            } else { 
+                // Wait briefly if the buffer isn't ready yet
+                setTimeout(playSequentially, 50); 
+            }
         }
 
         function stopCurrentAudio() { 
