@@ -73,6 +73,7 @@
                 const settings = await settingsResp.json();
                 const parts = text.split(/(?<=\. )/); 
                 let chunksReady = 0;
+                let triggered = false; // ANTI-OVERLAP FLAG
 
                 parts.forEach(async (part, index) => {
                     const vPart = part.replace(/Logline/gi, 'Log line').replace(/\bPOINT\b/gi, 'Point');
@@ -85,7 +86,8 @@
                     chunksReady++;
                     totalSections = parts.length;
                     
-                    if (audioCtx.state === 'running' && !isPlaying && (chunksReady >= 2 || totalSections < 2)) {
+                    if (audioCtx.state === 'running' && !isPlaying && !triggered && (chunksReady >= 2 || totalSections < 2)) {
+                        triggered = true;
                         isSequenceActive = true; playSequentially();
                     }
                 });
@@ -148,6 +150,7 @@
             const settings = await settingsResp.json();
             
             let chunksReady = 0;
+            let triggered = false; // ANTI-OVERLAP FLAG
 
             sections.forEach(async (section, index) => {
                 if (section.trim().length < 2) return;
@@ -162,7 +165,9 @@
                     audioBuffers[index] = buffer;
                     chunksReady++;
                     
-                    if (!isPlaying && isSequenceActive && (chunksReady >= 2 || totalSections < 2)) { 
+                    // ONLY trigger playback loop once the 2-chunk buffer is met
+                    if (!isPlaying && isSequenceActive && !triggered && (chunksReady >= 2 || totalSections < 2)) { 
+                        triggered = true;
                         playSequentially(); 
                     }
                 } catch (e) {}
