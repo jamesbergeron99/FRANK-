@@ -38,7 +38,6 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const mode = req.body.mode || 'Feature Film';
         const data = await pdf(req.files[0].buffer);
         const scriptText = data.text;
-        
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
         const CHUNK_SIZE = 30000;
@@ -59,12 +58,8 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         });
 
         const feedback = finalResult.response.text();
-        
-        if (mode === 'T.V. Series') {
-            scriptMemory += "\n" + feedback.substring(0, 1500);
-        } else {
-            scriptMemory = ""; 
-        }
+        if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1500); } 
+        else { scriptMemory = ""; }
 
         res.json({ message: feedback });
     } catch (err) {
