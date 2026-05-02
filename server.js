@@ -32,7 +32,14 @@ MANDATORY STRUCTURE (DO NOT DEVIATE):
 5. WRITING: One paragraph covering Dialogue, Tone & Voice.
 6. WORLD: One paragraph covering Setting & Atmosphere.
 7. IMPACT: One paragraph covering Theme and Marketability.
-8. TOP 3 ISSUES TO FIX FIRST: Decisive and prioritized. Format exactly as requested.
+8. TOP 3 ISSUES TO FIX FIRST: Decisive and prioritized. Format exactly:
+   TOP 3 ISSUES TO FIX FIRST
+   [Issue Name]
+   One paragraph (3-5 sentences).
+   [Issue Name]
+   One paragraph (3-5 sentences).
+   [Issue Name]
+   One paragraph (3-5 sentences).
 9. FINAL VERDICT: [PASS / CONSIDER / STRONG CONSIDER] plus one summary paragraph.
 
 STRICT RULES:
@@ -75,7 +82,8 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 });
 
 app.post('/tv-greeting', (req, res) => {
-    res.json({ message: "I'm customized not only to give you an eighteen-point audit on each episode of your series, but to track continuity and arcs. Start with the first episode, darling." });
+    // UPDATED: 18-POINT REFERENCE REMOVED
+    res.json({ message: "I'm customized not only to give you deep forensic feedback on each episode of your series, but to track continuity, character arcs, and series progression to ensure you have a cohesive masterpiece. Start with the first episode, darling." });
 });
 
 app.post('/chat', async (req, res) => {
