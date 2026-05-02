@@ -25,8 +25,8 @@ CONTEXT: This is a ${type}.
 MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
 MANDATORY RULES:
-- DO NOT USE HASHTAGS (#), ASTERISKS (*), OR ANY MARKDOWN FORMATTING.
-- Use plain text only. No bolding, no headers.
+- DO NOT USE HASHTAGS (#), ASTERISKS (*), OR ANY MARKDOWN SYMBOLS.
+- Use plain text only. 
 - SPELLING, GRAMMAR, AND FORMATTING: Practical page-specific corrections.
 - LOGLINE: Clean and professional.
 - SYNOPSIS: Clear and complete.
