@@ -67,14 +67,23 @@
 
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
 
-        // MIC FUNCTIONALITY
+        // MIC FIXED: CONTINUOUS LISTENING
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        recognition.continuous = false; recognition.interimResults = false;
-        recognition.onresult = (e) => { textInput.value = e.results[0][0].transcript; toggleMic(); sendBanter(); };
+        recognition.continuous = true; 
+        recognition.interimResults = true;
+        
+        recognition.onresult = (e) => {
+            let finalTranscript = '';
+            for (let i = e.resultIndex; i < e.results.length; ++i) {
+                if (e.results[i].isFinal) finalTranscript += e.results[i][0].transcript;
+            }
+            if(finalTranscript) { textInput.value = finalTranscript; }
+        };
+
         function toggleMic() {
             const btn = document.getElementById('micBtn');
             if (btn.classList.contains('recording')) { recognition.stop(); btn.classList.remove('recording'); }
-            else { recognition.start(); btn.classList.add('recording'); }
+            else { textInput.value = ''; recognition.start(); btn.classList.add('recording'); }
         }
 
         async function preWarmGreeting(text) {
@@ -113,7 +122,8 @@
 
         async function speak(fullText) {
             stopCurrentAudio();
-            const sections = fullText.split(/(?=SPELLING|LOGLINE|SYNOPSIS|WHAT’S WORKING|Concept & Hook|Structure|Pacing|Stakes|Protagonist|Antagonistic Force|Character Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
+            // Split specifically by your mandatory headers to ensure full read
+            const sections = fullText.split(/(?=SPELLING|LOGLINE|SYNOPSIS|WHAT’S WORKING|Concept|Structure|Pacing|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length;
             isSequenceActive = true;
             const settings = await (await fetch('/voice-settings')).json();
