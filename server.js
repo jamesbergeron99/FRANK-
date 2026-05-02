@@ -1,87 +1,104 @@
-const express = require('express');
-const multer = require('multer');
-const pdf = require('pdf-parse');
-const path = require('path');
-const cors = require('cors'); 
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-require('dotenv').config();
+// REPLACE your existing speak(), stopCurrentAudio(), and playSequentially() 
+// in index.html with this exact block.
 
-const app = express();
-const PORT = process.env.PORT || 10000;
+async function speak(fullText) {
+    // 1. HARD RESET: Kill all active logic and flags before starting a new read
+    stopCurrentAudio();
+    
+    // 2. Identify the sequence based on your mandatory headers
+    const sections = fullText.split(/(?=SPELLING|LOGLINE|SYNOPSIS|WHAT’S WORKING|Concept|Structure|Pacing|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
+    
+    audioBuffers = {}; 
+    nextToPlay = 0; 
+    totalSections = sections.length;
+    isSequenceActive = true; // This is the master gate
 
-app.use(cors()); 
-app.use(express.json({limit: '100mb'})); 
-app.use(express.static(path.join(__dirname, 'public')));
+    const settings = await (await fetch('/voice-settings')).json();
+    
+    // 3. SEQUENTIAL GENERATION: Process sections one-by-one (Fixes the overlapping/echo)
+    for (let index = 0; index < sections.length; index++) {
+        const section = sections[index];
+        if (section.trim().length < 2) continue;
 
-const upload = multer({ storage: multer.memoryStorage() });
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+        // If a new response or a 'stop' was triggered, exit this loop immediately
+        if (!isSequenceActive) break;
 
-let scriptMemory = "";
+        try {
+            const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
+                method: "POST", 
+                headers: { 
+                    "Authorization": `Basic ${settings.apiKey}`, 
+                    "Content-Type": "application/json" 
+                },
+                body: JSON.stringify({ 
+                    text: section.replace(/Logline/gi, 'Log line'), 
+                    voiceId: "default-oglabcjnetcklcq7rghmbw__frank", 
+                    modelId: "inworld-tts-1.5-max" 
+                })
+            });
+            
+            const data = await res.json();
+            const buffer = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
+            
+            audioBuffers[index] = buffer;
 
-const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
-Deliver professional script coverage with precision, authority, and personality.
-CORE PRINCIPLE: Evaluate, do not encourage. Focus on what is not working.
-CONTEXT: This is a ${type}.
-MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
-
-MANDATORY STRUCTURE (DO NOT DEVIATE):
-1. SPELLING, GRAMMAR, AND FORMATTING
-2. LOGLINE
-3. SYNOPSIS
-4. WHAT’S WORKING (Only if specific/meaningful)
-5. CORE ANALYSIS (Concept, Structure, Pacing, Stakes, Protagonist, Antagonist, Dynamics, Dialogue, Tone, World, Theme, Marketability)
-
-INVISIBLE STRUCTURE RULE:
-Weave what is not working, why it matters, and how to fix it into a natural, continuous explanation. No labels like "Problem" or "Fix."
-
-EVIDENCE RULE: Include page/scene references for every critique.
-TOP 3 ISSUES TO FIX FIRST: Problem, impact, and direct fix.
-FINAL VERDICT: [PASS/CONSIDER/STRONG CONSIDER] plus one summary paragraph.`;
-
-app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
-    try {
-        const mode = req.body.mode || 'Feature Film';
-        const data = await pdf(req.files[0].buffer);
-        const scriptText = data.text;
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-
-        const chunks = [];
-        const CHUNK_SIZE = 30000;
-        for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) {
-            chunks.push(scriptText.substring(i, i + CHUNK_SIZE));
+            // 4. TRIGGER: Start playback ONLY for the first section to start the chain
+            if (!isPlaying && index === 0 && isSequenceActive) {
+                playSequentially();
+            }
+        } catch (e) {
+            console.error("Audio Sequencing Error:", e);
         }
+    }
+}
 
-        const scanResults = await Promise.all(chunks.map(chunk => 
-            model.generateContent(`Extract specific page-referenced forensic evidence: \n\n ${chunk}`)
-        ));
+function stopCurrentAudio() { 
+    // Kill the sequence gate and reset playback flags immediately
+    isSequenceActive = false;
+    isPlaying = false;
+    nextToPlay = 0;
+    
+    if (currentSource) { 
+        try { 
+            currentSource.stop(); 
+        } catch (e) {
+            // Source was already inactive or ended
+        } 
+        currentSource = null; 
+    } 
+    
+    document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
+}
+
+function playSequentially() {
+    // Master gate: if the sequence isn't active, do not play
+    if (!isSequenceActive || nextToPlay >= totalSections) { 
+        isPlaying = false; 
+        document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
+        return; 
+    }
+
+    if (audioBuffers[nextToPlay]) {
+        isPlaying = true; 
+        document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
         
-        const forensicData = scanResults.map(r => r.response.text()).join("\n");
-
-        const finalResult = await model.generateContent({
-            systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
-            contents: [{ role: "user", parts: [{ text: `Script Content: ${scriptText.substring(0, 85000)} \n\n Forensic Evidence: ${forensicData}` }] }]
-        });
-
-        const feedback = finalResult.response.text();
-        if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1000); }
-        res.json({ message: feedback });
-    } catch (err) { res.status(500).json({ message: "Frank had a technical glitch." }); }
-});
-
-app.post('/tv-greeting', (req, res) => {
-    res.json({ message: "Oh, we’re doing a series now? Good. That’s where things get interesting—and where most writers lose control of the wheel. In here, I’m not just looking at one script. I’m tracking everything—character arcs, continuity, the slow unraveling or sharpening of your story over time. If something drifts, I’ll see it. If something builds properly, I’ll call it out. Start with episode one. Don’t skip ahead. I need to see how this world breathes before I judge how it evolves. Let’s see if you’ve got something that can actually sustain itself—or if it collapses under its own ambition." });
-});
-
-app.post('/chat', async (req, res) => {
-    try {
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-        const result = await model.generateContent({
-            systemInstruction: "You are Frank. Answer based on memory: " + scriptMemory,
-            contents: [{ role: "user", parts: [{ text: req.body.message }] }]
-        });
-        res.json({ message: result.response.text() });
-    } catch (err) { res.status(500).json({ message: "In a meeting." }); }
-});
-
-app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
-app.listen(PORT, '0.0.0.0');
+        currentSource = audioCtx.createBufferSource();
+        currentSource.buffer = audioBuffers[nextToPlay];
+        currentSource.connect(audioCtx.destination);
+        
+        currentSource.onended = () => { 
+            // Only move to the next section if the sequence is still the current active one
+            if (isSequenceActive && isPlaying) { 
+                nextToPlay++; 
+                playSequentially(); 
+            } 
+        };
+        
+        currentSource.start();
+    } else { 
+        // Wait for the sequential generator in speak() to catch up
+        if (isSequenceActive) {
+            setTimeout(playSequentially, 100); 
+        }
+    }
+}
