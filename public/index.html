@@ -58,7 +58,7 @@
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0;
         let isSequenceActive = false;
         
-        // GREETING RECTIFIED
+        // CORRECTED GREETING
         const welcomeText = "Hey there, I'm Frank. Not just in name, but in spirit, I’m your AI script doctor. I’m here to give you actionable feedback on your features or TV series, including a full spelling and grammar check, logline, synopsis, and my 18-point forensic audit. Or, pick TV series for additional coverage over multiple episodes. Darling, it takes time to process brilliance, so chill and give me a minute.";
 
         window.onload = async () => { 
@@ -136,11 +136,13 @@
 
         async function speak(fullText) {
             stopCurrentAudio();
+            // Split by Narrative Points or major headers to keep the queue moving
             const sections = fullText.split(/(?=\bLogline:|\bSynopsis:|\d+\.|\bOn page)/g);
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length;
             isSequenceActive = true;
             const settingsResp = await fetch('/voice-settings');
             const settings = await settingsResp.json();
+            
             sections.forEach(async (section, index) => {
                 if (section.trim().length < 2) return;
                 try {
@@ -169,7 +171,10 @@
                 currentSource.connect(audioCtx.destination);
                 currentSource.onended = () => { if (isPlaying && isSequenceActive) { nextToPlay++; playSequentially(); } };
                 currentSource.start();
-            } else { setTimeout(playSequentially, 50); }
+            } else { 
+                // Enhanced "Keep-Alive": Check again in 100ms if the next section isn't decoded yet
+                setTimeout(playSequentially, 100); 
+            }
         }
 
         function stopCurrentAudio() { 
