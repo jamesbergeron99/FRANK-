@@ -19,33 +19,24 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 let scriptMemory = "";
 
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
-Deliver professional script coverage with precision, authority, and personality. You are sharp, direct, and human. 
+Deliver professional script coverage with precision, authority, and personality.
 CORE PRINCIPLE: Evaluate, do not encourage. Focus on what is not working.
 CONTEXT: This is a ${type}.
 MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
 MANDATORY STRUCTURE (DO NOT DEVIATE):
-1. SPELLING, GRAMMAR, AND FORMATTING: Practical page-specific corrections.
-2. LOGLINE: Clean and professional.
-3. SYNOPSIS: Clear and complete.
-4. WHAT’S WORKING: Only include if there is something specific and meaningful to highlight. One paragraph max. Tied to a real script example. Omit if no specific strengths exist.
-5. CORE ANALYSIS: Concept & Hook, Structure, Pacing, Stakes & Conflict, Protagonist, Antagonistic Force, Character Dynamics & Arcs, Dialogue, Tone & Voice, World & Setting, Theme, Marketability.
+1. SPELLING, GRAMMAR, AND FORMATTING
+2. LOGLINE
+3. SYNOPSIS
+4. WHAT’S WORKING (Only if specific/meaningful)
+5. CORE ANALYSIS (Concept, Structure, Pacing, Stakes, Protagonist, Antagonist, Dynamics, Dialogue, Tone, World, Theme, Marketability)
 
 INVISIBLE STRUCTURE RULE:
-Each section must naturally weave together what is not working, why it matters, and how to fix it.
-- DO NOT use labels like "Problem," "Consequence," or "Fix."
-- Write as a continuous, natural explanation.
+Weave what is not working, why it matters, and how to fix it into a natural, continuous explanation. No labels like "Problem" or "Fix."
 
-EVIDENCE RULE (CRITICAL): 
-Every major critique must include a page reference, scene reference, or quoted example.
-
-6. TOP 3 ISSUES TO FIX FIRST: Clear problem, impact, and direct fix.
-7. FINAL VERDICT: [PASS / CONSIDER / STRONG CONSIDER]. Final meeting call style.
-
-STRICT RULES:
-- NO generic praise. NO fluff.
-- Use "Log line" as two words for voice synthesis.
-- NEVER skip or reorder sections.`;
+EVIDENCE RULE: Include page/scene references for every critique.
+TOP 3 ISSUES TO FIX FIRST: Problem, impact, and direct fix.
+FINAL VERDICT: [PASS/CONSIDER/STRONG CONSIDER] plus one summary paragraph.`;
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     try {
@@ -74,9 +65,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const feedback = finalResult.response.text();
         if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1000); }
         res.json({ message: feedback });
-    } catch (err) {
-        res.status(500).json({ message: "Frank had a technical glitch." });
-    }
+    } catch (err) { res.status(500).json({ message: "Technical glitch." }); }
 });
 
 app.post('/tv-greeting', (req, res) => {
@@ -87,11 +76,11 @@ app.post('/chat', async (req, res) => {
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
         const result = await model.generateContent({
-            systemInstruction: "You are Frank. Answer based on: " + scriptMemory,
+            systemInstruction: "You are Frank. Answer based on memory: " + scriptMemory,
             contents: [{ role: "user", parts: [{ text: req.body.message }] }]
         });
         res.json({ message: result.response.text() });
-    } catch (err) { res.status(500).json({ message: "I'm in a meeting." }); }
+    } catch (err) { res.status(500).json({ message: "In a meeting." }); }
 });
 
 app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
