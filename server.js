@@ -18,7 +18,6 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 let scriptMemory = "";
 
-// MANDATORY STRUCTURE - LOCKED 100%
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
 Deliver professional script coverage with precision, authority, and personality.
 CORE PRINCIPLE: Evaluate, do not encourage. Focus on what is not working.
@@ -66,7 +65,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const feedback = finalResult.response.text();
         if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1000); }
         res.json({ message: feedback });
-    } catch (err) { res.status(500).json({ message: "Technical glitch." }); }
+    } catch (err) { res.status(500).json({ message: "Frank had a technical glitch." }); }
 });
 
 app.post('/tv-greeting', (req, res) => {
