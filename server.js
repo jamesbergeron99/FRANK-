@@ -1,101 +1,84 @@
-async function speak(fullText) {
-    // 1. HARD RESET: Kill all active audio logic and flags immediately
-    stopCurrentAudio();
-    
-    // 2. Map the sequence based on your mandatory forensic headers
-    const sections = fullText.split(/(?=SPELLING|LOGLINE|SYNOPSIS|WHAT’S WORKING|Concept|Structure|Pacing|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
-    
-    audioBuffers = {}; 
-    nextToPlay = 0; 
-    totalSections = sections.length;
-    isSequenceActive = true; // Master gate to prevent overlapping responses
+const express = require('express');
+const multer = require('multer');
+const pdf = require('pdf-parse');
+const path = require('path');
+const cors = require('cors'); 
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+require('dotenv').config();
 
-    const settings = await (await fetch('/voice-settings')).json();
-    
-    // 3. SEQUENTIAL GENERATION: Process one thought at a time
-    for (let index = 0; index < sections.length; index++) {
-        const section = sections[index];
-        if (section.trim().length < 2) continue;
+const app = express();
+const PORT = process.env.PORT || 10000;
 
-        // If a new 'speak' call or a 'stop' was triggered, exit this loop instantly
-        if (!isSequenceActive) break;
+app.use(cors()); 
+app.use(express.json({limit: '100mb'})); 
+app.use(express.static(path.join(__dirname, 'public')));
 
-        try {
-            const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
-                method: "POST", 
-                headers: { 
-                    "Authorization": `Basic ${settings.apiKey}`, 
-                    "Content-Type": "application/json" 
-                },
-                body: JSON.stringify({ 
-                    text: section.replace(/Logline/gi, 'Log line'), 
-                    voiceId: "default-oglabcjnetcklcq7rghmbw__frank", 
-                    modelId: "inworld-tts-1.5-max" 
-                })
-            });
-            
-            const data = await res.json();
-            const buffer = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
-            
-            audioBuffers[index] = buffer;
+const upload = multer({ storage: multer.memoryStorage() });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-            // 4. TRIGGER: Start the playback chain only for the very first buffer
-            if (!isPlaying && index === 0 && isSequenceActive) {
-                playSequentially();
-            }
-        } catch (e) {
-            console.error("Audio Sync Error:", e);
+let scriptMemory = "";
+
+const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
+Deliver professional script coverage with precision, authority, and personality.
+CORE PRINCIPLE: Evaluate, do not encourage. Focus on what is not working.
+CONTEXT: This is a ${type}.
+MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
+
+MANDATORY RULES:
+- DO NOT USE HASHTAGS (#) ANYWHERE IN YOUR RESPONSE.
+- Identify errors in SPELLING, GRAMMAR, AND FORMATTING with page numbers.
+- Provide a professional LOGLINE and SYNOPSIS.
+- WHAT’S WORKING: Only if specific/meaningful (1 paragraph max).
+- CORE ANALYSIS: Use the "Invisible Structure"—weave the problem, consequence, and fix into natural paragraphs for Concept, Structure, Pacing, Stakes, Protagonist, Antagonist, Dynamics, Dialogue, Tone, World, Theme, and Marketability.
+
+EVIDENCE RULE: Include page/scene references for every critique.
+TOP 3 ISSUES TO FIX FIRST: Problem, impact, and direct fix.
+FINAL VERDICT: [PASS/CONSIDER/STRONG CONSIDER] plus one summary paragraph.`;
+
+app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
+    try {
+        const mode = req.body.mode || 'Feature Film';
+        const data = await pdf(req.files[0].buffer);
+        const scriptText = data.text;
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+
+        const chunks = [];
+        const CHUNK_SIZE = 30000;
+        for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) {
+            chunks.push(scriptText.substring(i, i + CHUNK_SIZE));
         }
-    }
-}
 
-function stopCurrentAudio() { 
-    // Immediate kill-switch for all sequence flags and playback
-    isSequenceActive = false;
-    isPlaying = false;
-    nextToPlay = 0;
-    
-    if (currentSource) { 
-        try { 
-            currentSource.stop(); 
-        } catch (e) {
-            // Source was already inactive or finished
-        } 
-        currentSource = null; 
-    } 
-    
-    document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
-}
+        const scanResults = await Promise.all(chunks.map(chunk => 
+            model.generateContent(`Extract specific page-referenced forensic evidence: \n\n ${chunk}`)
+        ));
+        
+        const forensicData = scanResults.map(r => r.response.text()).join("\n");
 
-function playSequentially() {
-    // Check if this specific sequence is still the authorized active one
-    if (!isSequenceActive || nextToPlay >= totalSections) { 
-        isPlaying = false; 
-        document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
-        return; 
-    }
+        const finalResult = await model.generateContent({
+            systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
+            contents: [{ role: "user", parts: [{ text: `Script Content: ${scriptText.substring(0, 85000)} \n\n Forensic Evidence: ${forensicData}` }] }]
+        });
 
-    if (audioBuffers[nextToPlay]) {
-        isPlaying = true; 
-        document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
-        
-        currentSource = audioCtx.createBufferSource();
-        currentSource.buffer = audioBuffers[nextToPlay];
-        currentSource.connect(audioCtx.destination);
-        
-        currentSource.onended = () => { 
-            // Only move to the next buffer if we are still the active sequence
-            if (isSequenceActive && isPlaying) { 
-                nextToPlay++; 
-                playSequentially(); 
-            } 
-        };
-        
-        currentSource.start();
-    } else { 
-        // Wait briefly for the sequential generator in speak() to finish the next chunk
-        if (isSequenceActive) {
-            setTimeout(playSequentially, 100); 
-        }
-    }
-}
+        const feedback = finalResult.response.text();
+        if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1000); }
+        res.json({ message: feedback });
+    } catch (err) { res.status(500).json({ message: "Technical glitch." }); }
+});
+
+app.post('/tv-greeting', (req, res) => {
+    res.json({ message: "Oh, we’re doing a series now? Good. That’s where things get interesting—and where most writers lose control of the wheel. In here, I’m not just looking at one script. I’m tracking everything—character arcs, continuity, the slow unraveling or sharpening of your story over time. Start with episode one. Don’t skip ahead. I need to see how this world breathes before I judge how it evolves." });
+});
+
+app.post('/chat', async (req, res) => {
+    try {
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+        const result = await model.generateContent({
+            systemInstruction: "You are Frank. Answer based on memory: " + scriptMemory,
+            contents: [{ role: "user", parts: [{ text: req.body.message }] }]
+        });
+        res.json({ message: result.response.text() });
+    } catch (err) { res.status(500).json({ message: "In a meeting." }); }
+});
+
+app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
+app.listen(PORT, '0.0.0.0');
