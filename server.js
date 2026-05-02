@@ -1,26 +1,23 @@
-// REPLACE your existing speak(), stopCurrentAudio(), and playSequentially() 
-// in index.html with this exact block.
-
 async function speak(fullText) {
-    // 1. HARD RESET: Kill all active logic and flags before starting a new read
+    // 1. HARD RESET: Kill all active audio logic and flags immediately
     stopCurrentAudio();
     
-    // 2. Identify the sequence based on your mandatory headers
+    // 2. Map the sequence based on your mandatory forensic headers
     const sections = fullText.split(/(?=SPELLING|LOGLINE|SYNOPSIS|WHAT’S WORKING|Concept|Structure|Pacing|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
     
     audioBuffers = {}; 
     nextToPlay = 0; 
     totalSections = sections.length;
-    isSequenceActive = true; // This is the master gate
+    isSequenceActive = true; // Master gate to prevent overlapping responses
 
     const settings = await (await fetch('/voice-settings')).json();
     
-    // 3. SEQUENTIAL GENERATION: Process sections one-by-one (Fixes the overlapping/echo)
+    // 3. SEQUENTIAL GENERATION: Process one thought at a time
     for (let index = 0; index < sections.length; index++) {
         const section = sections[index];
         if (section.trim().length < 2) continue;
 
-        // If a new response or a 'stop' was triggered, exit this loop immediately
+        // If a new 'speak' call or a 'stop' was triggered, exit this loop instantly
         if (!isSequenceActive) break;
 
         try {
@@ -42,18 +39,18 @@ async function speak(fullText) {
             
             audioBuffers[index] = buffer;
 
-            // 4. TRIGGER: Start playback ONLY for the first section to start the chain
+            // 4. TRIGGER: Start the playback chain only for the very first buffer
             if (!isPlaying && index === 0 && isSequenceActive) {
                 playSequentially();
             }
         } catch (e) {
-            console.error("Audio Sequencing Error:", e);
+            console.error("Audio Sync Error:", e);
         }
     }
 }
 
 function stopCurrentAudio() { 
-    // Kill the sequence gate and reset playback flags immediately
+    // Immediate kill-switch for all sequence flags and playback
     isSequenceActive = false;
     isPlaying = false;
     nextToPlay = 0;
@@ -62,7 +59,7 @@ function stopCurrentAudio() {
         try { 
             currentSource.stop(); 
         } catch (e) {
-            // Source was already inactive or ended
+            // Source was already inactive or finished
         } 
         currentSource = null; 
     } 
@@ -71,7 +68,7 @@ function stopCurrentAudio() {
 }
 
 function playSequentially() {
-    // Master gate: if the sequence isn't active, do not play
+    // Check if this specific sequence is still the authorized active one
     if (!isSequenceActive || nextToPlay >= totalSections) { 
         isPlaying = false; 
         document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
@@ -87,7 +84,7 @@ function playSequentially() {
         currentSource.connect(audioCtx.destination);
         
         currentSource.onended = () => { 
-            // Only move to the next section if the sequence is still the current active one
+            // Only move to the next buffer if we are still the active sequence
             if (isSequenceActive && isPlaying) { 
                 nextToPlay++; 
                 playSequentially(); 
@@ -96,7 +93,7 @@ function playSequentially() {
         
         currentSource.start();
     } else { 
-        // Wait for the sequential generator in speak() to catch up
+        // Wait briefly for the sequential generator in speak() to finish the next chunk
         if (isSequenceActive) {
             setTimeout(playSequentially, 100); 
         }
