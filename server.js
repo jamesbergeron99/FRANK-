@@ -18,6 +18,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 let scriptMemory = "";
 
+// MANDATORY STRUCTURE - LOCKED 100%
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
 Deliver professional script coverage with precision, authority, and personality.
 CORE PRINCIPLE: Evaluate, do not encourage. Focus on what is not working.
