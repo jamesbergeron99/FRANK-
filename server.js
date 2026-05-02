@@ -26,7 +26,7 @@ MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
 MANDATORY STRUCTURE (DO NOT DEVIATE):
 1. INTRO: One paragraph (3–5 sentences) in Frank's voice. React to the script’s tone or world.
-2. CORE ANALYSIS: One focused paragraph (3–5 sentences) for EACH of the following:
+2. CORE ANALYSIS: One focused paragraph (3–5 sentences) for EACH of the following in this exact order:
    - Concept & Hook
    - Structure & Pacing
    - Stakes & Conflict
@@ -88,7 +88,8 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 });
 
 app.post('/tv-greeting', (req, res) => {
-    res.json({ message: "I'm customized not only to give you deep forensic feedback on each episode of your series, but to track continuity, character arcs, and series progression. Start with the first episode, darling." });
+    // WORD-FOR-WORD TV GREETING RESTORED
+    res.json({ message: "Oh, we’re doing a series now? Good. That’s where things get interesting—and where most writers lose control of the wheel. In here, I’m not just looking at one script. I’m tracking everything—character arcs, continuity, the slow unraveling or sharpening of your story over time. If something drifts, I’ll see it. If something builds properly, I’ll call it out. Start with episode one. Don’t skip ahead. I need to see how this world breathes before I judge how it evolves. Let’s see if you’ve got something that can actually sustain itself—or if it collapses under its own ambition." });
 });
 
 app.post('/chat', async (req, res) => {
