@@ -32,7 +32,7 @@ MANDATORY STRUCTURE (DO NOT DEVIATE):
 5. CORE ANALYSIS: Concept & Hook, Structure, Pacing, Stakes & Conflict, Protagonist, Antagonistic Force, Character Dynamics & Arcs, Dialogue, Tone & Voice, World & Setting, Theme, Marketability.
 
 INVISIBLE STRUCTURE RULE:
-Each section must naturally weave together what is not working, why it matters, and how to fix it. 
+Each section must naturally weave together what is not working, why it matters, and how to fix it.
 - DO NOT use labels like "Problem," "Consequence," or "Fix."
 - Write as a continuous, natural explanation.
 
@@ -80,7 +80,6 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 });
 
 app.post('/tv-greeting', (req, res) => {
-    // VERBATIM TV GREETING
     res.json({ message: "Oh, we’re doing a series now? Good. That’s where things get interesting—and where most writers lose control of the wheel. In here, I’m not just looking at one script. I’m tracking everything—character arcs, continuity, the slow unraveling or sharpening of your story over time. If something drifts, I’ll see it. If something builds properly, I’ll call it out. Start with episode one. Don’t skip ahead. I need to see how this world breathes before I judge how it evolves. Let’s see if you’ve got something that can actually sustain itself—or if it collapses under its own ambition." });
 });
 
