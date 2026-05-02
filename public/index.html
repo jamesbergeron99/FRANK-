@@ -19,8 +19,8 @@
         #chat-window { flex-grow: 1; overflow-y: auto; padding: 25px; display: flex; flex-direction: column; gap: 20px; background: #080808; }
         .msg { max-width: 90%; padding: 25px; border-radius: 10px; line-height: 1.8; font-size: 1.1rem; white-space: pre-wrap; background: var(--card); border-left: 4px solid var(--gold); }
         .user-msg { align-self: flex-end; border-left: none; border-right: 4px solid var(--gold); background: #222; }
-        .media-bar { background: #111; padding: 10px; display: flex; justify-content: center; gap: 35px; border-top: 1px solid #333; }
-        .media-btn { background: none; border: 1px solid var(--gold); color: var(--gold); width: 42px; height: 42px; border-radius: 50%; cursor: pointer; font-size: 1rem; transition: 0.2s; }
+        .media-bar { background: #111; padding: 10px; display: flex; justify-content: center; border-top: 1px solid #333; }
+        .media-btn { background: none; border: 1px solid var(--gold); color: var(--gold); width: 50px; height: 50px; border-radius: 50%; cursor: pointer; font-size: 1.2rem; transition: 0.2s; }
         .media-btn:hover { background: var(--gold); color: #000; }
         .input-area { padding: 15px 30px; background: #111; border-top: 2px solid var(--gold); display: flex; gap: 15px; align-items: center; }
         .pill { flex-grow: 1; display: flex; background: #000; border: 1px solid var(--gold); border-radius: 40px; padding: 5px 20px; align-items: center; }
@@ -39,9 +39,7 @@
     </div>
     <div id="chat-window"></div>
     <div class="media-bar">
-        <button class="media-btn" onclick="skipAudio(-1)"><i class="fas fa-backward"></i></button>
         <button class="media-btn" id="playPauseBtn" onclick="togglePlayback()"><i class="fas fa-pause"></i></button>
-        <button class="media-btn" onclick="skipAudio(1)"><i class="fas fa-forward"></i></button>
     </div>
     <div class="input-area">
         <button class="icon-btn" onclick="document.getElementById('scriptInput').click()"><i class="fas fa-file-upload"></i></button>
@@ -66,7 +64,6 @@
         window.onload = async () => { 
             localStorage.clear();
             addMessage(welcomeText);
-            // Pre-warm the buffer for the greeting immediately
             preWarmGreeting(welcomeText);
         };
 
@@ -74,36 +71,27 @@
             try {
                 const settingsResp = await fetch('/voice-settings');
                 const settings = await settingsResp.json();
-                
-                // Break into two small chunks for faster initial delivery
                 const parts = text.split(/(?<=\. )/); 
-                
                 parts.forEach(async (part, index) => {
                     const ttsResp = await fetch("https://api.inworld.ai/tts/v1/voice", {
                         method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
                         body: JSON.stringify({ text: part, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                     });
                     const data = await ttsResp.json();
-                    const buffer = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
-                    audioBuffers[index] = buffer;
+                    audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
                     totalSections = parts.length;
-
-                    // Trigger as soon as the first chunk is decoded AND user has clicked body
                     if (audioCtx.state === 'running' && index === 0 && !isPlaying) {
-                        isSequenceActive = true;
-                        playSequentially();
+                        isSequenceActive = true; playSequentially();
                     }
                 });
-            } catch (e) { console.error("Greeting load error:", e); }
+            } catch (e) {}
         }
 
         function initAudio() { 
             if (audioCtx.state === 'suspended') {
                 audioCtx.resume().then(() => {
-                    // Instant trigger on user's first click
                     if (audioBuffers[0] && !isPlaying) {
-                        isSequenceActive = true;
-                        playSequentially();
+                        isSequenceActive = true; playSequentially();
                     }
                 });
             }
@@ -113,12 +101,9 @@
             if (this.checked) {
                 const response = await fetch('/tv-greeting', { method: 'POST' });
                 const data = await response.json();
-                addMessage(data.message);
-                speak(data.message);
+                addMessage(data.message); speak(data.message);
             } else {
-                const msg = "Feature mode activated.";
-                addMessage(msg);
-                speak(msg);
+                speak("Feature mode activated.");
             }
         });
 
@@ -151,7 +136,6 @@
 
         async function speak(fullText) {
             stopCurrentAudio();
-            // SECTION-BASED SPLITTING: Jumps by Audit Point, Logline, or Page
             const sections = fullText.split(/(?=\bLogline:|\bSynopsis:|\d+\.|\bOn page)/g);
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length;
             isSequenceActive = true;
@@ -167,7 +151,7 @@
                     const data = await ttsResp.json();
                     audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
                     if (!isPlaying && index === 0) { playSequentially(); }
-                } catch (e) { console.error("TTS Error:", e); }
+                } catch (e) {}
             });
         }
 
@@ -185,36 +169,17 @@
                 currentSource.connect(audioCtx.destination);
                 currentSource.onended = () => { if (isPlaying && isSequenceActive) { nextToPlay++; playSequentially(); } };
                 currentSource.start();
-            } else { 
-                setTimeout(playSequentially, 50); 
-            }
+            } else { setTimeout(playSequentially, 50); }
         }
 
         function stopCurrentAudio() { 
-            isPlaying = false; 
-            isSequenceActive = false; 
-            if (currentSource) { 
-                try { currentSource.stop(); currentSource.disconnect(); } catch (e) {} 
-                currentSource = null; 
-            } 
+            isPlaying = false; isSequenceActive = false;
+            if (currentSource) { try { currentSource.stop(); currentSource.disconnect(); } catch (e) {} currentSource = null; } 
         }
 
         function togglePlayback() { 
-            if (isPlaying) { 
-                stopCurrentAudio(); 
-                document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
-            } else { 
-                isSequenceActive = true;
-                playSequentially(); 
-                document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
-            } 
-        }
-
-        function skipAudio(dir) { 
-            stopCurrentAudio(); 
-            nextToPlay = Math.max(0, Math.min(totalSections - 1, nextToPlay + dir)); 
-            isSequenceActive = true;
-            playSequentially(); 
+            if (isPlaying) { stopCurrentAudio(); document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>'; }
+            else { isSequenceActive = true; playSequentially(); document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>'; } 
         }
 
         function downloadPDF() {
