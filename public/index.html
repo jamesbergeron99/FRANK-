@@ -59,7 +59,7 @@
         let isSequenceActive = false;
         let stallStartTime = null; 
 
-        const welcomeText = "Hey there, I'm Frank. Not just in name, but in spirit, I’m your AI script doctor. I’m here to give you actionable feedback on your features or TV series, including a full spelling and grammar check, log line, synopsis, and my forensic audit. Upload a PDF to begin and give me like, 2 minutes to process it.";
+        const welcomeText = "Hey there, I'm Frank. Not just in name, but in spirit, I’m your AI script doctor. darling, it takes time to process brilliance, so chill and give me a minute.";
 
         window.onload = async () => { 
             localStorage.clear();
@@ -72,9 +72,6 @@
                 const settingsResp = await fetch('/voice-settings');
                 const settings = await settingsResp.json();
                 const parts = text.split(/(?<=\. )/); 
-                let chunksReady = 0;
-                let triggered = false;
-
                 parts.forEach(async (part, index) => {
                     const vPart = part.replace(/Logline/gi, 'Log line');
                     const ttsResp = await fetch("https://api.inworld.ai/tts/v1/voice", {
@@ -83,25 +80,15 @@
                     });
                     const data = await ttsResp.json();
                     audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
-                    chunksReady++;
                     totalSections = parts.length;
-                    
-                    if (audioCtx.state === 'running' && !isPlaying && !triggered && chunksReady >= 2) {
-                        triggered = true; isSequenceActive = true; playSequentially();
+                    if (audioCtx.state === 'running' && index === 0 && !isPlaying) {
+                        isSequenceActive = true; playSequentially();
                     }
                 });
             } catch (e) {}
         }
 
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
-
-        document.getElementById('modeToggle').addEventListener('change', async function() {
-            if (this.checked) {
-                const response = await fetch('/tv-greeting', { method: 'POST' });
-                const data = await response.json();
-                addMessage(data.message); speak(data.message);
-            } else { speak("Feature mode activated."); }
-        });
 
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
@@ -115,44 +102,29 @@
             addMessage(data.message); speak(data.message);
         }
 
-        async function sendBanter() {
-            const val = textInput.value; if (!val) return;
-            textInput.value = ''; addMessage(val, true);
-            const response = await fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) });
-            const data = await response.json();
-            addMessage(data.message); speak(data.message);
-        }
-
-        function addMessage(text, isUser = false) {
-            const div = document.createElement('div');
-            div.className = isUser ? 'msg user-msg' : 'msg';
-            div.innerText = text; chatWindow.appendChild(div); chatWindow.scrollTop = chatWindow.scrollHeight;
-        }
-
         async function speak(fullText) {
             stopCurrentAudio();
-            // REFINED SPLIT: Detecting section headers to keep numbers intact
-            const sections = fullText.split(/(?=STORY|CHARACTER|WRITING|WORLD|IMPACT|TOP 3 ISSUES|FINAL VERDICT)/g);
+            // CHUNKING BY YOUR NEW 10-SECTION HEADERS
+            const sections = fullText.split(/(?=Concept & Hook|Structure & Pacing|Stakes & Conflict|Protagonist|Antagonistic Force|Character Dynamics|Dialogue|Tone & Voice|World & Atmosphere|Theme & Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length;
             isSequenceActive = true;
             const settingsResp = await fetch('/voice-settings');
             const settings = await settingsResp.json();
             
-            let chunksReady = 0;
             let triggered = false;
 
             sections.forEach(async (section, index) => {
                 if (section.trim().length < 2) return;
                 try {
-                    const vSection = section.replace(/Logline/gi, 'Log line').replace(/\bPOINT\b/gi, 'Point');
+                    const vSection = section.replace(/Logline/gi, 'Log line');
                     const ttsResp = await fetch("https://api.inworld.ai/tts/v1/voice", {
                         method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
                         body: JSON.stringify({ text: vSection, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                     });
                     const data = await ttsResp.json();
                     audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
-                    chunksReady++;
-                    if (!isPlaying && isSequenceActive && !triggered && (chunksReady >= 2 || totalSections < 2)) { 
+                    
+                    if (!isPlaying && isSequenceActive && !triggered && index === 0) { 
                         triggered = true; playSequentially(); 
                     }
                 } catch (e) {}
@@ -175,7 +147,7 @@
                 currentSource.start();
             } else { 
                 if (!stallStartTime) stallStartTime = Date.now();
-                if (Date.now() - stallStartTime > 3000) { nextToPlay++; playSequentially(); }
+                if (Date.now() - stallStartTime > 4000) { nextToPlay++; playSequentially(); }
                 else { setTimeout(playSequentially, 50); }
             }
         }
@@ -188,6 +160,12 @@
         function togglePlayback() { 
             if (isPlaying) stopCurrentAudio(); 
             else { isSequenceActive = true; playSequentially(); } 
+        }
+
+        function addMessage(text, isUser = false) {
+            const div = document.createElement('div');
+            div.className = isUser ? 'msg user-msg' : 'msg';
+            div.innerText = text; chatWindow.appendChild(div); chatWindow.scrollTop = chatWindow.scrollHeight;
         }
 
         function downloadPDF() {
