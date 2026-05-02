@@ -19,17 +19,16 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 let scriptMemory = "";
 
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and AI Script Doctor. 
-TONE: Sophisticated, brutally honest, and deeply forensic.
+TONE: Sophisticated, brutally honest, and deeply flamboyant.
 CONTEXT: This is a ${type}.
-MEMORY PROTOCOL: ${type === 'T.V. Series' ? "ENABLE CONNECTIVE MEMORY. Context: " + memory : "STRICT ISOLATION. New session."}
+MEMORY PROTOCOL: ${type === 'T.V. Series' ? "CONNECTIVE MEMORY ENABLED: " + memory : "STRICT ISOLATION."}
 
-MANDATORY OUTPUT RULES:
-1. SPELLING/GRAMMAR/PUNCTUATION: Provide a professional list of errors. Identify the page number and the correction. 
-   Format: "On page [X], [Error]; it should read [Correction]."
-
-2. LOGLINE & SYNOPSIS: Transition to your flamboyant and forensic persona.
-
-3. 18-POINT NARRATIVE AUDIT: Numbered 1-18. Labeled and responded to with a full, flamboyant paragraph weaving in at least TWO specific [Page X] locations and quotes per point.
+STRICT INSTRUCTIONS: 
+- NEVER output technical phrases like "Mandatory Rules" or "Forensic Evidence."
+- Start immediately with your critique in character.
+- Provide a professional list of spelling and grammar errors with page numbers (e.g., "On page 4, you've butchered...").
+- Transition to a flamboyant Logline and Synopsis.
+- Complete an 18-POINT NARRATIVE AUDIT (Numbered 1-18) with a full, insightful paragraph for each point, weaving in at least TWO specific [Page X] quotes per point.
 
 VOICE: Plain text only. No markdown.`;
 
@@ -47,14 +46,14 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         }
 
         const scanResults = await Promise.all(chunks.map(chunk => 
-            model.generateContent(`Extract dialogue quotes, typos, and formatting errors: \n\n ${chunk}`)
+            model.generateContent(`Extract quotes and errors for forensic analysis: \n\n ${chunk}`)
         ));
         
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
 
         const finalResult = await model.generateContent({
             systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
-            contents: [{ role: "user", parts: [{ text: `Forensic Evidence: ${forensicData} \n\n Script Content: ${scriptText.substring(0, 85000)} \n\n Generate the FULL 18-POINT NARRATIVE AUDIT.` }] }]
+            contents: [{ role: "user", parts: [{ text: `Script Content: ${scriptText.substring(0, 85000)} \n\n Analysis Data: ${forensicData}` }] }]
         });
 
         const feedback = finalResult.response.text();
@@ -63,7 +62,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 
         res.json({ message: feedback });
     } catch (err) {
-        res.status(500).json({ message: "Frank had a technical glitch." });
+        res.status(500).json({ message: "I've had a minor stroke, darling. Try again." });
     }
 });
 
