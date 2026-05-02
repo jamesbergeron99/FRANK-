@@ -59,7 +59,7 @@
         let isSequenceActive = false;
         let stallStartTime = null; 
 
-        // WORD-FOR-WORD GREETING RESTORED
+        // VERBATIM MAIN GREETING RESTORED
         const welcomeText = "Ah—there you are. Come in, don’t hover in the doorway. If you’ve brought me a script, I assume you’re ready for the truth—or at least a version of it that’s useful. I’m Frank. Not just in name—by temperament. I don’t do vague encouragement, and I don’t hand out gold stars for effort. What I do is take your script apart, figure out what’s working, what’s not, and tell you exactly where the engine is stalling. You’ll get a full breakdown—structure, character, dialogue, tone—the works. More importantly, you’ll get the three things that actually matter. The fixes that move the needle. Upload your script. Give me a moment. And try not to flinch when I get to the good part.";
 
         window.onload = async () => { 
@@ -91,6 +91,16 @@
 
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
 
+        document.getElementById('modeToggle').addEventListener('change', async function() {
+            if (this.checked) {
+                const response = await fetch('/tv-greeting', { method: 'POST' });
+                const data = await response.json();
+                addMessage(data.message); speak(data.message);
+            } else {
+                speak("Feature mode activated.");
+            }
+        });
+
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
             if (fileInput.files.length === 0) return;
@@ -115,7 +125,7 @@
             sections.forEach(async (section, index) => {
                 if (section.trim().length < 2) return;
                 try {
-                    const vSection = section.replace(/Logline/gi, 'Log line');
+                    const vSection = section.replace(/Logline/gi, 'Log line').replace(/\bPOINT\b/gi, 'Point');
                     const ttsResp = await fetch("https://api.inworld.ai/tts/v1/voice", {
                         method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
                         body: JSON.stringify({ text: vSection, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
