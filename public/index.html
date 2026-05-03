@@ -93,8 +93,8 @@
                 const data = await response.json();
                 addMessage(data.message); speak(data.message);
             } else {
-                addMessage("Feature mode activated.");
-                speak("Ah, back to features. Let's see if you can tell a complete story in one sitting.");
+                const fText = "Ah, back to features. Let's see if you can tell a complete story in one sitting.";
+                addMessage(fText); speak(fText);
             }
         });
 
@@ -110,7 +110,7 @@
                 const data = await response.json();
                 addMessage(data.message); speak(data.message);
             } catch (err) {
-                addMessage("Upload failed. Check your file size or connection.");
+                addMessage("Upload failed. Check your file size.");
             }
         }
 
@@ -132,6 +132,8 @@
                     });
                     const data = await res.json();
                     audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
+                    
+                    // INSTANT START: Triggers the first buffer immediately to kill the 5-second lag
                     if (!isPlaying && index === 0 && isSequenceActive) playSequentially();
                 } catch (e) { console.error("Audio Sync Error:", e); }
             }
@@ -173,6 +175,7 @@
 
         function downloadPDF() {
             const element = document.createElement('div');
+            // Styled export to match UI and prevent the "Text Blob"
             element.innerHTML = `
                 <div style="padding:40px; background:#000; color:#fff; font-family:serif; line-height:1.6;">
                     <h1 style="color:#d4af37; border-bottom:2px solid #d4af37; padding-bottom:10px;">FRANK'S PRIVATE AUDIT</h1>
