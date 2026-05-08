@@ -20,7 +20,7 @@
         .msg { max-width: 90%; padding: 25px; border-radius: 10px; line-height: 1.8; font-size: 1.1rem; white-space: pre-wrap; background: var(--card); border-left: 4px solid var(--gold); }
         .user-msg { align-self: flex-end; border-left: none; border-right: 4px solid var(--gold); background: #222; }
         .media-bar { background: #111; padding: 10px; display: flex; justify-content: center; border-top: 1px solid #333; }
-        .media-btn { background: none; border: 1px solid var(--gold); color: var(--gold); width: 50px; height: 50px; border-radius: 50%; cursor: pointer; font-size: 1.2rem; transition: 0.2s; }
+        .media-btn { background: none; border: 1px solid var(--gold); color: var(--gold); width: 50px; height: 50px; border-radius: 50%; cursor: pointer; font-size: 1.2rem; }
         .input-area { padding: 15px 30px; background: #111; border-top: 2px solid var(--gold); display: flex; gap: 15px; align-items: center; }
         .pill { flex-grow: 1; display: flex; background: #000; border: 1px solid var(--gold); border-radius: 40px; padding: 5px 20px; align-items: center; gap: 10px; }
         #textInput { flex-grow: 1; background: transparent; border: none; color: #fff; outline: none; font-size: 1rem; }
@@ -61,7 +61,6 @@
         window.onload = async () => { localStorage.clear(); addMessage(welcomeText); preWarmGreeting(welcomeText); };
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
 
-        // DICTATION MIC LOGIC
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
         recognition.continuous = true; recognition.interimResults = true;
         let currentTranscript = '';
@@ -79,6 +78,17 @@
             else { currentTranscript = textInput.value ? textInput.value + ' ' : ''; recognition.start(); btn.classList.add('recording'); }
         }
 
+        document.getElementById('modeToggle').addEventListener('change', async function() {
+            if (this.checked) {
+                const response = await fetch('/tv-greeting', { method: 'POST' });
+                const data = await response.json();
+                addMessage(data.message); speak(data.message);
+            } else {
+                const ft = "Ah, back to features. Let's see if you can tell a complete story in one sitting.";
+                addMessage(ft); speak(ft);
+            }
+        });
+
         async function preWarmGreeting(text) {
             try {
                 const settings = await (await fetch('/voice-settings')).json();
@@ -90,22 +100,10 @@
                     });
                     const data = await res.json();
                     audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
-                    totalSections = parts.length;
                     if (audioCtx.state === 'running' && index === 0 && !isPlaying) { isSequenceActive = true; playSequentially(); }
                 });
             } catch (e) {}
         }
-
-        document.getElementById('modeToggle').addEventListener('change', async function() {
-            if (this.checked) {
-                const response = await fetch('/tv-greeting', { method: 'POST' });
-                const data = await response.json();
-                addMessage(data.message); speak(data.message);
-            } else {
-                const fText = "Ah, back to features. Let's see if you can tell a complete story in one sitting.";
-                addMessage(fText); speak(fText);
-            }
-        });
 
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
@@ -123,7 +121,7 @@
 
         async function speak(fullText) {
             stopCurrentAudio();
-            const sections = fullText.split(/(?=FORENSIC|LOG LINE|SYNOPSIS|WHAT’S WORKING|CONCEPT|STRUCTURE|PACING|STAKES|CONFLICT|PROTAGONIST|ANTAGONISTIC|CHARACTER DYNAMICS|CHARACTER ARCS|DIALOGUE|TONE|WORLD|THEME|MARKETABILITY|TOP 3 ISSUES|FINAL VERDICT)/g);
+            const sections = fullText.split(/(?=WHAT’S WORKING|Concept & Hook|Structure|Pacing|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|SPELLING|LOGLINE|SYNOPSIS|TOP 3 ISSUES|FINAL VERDICT)/g);
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length; isSequenceActive = true; 
             const settings = await (await fetch('/voice-settings')).json();
             sections.forEach(async (section, index) => {
