@@ -24,27 +24,24 @@ CONTEXT: This is a ${type}.
 MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
 MANDATORY STRUCTURE (DO NOT DEVIATE):
-1. SPELLING, GRAMMAR, AND FORMATTING: List specific page errors and technical lapses.
-2. LOGLINE & SYNOPSIS: Professional and sharp.
-3. WHAT’S WORKING: One detailed paragraph on specific hits.
-4. CORE ANALYSIS: Provide a deep-dive paragraph for EACH of the following 10 points:
+1. SPELLING, GRAMMAR, AND FORMATTING: List every specific page error and technical lapse found.
+2. LOGLINE & SYNOPSIS: Professional, sharp, and concise.
+3. WHAT’S WORKING: One focused paragraph on specific visual or emotional hits.
+4. CORE ANALYSIS: Provide a deep-dive paragraph for EACH of the following:
    - Concept & Hook
    - Structure & Pacing
    - Stakes & Conflict
-   - Protagonist
-   - Antagonist
+   - Protagonist & Antagonist
    - Character Dynamics & Arcs
-   - Dialogue
-   - Tone & Voice
-   - World & Atmosphere
-   - Theme & Marketability
+   - Dialogue & Tone
+   - World, Theme, and Marketability
 5. TOP 3 ISSUES TO FIX FIRST: Detailed problem, impact, and direct fix for each.
-6. FINAL VERDICT: [PASS/CONSIDER/STRONG CONSIDER] plus a summary paragraph.
+6. FINAL VERDICT: [PASS/CONSIDER/STRONG CONSIDER] plus one summary paragraph explaining potential and elevation.
 
 STRICT RULES:
-- Use plain text only. NO HASHTAGS, NO ASTERISKS, NO BOLDING.
+- ALWAYS write in full, natural paragraphs. NEVER use bullet points.
 - Use "Log line" as two words for voice synthesis.
-- Frank must sound human and theatrical, not like a template.`;
+- NO HASHTAGS, NO ASTERISKS, NO MARKDOWN. Plain text only.`;
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     try {
@@ -59,16 +56,16 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
         const finalResult = await model.generateContent({
             systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
-            contents: [{ role: "user", parts: [{ text: `Script: ${scriptText.substring(0, 85000)} \n\n Forensic: ${forensicData}` }] }]
+            contents: [{ role: "user", parts: [{ text: `Script Content: ${scriptText.substring(0, 85000)} \n\n Forensic Evidence: ${forensicData}` }] }]
         });
         const feedback = finalResult.response.text();
         if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1000); }
         res.json({ message: feedback });
-    } catch (err) { res.status(500).json({ message: "System glitch, darling." }); }
+    } catch (err) { res.status(500).json({ message: "Darling, the system is acting up." }); }
 });
 
 app.post('/tv-greeting', (req, res) => {
-    res.json({ message: "Oh, we’re doing a series now? Good. That’s where things get interesting. I’m tracking everything—character arcs, continuity, and how this world breathes before I judge how it evolves. Start with episode one." });
+    res.json({ message: "Oh, we’re doing a series now? Good. That’s where things get interesting—and where most writers lose control of the wheel. In here, I’m not just looking at one script. I’m tracking everything—character arcs, continuity, the slow unraveling or sharpening of your story over time. If something drifts, I’ll see it. If something builds properly, I’ll call it out. Start with episode one. Don’t skip ahead. I need to see how this world breathes before I judge how it evolves. Let’s see if you’ve got something that can actually sustain itself—or if it collapses under its own ambition." });
 });
 
 app.post('/chat', async (req, res) => {
