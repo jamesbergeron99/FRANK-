@@ -24,24 +24,27 @@ CONTEXT: This is a ${type}.
 MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
 MANDATORY STRUCTURE (DO NOT DEVIATE):
-1. SPELLING, GRAMMAR, AND FORMATTING: List every specific page error and technical lapse found.
-2. LOGLINE & SYNOPSIS: Professional, sharp, and concise.
-3. WHAT’S WORKING: One focused paragraph on specific visual or emotional hits.
-4. CORE ANALYSIS: Provide a deep-dive paragraph for EACH of the following:
+1. SPELLING, GRAMMAR, AND FORMATTING: List specific page errors and technical lapses.
+2. LOGLINE & SYNOPSIS: Professional and sharp.
+3. WHAT’S WORKING: One detailed paragraph on specific hits.
+4. CORE ANALYSIS: Provide a deep-dive paragraph for EACH of the following 10 points:
    - Concept & Hook
    - Structure & Pacing
    - Stakes & Conflict
-   - Protagonist & Antagonist
+   - Protagonist
+   - Antagonist
    - Character Dynamics & Arcs
-   - Dialogue & Tone
-   - World, Theme, and Marketability
+   - Dialogue
+   - Tone & Voice
+   - World & Atmosphere
+   - Theme & Marketability
 5. TOP 3 ISSUES TO FIX FIRST: Detailed problem, impact, and direct fix for each.
-6. FINAL VERDICT: [PASS/CONSIDER/STRONG CONSIDER] plus one summary paragraph.
+6. FINAL VERDICT: [PASS/CONSIDER/STRONG CONSIDER] plus a summary paragraph.
 
 STRICT RULES:
-- ALWAYS write in full, natural paragraphs. NEVER use bullet points.
+- Use plain text only. NO HASHTAGS, NO ASTERISKS, NO BOLDING.
 - Use "Log line" as two words for voice synthesis.
-- NO HASHTAGS, NO ASTERISKS, NO MARKDOWN. Plain text only.`;
+- Frank must sound human and theatrical, not like a template.`;
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     try {
@@ -49,39 +52,30 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const data = await pdf(req.files[0].buffer);
         const scriptText = data.text;
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-
         const chunks = [];
         const CHUNK_SIZE = 25000;
-        for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) {
-            chunks.push(scriptText.substring(i, i + CHUNK_SIZE));
-        }
-
-        const scanResults = await Promise.all(chunks.map(chunk => 
-            model.generateContent(`Extract every specific forensic detail, page reference, and error: \n\n ${chunk}`)
-        ));
-        
+        for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) { chunks.push(scriptText.substring(i, i + CHUNK_SIZE)); }
+        const scanResults = await Promise.all(chunks.map(chunk => model.generateContent(`Extract forensic evidence: \n\n ${chunk}`)));
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
-
         const finalResult = await model.generateContent({
             systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
-            contents: [{ role: "user", parts: [{ text: `Script Content: ${scriptText.substring(0, 85000)} \n\n Forensic Evidence: ${forensicData}` }] }]
+            contents: [{ role: "user", parts: [{ text: `Script: ${scriptText.substring(0, 85000)} \n\n Forensic: ${forensicData}` }] }]
         });
-
         const feedback = finalResult.response.text();
         if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1000); }
         res.json({ message: feedback });
-    } catch (err) { res.status(500).json({ message: "Darling, the system is acting up." }); }
+    } catch (err) { res.status(500).json({ message: "System glitch, darling." }); }
 });
 
 app.post('/tv-greeting', (req, res) => {
-    res.json({ message: "I'm customized not only to give you deep forensic feedback on each episode of your series, but to track continuity, character arcs, and series progression. Start with the first episode, darling." });
+    res.json({ message: "Oh, we’re doing a series now? Good. That’s where things get interesting. I’m tracking everything—character arcs, continuity, and how this world breathes before I judge how it evolves. Start with episode one." });
 });
 
 app.post('/chat', async (req, res) => {
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
         const result = await model.generateContent({
-            systemInstruction: "You are Frank. Answer follow-ups based on: " + scriptMemory,
+            systemInstruction: "You are Frank. Answer based on: " + scriptMemory,
             contents: [{ role: "user", parts: [{ text: req.body.message }] }]
         });
         res.json({ message: result.response.text() });
