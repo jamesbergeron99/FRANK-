@@ -19,23 +19,19 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 let scriptMemory = "";
 
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
-Deliver professional script coverage with precision, authority, and personality. 
-CORE PRINCIPLE: Evaluate, do not encourage. Focus on what is not working.
+Deliver sharp, high-level feedback with personality, clarity, and authority. Tone: theatrical, flamboyant, brutally honest.
 CONTEXT: This is a ${type}.
 MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
 MANDATORY 18-POINT STRUCTURE (DO NOT DEVIATE):
-1. FORENSIC SPELLING, GRAMMAR, AND FORMATTING: Provide a professional list of errors. Cite specific page numbers and quote the exact text.
-2. LOG LINE | 3. SYNOPSIS | 4. WHAT’S WORKING (page referenced) | 5. CONCEPT & HOOK | 6. STRUCTURE | 7. PACING | 8. STAKES | 9. CONFLICT | 10. PROTAGONIST | 11. ANTAGONISTIC FORCE | 12. CHARACTER DYNAMICS | 13. CHARACTER ARCS | 14. DIALOGUE | 15. TONE & VOICE | 16. WORLD & SETTING | 17. THEME | 18. MARKETABILITY
+1. FORENSIC SPELLING, GRAMMAR, AND FORMATTING: List specific page errors with direct quotes and professional fixes.
+2. LOG LINE: Professional hook.
+3. SYNOPSIS: Concise summary.
+4. WHAT’S WORKING: Specific emotional/visual hits (page referenced).
+5. CONCEPT & HOOK | 6. STRUCTURE | 7. PACING | 8. STAKES | 9. CONFLICT | 10. PROTAGONIST | 11. ANTAGONISTIC FORCE | 12. CHARACTER DYNAMICS | 13. CHARACTER ARCS | 14. DIALOGUE | 15. TONE & VOICE | 16. WORLD & ATMOSPHERE | 17. THEME | 18. MARKETABILITY
 
-INVISIBLE STRUCTURE RULE:
-Weave categories 5-18 into a continuous, natural explanation. NO labels. Speak like a theatrical mentor.
-
-EVIDENCE RULE: Every major critique must include a page reference or quoted example.
-TOP 3 ISSUES TO FIX FIRST: Problem, impact, and direct fix.
-FINAL VERDICT: [PASS / CONSIDER / STRONG CONSIDER].
-
-STRICT RULES: NO hashtags, NO markdown. Plain text only. Use "Log line" as two words.`;
+EVIDENCE RULE: For ALL points, you MUST cite page numbers and quote dialogue or action lines from the script.
+STRICT RULES: NO HASHTAGS, NO MARKDOWN. Plain text only. Use "Log line" as two words.`;
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     try {
@@ -46,16 +42,16 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const chunks = [];
         const CHUNK_SIZE = 25000;
         for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) { chunks.push(scriptText.substring(i, i + CHUNK_SIZE)); }
-        const scanResults = await Promise.all(chunks.map(chunk => model.generateContent(`Extract specific forensic evidence and page numbers: \n\n ${chunk}`)));
+        const scanResults = await Promise.all(chunks.map(chunk => model.generateContent(`Extract specific forensic detail, page references, and errors: \n\n ${chunk}`)));
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
         const finalResult = await model.generateContent({
             systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
-            contents: [{ role: "user", parts: [{ text: `Script: ${scriptText.substring(0, 85000)} \n\n Evidence: ${forensicData}` }] }]
+            contents: [{ role: "user", parts: [{ text: `Script Content: ${scriptText.substring(0, 85000)} \n\n Forensic Evidence: ${forensicData}` }] }]
         });
         const feedback = finalResult.response.text();
         if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1000); }
         res.json({ message: feedback });
-    } catch (err) { res.status(500).json({ message: "Technical glitch." }); }
+    } catch (err) { res.status(500).json({ message: "System glitch." }); }
 });
 
 app.post('/tv-greeting', (req, res) => {
