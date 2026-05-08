@@ -106,8 +106,8 @@
                 const data = await response.json();
                 addMessage(data.message); speak(data.message);
             } else {
-                addMessage("Ah, back to features. Let's see if you can tell a complete story in one sitting.");
-                speak("Ah, back to features. Let's see if you can tell a complete story in one sitting.");
+                const fText = "Ah, back to features. Let's see if you can tell a complete story in one sitting.";
+                addMessage(fText); speak(fText);
             }
         });
 
@@ -127,7 +127,8 @@
 
         async function speak(fullText) {
             stopCurrentAudio();
-            const sections = fullText.split(/(?=SPELLING|LOGLINE|SYNOPSIS|WHAT’S WORKING|Concept & Hook|Structure & Pacing|Stakes & Conflict|Protagonist|Antagonist|Dynamics|Dialogue|Tone & Voice|World & Atmosphere|Theme & Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
+            // Split by major forensic markers to ensure immediate trigger
+            const sections = fullText.split(/(?=SPELLING|LOGLINE|SYNOPSIS|WHAT’S WORKING|Concept & Hook|Structure|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length; isSequenceActive = true; 
             const settings = await (await fetch('/voice-settings')).json();
             sections.forEach(async (section, index) => {
