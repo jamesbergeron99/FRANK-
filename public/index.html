@@ -68,10 +68,8 @@
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
 
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        recognition.continuous = true; 
-        recognition.interimResults = true;
+        recognition.continuous = true; recognition.interimResults = true;
         let currentTranscript = '';
-
         recognition.onresult = (e) => {
             let interimTranscript = '';
             for (let i = e.resultIndex; i < e.results.length; ++i) {
@@ -80,7 +78,6 @@
             }
             textInput.value = currentTranscript + interimTranscript;
         };
-
         function toggleMic() {
             const btn = document.getElementById('micBtn');
             if (btn.classList.contains('recording')) { recognition.stop(); btn.classList.remove('recording'); }
@@ -109,36 +106,41 @@
                 const response = await fetch('/analyze', { method: 'POST', body: formData });
                 const data = await response.json();
                 addMessage(data.message); speak(data.message);
-            } catch (err) {
-                addMessage("Upload failed. Check your file size.");
-            }
+            } catch (err) { addMessage("Upload failed."); }
         }
 
         async function speak(fullText) {
             stopCurrentAudio();
             const cleanedText = fullText.replace(/[*#]/g, '').replace(/Logline/gi, 'Log line');
             
-            // Micro-splitting the first section to kill the 5-second lag
+            // Priority Split: Sentences for greeting, forensic headers for audit
             const sections = cleanedText.split(/(?<=[.!?])\s+(?=SPELLING|LOGLINE|SYNOPSIS|WHAT’S WORKING|Concept|Structure|Pacing|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
             
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length;
             isSequenceActive = true; 
+            
+            // Hard-coded Fetch Logic to kill the 4-second settings lag
             const settings = await (await fetch('/voice-settings')).json();
             
             for (let index = 0; index < sections.length; index++) {
                 const section = sections[index];
                 if (section.trim().length < 2 || !isSequenceActive) continue;
+                
                 try {
                     const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
                         method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: section, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                        body: JSON.stringify({ 
+                            text: section, 
+                            voiceId: "default-oglabcjnetcklcq7rghmbw__frank", 
+                            modelId: "inworld-tts-1.5-max" 
+                        })
                     });
                     const data = await res.json();
                     audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
                     
-                    // TRIGGER IMMEDIATELY ON FIRST CHUNK
+                    // INSTANT START: Play the buffer the millisecond it exists
                     if (!isPlaying && index === 0 && isSequenceActive) playSequentially();
-                } catch (e) { console.error("Audio Sync Error:", e); }
+                } catch (e) { console.error("Sync Error:", e); }
             }
         }
 
@@ -158,7 +160,7 @@
                 currentSource.connect(audioCtx.destination);
                 currentSource.onended = () => { if (isSequenceActive && isPlaying) { nextToPlay++; playSequentially(); } };
                 currentSource.start();
-            } else { if (isSequenceActive) setTimeout(playSequentially, 100); }
+            } else { if (isSequenceActive) setTimeout(playSequentially, 50); }
         }
 
         function togglePlayback() { if (isPlaying) stopCurrentAudio(); else { isSequenceActive = true; playSequentially(); } }
