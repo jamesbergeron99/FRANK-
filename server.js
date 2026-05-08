@@ -3,7 +3,6 @@ const multer = require('multer');
 const pdf = require('pdf-parse');
 const path = require('path');
 const cors = require('cors');
-const fs = require('fs');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 require('dotenv').config();
 
@@ -17,27 +16,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-const MEMORY_FILE = path.join(__dirname, 'tv-memory.json');
-
-function loadMemory() {
-    try {
-        if (fs.existsSync(MEMORY_FILE)) {
-            const data = JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf8'));
-            return data.memory || "";
-        }
-    } catch(e) {}
-    return "";
-}
-
-function saveMemory(memory) {
-    try {
-        fs.writeFileSync(MEMORY_FILE, JSON.stringify({ memory }), 'utf8');
-    } catch(e) {
-        console.warn("Could not save TV memory:", e);
-    }
-}
-
-let scriptMemory = loadMemory();
+// Memory lives in RAM and is also returned to the browser after each episode.
+// The browser sends it back with the next episode submission, so it survives
+// server restarts and ephemeral filesystems on hosted platforms like Render.
+let scriptMemory = "";
 
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite, flamboyant Studio Executive. 
 CORE DIRECTIVE: Deliver high-personality, articulate, and brutally honest script coverage. 
@@ -61,6 +43,12 @@ STRICT RULES: Use "Log line" as two words. Plain text only. No markdown.`;
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     try {
         const mode = req.body.mode || 'Feature Film';
+
+        // If the browser is sending back saved memory from a previous episode, use it
+        if (mode === 'T.V. Series' && req.body.memory) {
+            scriptMemory = req.body.memory;
+        }
+
         const data = await pdf(req.files[0].buffer);
         const scriptText = data.text;
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
@@ -74,11 +62,14 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             contents: [{ role: "user", parts: [{ text: `Script: ${scriptText.substring(0, 85000)} \n\n Forensic Evidence: ${forensicData}` }] }]
         });
         const feedback = finalResult.response.text();
+
         if (mode === 'T.V. Series') {
+            // Append this episode's key details to memory and send it back to the browser
             scriptMemory = (scriptMemory + "\n\nEPISODE FEEDBACK:\n" + feedback).slice(-4000);
-            saveMemory(scriptMemory);
         }
-        res.json({ message: feedback });
+
+        // Return both the feedback AND the updated memory so the browser can store it
+        res.json({ message: feedback, memory: scriptMemory });
     } catch (err) {
         console.error("Analysis error:", err);
         res.status(500).json({ message: "Darling, the system is acting up." });
@@ -87,8 +78,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 
 app.post('/reset-memory', (req, res) => {
     scriptMemory = "";
-    saveMemory("");
-    res.json({ message: "Memory cleared. Ready for a new series." });
+    res.json({ message: "Memory cleared. Ready for a new series.", memory: "" });
 });
 
 app.post('/tv-greeting', (req, res) => {
