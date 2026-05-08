@@ -63,6 +63,13 @@
 
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0, isSequenceActive = false;
 
+        // PRE-CACHED TV GREETING
+        // tvGreetingBuffers holds pre-decoded audio chunks for the TV series greeting.
+        // tvGreetingText holds the text so we can display it when toggled.
+        // Both are loaded in the background immediately after page load.
+        let tvGreetingBuffers = null;
+        let tvGreetingText = null;
+
         const welcomeText = "Ah — there you are. Come in, don't hover in the doorway. If you've brought me a script, I assume you're ready for the truth — or at least a version of it that's useful. I'm Frank. Not just in name — by temperament. I don't do vague encouragement, and I don't hand out gold stars for effort. What I do is take your script apart, figure out what's working, what's not, and tell you exactly where the engine is stalling. Upload your script. Give me a moment. And try not to flinch when I get to the good part.";
 
         window.onload = async () => {
@@ -70,10 +77,48 @@
             addMessage(welcomeText);
             preWarmGreeting(welcomeText);
             initSpeechRecognition();
+            // Pre-fetch TV greeting in background while user reads the welcome message
+            prefetchTVGreeting();
         };
 
         function initAudio() {
             if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        // Fetches and pre-decodes the TV series greeting audio in the background.
+        // By the time the user clicks the toggle, it's already ready to play instantly.
+        async function prefetchTVGreeting() {
+            try {
+                const [greetingResp, settingsResp] = await Promise.all([
+                    fetch('/tv-greeting', { method: 'POST' }),
+                    fetch('/voice-settings')
+                ]);
+                const greetingData = await greetingResp.json();
+                const settings = await settingsResp.json();
+                tvGreetingText = greetingData.message;
+
+                const sections = tvGreetingText.split(/(?=SECTION \d|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|CONCEPT|STRUCTURE|PACING|STAKES|CONFLICT|PROTAGONIST|ANTAGONISTIC|CHARACTER DYNAMICS|CHARACTER ARCS|DIALOGUE|TONE|WORLD|THEME|MARKETABILITY)/g)
+                    .filter(s => s.trim().length >= 2);
+
+                const bufferMap = {};
+                await Promise.all(sections.map(async (section, index) => {
+                    try {
+                        const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
+                            method: "POST",
+                            headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                            body: JSON.stringify({ text: section.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                        });
+                        const data = await res.json();
+                        if (!data.audioContent) return;
+                        bufferMap[index] = await audioCtx.decodeAudioData(
+                            Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
+                        );
+                    } catch(e) {}
+                }));
+                tvGreetingBuffers = { bufferMap, totalSections: sections.length };
+            } catch(e) {
+                console.warn("TV greeting prefetch failed:", e);
+            }
         }
 
         let recognition = null;
@@ -128,14 +173,34 @@
             }
         }
 
+        // Toggle listener — plays pre-cached TV greeting instantly if ready,
+        // falls back to live fetch if prefetch hasn't finished yet.
         document.getElementById('modeToggle').addEventListener('change', async function() {
             if (this.checked) {
-                const response = await fetch('/tv-greeting', { method: 'POST' });
-                const data = await response.json();
-                addMessage(data.message); speak(data.message);
+                if (tvGreetingBuffers && tvGreetingText) {
+                    // Pre-cached — play instantly, zero delay
+                    addMessage(tvGreetingText);
+                    stopCurrentAudio();
+                    audioBuffers = tvGreetingBuffers.bufferMap;
+                    totalSections = tvGreetingBuffers.totalSections;
+                    nextToPlay = 0;
+                    isSequenceActive = true;
+                    audioCtx.resume().then(() => playSequentially());
+                    // Refresh the cache for next time
+                    tvGreetingBuffers = null;
+                    tvGreetingText = null;
+                    prefetchTVGreeting();
+                } else {
+                    // Fallback — fetch live if prefetch didn't finish in time
+                    const response = await fetch('/tv-greeting', { method: 'POST' });
+                    const data = await response.json();
+                    addMessage(data.message);
+                    speak(data.message);
+                }
             } else {
                 const fText = "Ah, back to features. Let's see if you can tell a complete story in one sitting.";
-                addMessage(fText); speak(fText);
+                addMessage(fText);
+                speak(fText);
             }
         });
 
@@ -157,9 +222,6 @@
                     audioBuffers[index] = await audioCtx.decodeAudioData(
                         Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
                     );
-                    // FIX: removed audioCtx.state === 'running' check — context starts
-                    // suspended so that check always blocked playback on page load.
-                    // Now we resume the context and play as soon as chunk 0 is ready.
                     if (index === 0 && !isPlaying) {
                         audioCtx.resume().then(() => playSequentially());
                     }
