@@ -59,7 +59,7 @@
         let isSequenceActive = false;
         let stallStartTime = null; 
 
-        // WORD-FOR-WORD GREETING RESTORED
+        // WORD-FOR-WORD GREETING
         const welcomeText = "Hey there, I'm Frank. Not just in name, but in spirit, I’m your AI script doctor. I’m here to give you actionable feedback on your features or TV series, including a full spelling and grammar check, logline, synopsis, and my 18-point forensic audit. Or, pick TV series for additional coverage over multiple episodes. Darling, it takes time to process brilliance, so chill and give me a minute.";
 
         window.onload = async () => { 
@@ -110,7 +110,6 @@
             isSequenceActive = true;
             const settingsResp = await fetch('/voice-settings');
             const settings = await settingsResp.json();
-            
             let triggered = false;
 
             sections.forEach(async (section, index) => {
