@@ -66,6 +66,10 @@
         let tvGreetingBuffers = null;
         let tvGreetingText = null;
 
+        // TV series memory stored in the browser — sent to server with every episode
+        // so it survives server restarts on hosted platforms like Render
+        let tvSeriesMemory = "";
+
         const welcomeText = "Ah — there you are. Come in, don't hover in the doorway. If you've brought me a script, I assume you're ready for the truth — or at least a version of it that's useful. I'm Frank. Not just in name — by temperament. I don't do vague encouragement, and I don't hand out gold stars for effort. What I do is take your script apart, figure out what's working, what's not, and tell you exactly where the engine is stalling. Upload your script. Give me a moment. And try not to flinch when I get to the good part.";
 
         window.onload = async () => {
@@ -80,8 +84,6 @@
             if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
         }
 
-        // Splits text into chunks no larger than maxChars, breaking at sentence boundaries.
-        // This ensures no single TTS request is too large for the Inworld API to handle.
         function splitIntoChunks(text, maxChars = 500) {
             const sentences = text.match(/[^.!?]+[.!?]+[\s]*/g) || [text];
             const chunks = [];
@@ -107,7 +109,6 @@
                 const greetingData = await greetingResp.json();
                 const settings = await settingsResp.json();
                 tvGreetingText = greetingData.message;
-
                 const chunks = splitIntoChunks(tvGreetingText);
                 const bufferMap = {};
                 await Promise.all(chunks.map(async (chunk, index) => {
@@ -125,9 +126,7 @@
                     } catch(e) {}
                 }));
                 tvGreetingBuffers = { bufferMap, totalSections: chunks.length };
-            } catch(e) {
-                console.warn("TV greeting prefetch failed:", e);
-            }
+            } catch(e) {}
         }
 
         let recognition = null;
@@ -137,11 +136,7 @@
         function initSpeechRecognition() {
             const micBtn = document.getElementById('micBtn');
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SpeechRecognition) {
-                micBtn.classList.add('unavailable');
-                micBtn.title = "Voice input not supported in this browser";
-                return;
-            }
+            if (!SpeechRecognition) { micBtn.classList.add('unavailable'); micBtn.title = "Voice input not supported in this browser"; return; }
             try {
                 recognition = new SpeechRecognition();
                 recognition.continuous = true;
@@ -155,19 +150,11 @@
                     textInput.value = currentTranscript + interimTranscript;
                 };
                 recognition.onerror = (e) => {
-                    micActive = false;
-                    micBtn.classList.remove('recording');
-                    if (e.error === 'not-allowed') {
-                        micBtn.classList.add('unavailable');
-                        micBtn.title = "Microphone access denied";
-                    }
+                    micActive = false; micBtn.classList.remove('recording');
+                    if (e.error === 'not-allowed') { micBtn.classList.add('unavailable'); micBtn.title = "Microphone access denied"; }
                 };
-                recognition.onend = () => {
-                    if (micActive) { micActive = false; micBtn.classList.remove('recording'); }
-                };
-            } catch(e) {
-                micBtn.classList.add('unavailable');
-            }
+                recognition.onend = () => { if (micActive) { micActive = false; micBtn.classList.remove('recording'); } };
+            } catch(e) { micBtn.classList.add('unavailable'); }
         }
 
         function toggleMic() {
@@ -230,34 +217,30 @@
                         audioCtx.resume().then(() => playSequentially());
                     }
                 });
-            } catch (e) {
-                console.warn("Voice pre-warm failed:", e);
-            }
+            } catch (e) {}
         }
 
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
             if (fileInput.files.length === 0) return;
             addMessage('Analyzing... This takes a few moments, darling...', false);
+            const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
             const formData = new FormData();
-            formData.append('mode', document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film');
+            formData.append('mode', mode);
             formData.append('scripts', fileInput.files[0]);
+            // Send the stored TV memory back to the server with this episode
+            if (mode === 'T.V. Series') formData.append('memory', tvSeriesMemory);
             const response = await fetch('/analyze', { method: 'POST', body: formData });
             const data = await response.json();
+            // Save the updated memory the server sends back
+            if (mode === 'T.V. Series' && data.memory) tvSeriesMemory = data.memory;
             addMessage(data.message);
             speak(data.message);
         }
 
-        // THE FIX: speak() now splits the full feedback text into sentence-sized chunks
-        // of max 500 characters before sending to TTS. Previously the entire audit
-        // monologue was one giant section — too large for the Inworld API, which
-        // silently returned nothing and caused playback to stop after the log line.
         async function speak(fullText) {
             if (!audioCtx) return;
             stopCurrentAudio();
-
-            // First split on section headings, then further split any oversized
-            // sections into sentence-level chunks of max 500 chars each.
             const rawSections = fullText.split(/(?=SECTION \d|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|CONCEPT|STRUCTURE|PACING|STAKES|CONFLICT|PROTAGONIST|ANTAGONISTIC|CHARACTER DYNAMICS|CHARACTER ARCS|DIALOGUE|TONE|WORLD|THEME|MARKETABILITY)/g);
             const chunks = [];
             for (const section of rawSections) {
@@ -268,14 +251,11 @@
                     chunks.push(section.trim());
                 }
             }
-
             audioBuffers = {}; nextToPlay = 0;
             totalSections = chunks.length;
             isSequenceActive = true;
-
             const settingsResp = await fetch('/voice-settings');
             const settings = await settingsResp.json();
-
             chunks.forEach(async (chunk, index) => {
                 try {
                     const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
@@ -289,9 +269,7 @@
                         Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
                     );
                     if (!isPlaying && isSequenceActive && index === 0) playSequentially();
-                } catch (e) {
-                    console.warn("TTS chunk failed:", e);
-                }
+                } catch (e) {}
             });
         }
 
