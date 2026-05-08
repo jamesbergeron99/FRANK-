@@ -18,7 +18,6 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 let scriptMemory = "";
 
-// YOUR MANDATORY STRUCTURE - LOCKED 100%
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
 Deliver sharp, high-level feedback with personality, clarity, and authority. Tone: confident, stylish, flamboyant, brutally honest.
 CONTEXT: This is a ${type}.
@@ -26,31 +25,12 @@ MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
 MANDATORY STRUCTURE (DO NOT DEVIATE):
 1. INTRO: One paragraph (3–5 sentences). Strong personality, no generic greetings.
-2. CORE ANALYSIS: One focused paragraph (3–5 sentences) for EACH of the following in this exact order:
-   - Concept & Hook
-   - Structure & Pacing
-   - Stakes & Conflict
-   - Protagonist
-   - Antagonistic Force
-   - Character Dynamics & Arcs
-   - Dialogue
-   - Tone & Voice
-   - World & Atmosphere
-   - Theme & Marketability
-3. TOP 3 ISSUES TO FIX FIRST: Format EXACTLY:
-   TOP 3 ISSUES TO FIX FIRST
-   [Issue Name]
-   One paragraph (3–5 sentences).
-   [Issue Name]
-   One paragraph (3–5 sentences).
-   [Issue Name]
-   One paragraph (3–5 sentences).
-4. FINAL VERDICT: [PASS / CONSIDER / STRONG CONSIDER]
-   Followed by one paragraph (4–6 sentences) explaining potential and elevation.
+2. CORE ANALYSIS: One focused paragraph (3–5 sentences) for EACH: Concept & Hook, Structure & Pacing, Stakes & Conflict, Protagonist, Antagonistic Force, Character Dynamics & Arcs, Dialogue, Tone & Voice, World & Atmosphere, Theme & Marketability.
+3. TOP 3 ISSUES TO FIX FIRST: Format EXACTLY as requested.
+4. FINAL VERDICT: [PASS / CONSIDER / STRONG CONSIDER] plus one summary paragraph.
 
 STRICT RULES:
 - ALWAYS write in full, natural paragraphs. NEVER use bullet points.
-- Focus on ONE clear idea per section.
 - Use "Log line" as two words for voice synthesis.
 - NEVER skip or reorder sections.
 VOICE: Plain text only. No markdown.`;
@@ -69,7 +49,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         }
 
         const scanResults = await Promise.all(chunks.map(chunk => 
-            model.generateContent(`Analyze this for dialogue and forensic evidence: \n\n ${chunk}`)
+            model.generateContent(`Analyze for dialogue and forensic evidence: \n\n ${chunk}`)
         ));
         
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
@@ -88,14 +68,14 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 });
 
 app.post('/tv-greeting', (req, res) => {
-    res.json({ message: "I'm customized not only to give you deep forensic feedback on each episode of your series, but to track continuity, character arcs, and series progression to ensure you have a cohesive masterpiece. Start with the first episode, darling." });
+    res.json({ message: "I'm customized not only to give you deep forensic feedback on each episode of your series, but to track continuity, character arcs, and series progression. Start with the first episode, darling." });
 });
 
 app.post('/chat', async (req, res) => {
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
         const result = await model.generateContent({
-            systemInstruction: "You are Frank. Answer follow-ups based on: " + scriptMemory,
+            systemInstruction: "You are Frank. Answer based on: " + scriptMemory,
             contents: [{ role: "user", parts: [{ text: req.body.message }] }]
         });
         res.json({ message: result.response.text() });
