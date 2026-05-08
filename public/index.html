@@ -63,10 +63,6 @@
 
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0, isSequenceActive = false;
 
-        // PRE-CACHED TV GREETING
-        // tvGreetingBuffers holds pre-decoded audio chunks for the TV series greeting.
-        // tvGreetingText holds the text so we can display it when toggled.
-        // Both are loaded in the background immediately after page load.
         let tvGreetingBuffers = null;
         let tvGreetingText = null;
 
@@ -77,7 +73,6 @@
             addMessage(welcomeText);
             preWarmGreeting(welcomeText);
             initSpeechRecognition();
-            // Pre-fetch TV greeting in background while user reads the welcome message
             prefetchTVGreeting();
         };
 
@@ -85,8 +80,24 @@
             if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
         }
 
-        // Fetches and pre-decodes the TV series greeting audio in the background.
-        // By the time the user clicks the toggle, it's already ready to play instantly.
+        // Splits text into chunks no larger than maxChars, breaking at sentence boundaries.
+        // This ensures no single TTS request is too large for the Inworld API to handle.
+        function splitIntoChunks(text, maxChars = 500) {
+            const sentences = text.match(/[^.!?]+[.!?]+[\s]*/g) || [text];
+            const chunks = [];
+            let current = '';
+            for (const sentence of sentences) {
+                if ((current + sentence).length > maxChars && current.length > 0) {
+                    chunks.push(current.trim());
+                    current = sentence;
+                } else {
+                    current += sentence;
+                }
+            }
+            if (current.trim().length > 0) chunks.push(current.trim());
+            return chunks;
+        }
+
         async function prefetchTVGreeting() {
             try {
                 const [greetingResp, settingsResp] = await Promise.all([
@@ -97,16 +108,14 @@
                 const settings = await settingsResp.json();
                 tvGreetingText = greetingData.message;
 
-                const sections = tvGreetingText.split(/(?=SECTION \d|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|CONCEPT|STRUCTURE|PACING|STAKES|CONFLICT|PROTAGONIST|ANTAGONISTIC|CHARACTER DYNAMICS|CHARACTER ARCS|DIALOGUE|TONE|WORLD|THEME|MARKETABILITY)/g)
-                    .filter(s => s.trim().length >= 2);
-
+                const chunks = splitIntoChunks(tvGreetingText);
                 const bufferMap = {};
-                await Promise.all(sections.map(async (section, index) => {
+                await Promise.all(chunks.map(async (chunk, index) => {
                     try {
                         const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
                             method: "POST",
                             headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                            body: JSON.stringify({ text: section.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                            body: JSON.stringify({ text: chunk.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                         });
                         const data = await res.json();
                         if (!data.audioContent) return;
@@ -115,7 +124,7 @@
                         );
                     } catch(e) {}
                 }));
-                tvGreetingBuffers = { bufferMap, totalSections: sections.length };
+                tvGreetingBuffers = { bufferMap, totalSections: chunks.length };
             } catch(e) {
                 console.warn("TV greeting prefetch failed:", e);
             }
@@ -173,12 +182,9 @@
             }
         }
 
-        // Toggle listener — plays pre-cached TV greeting instantly if ready,
-        // falls back to live fetch if prefetch hasn't finished yet.
         document.getElementById('modeToggle').addEventListener('change', async function() {
             if (this.checked) {
                 if (tvGreetingBuffers && tvGreetingText) {
-                    // Pre-cached — play instantly, zero delay
                     addMessage(tvGreetingText);
                     stopCurrentAudio();
                     audioBuffers = tvGreetingBuffers.bufferMap;
@@ -186,12 +192,10 @@
                     nextToPlay = 0;
                     isSequenceActive = true;
                     audioCtx.resume().then(() => playSequentially());
-                    // Refresh the cache for next time
                     tvGreetingBuffers = null;
                     tvGreetingText = null;
                     prefetchTVGreeting();
                 } else {
-                    // Fallback — fetch live if prefetch didn't finish in time
                     const response = await fetch('/tv-greeting', { method: 'POST' });
                     const data = await response.json();
                     addMessage(data.message);
@@ -244,20 +248,40 @@
             speak(data.message);
         }
 
+        // THE FIX: speak() now splits the full feedback text into sentence-sized chunks
+        // of max 500 characters before sending to TTS. Previously the entire audit
+        // monologue was one giant section — too large for the Inworld API, which
+        // silently returned nothing and caused playback to stop after the log line.
         async function speak(fullText) {
             if (!audioCtx) return;
             stopCurrentAudio();
-            const sections = fullText.split(/(?=SECTION \d|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|CONCEPT|STRUCTURE|PACING|STAKES|CONFLICT|PROTAGONIST|ANTAGONISTIC|CHARACTER DYNAMICS|CHARACTER ARCS|DIALOGUE|TONE|WORLD|THEME|MARKETABILITY)/g);
-            audioBuffers = {}; nextToPlay = 0; totalSections = sections.length; isSequenceActive = true;
+
+            // First split on section headings, then further split any oversized
+            // sections into sentence-level chunks of max 500 chars each.
+            const rawSections = fullText.split(/(?=SECTION \d|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|CONCEPT|STRUCTURE|PACING|STAKES|CONFLICT|PROTAGONIST|ANTAGONISTIC|CHARACTER DYNAMICS|CHARACTER ARCS|DIALOGUE|TONE|WORLD|THEME|MARKETABILITY)/g);
+            const chunks = [];
+            for (const section of rawSections) {
+                if (section.trim().length < 2) continue;
+                if (section.length > 500) {
+                    chunks.push(...splitIntoChunks(section));
+                } else {
+                    chunks.push(section.trim());
+                }
+            }
+
+            audioBuffers = {}; nextToPlay = 0;
+            totalSections = chunks.length;
+            isSequenceActive = true;
+
             const settingsResp = await fetch('/voice-settings');
             const settings = await settingsResp.json();
-            sections.forEach(async (section, index) => {
-                if (section.trim().length < 2) return;
+
+            chunks.forEach(async (chunk, index) => {
                 try {
                     const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
                         method: "POST",
                         headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: section.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                        body: JSON.stringify({ text: chunk.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                     });
                     const data = await res.json();
                     if (!data.audioContent) return;
@@ -266,7 +290,7 @@
                     );
                     if (!isPlaying && isSequenceActive && index === 0) playSequentially();
                 } catch (e) {
-                    console.warn("TTS section failed:", e);
+                    console.warn("TTS chunk failed:", e);
                 }
             });
         }
