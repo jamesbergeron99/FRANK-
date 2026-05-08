@@ -117,7 +117,10 @@
         async function speak(fullText) {
             stopCurrentAudio();
             const cleanedText = fullText.replace(/[*#]/g, '').replace(/Logline/gi, 'Log line');
-            const sections = cleanedText.split(/(?=SPELLING|LOGLINE|SYNOPSIS|WHAT’S WORKING|Concept|Structure|Pacing|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
+            
+            // Micro-splitting the first section to kill the 5-second lag
+            const sections = cleanedText.split(/(?<=[.!?])\s+(?=SPELLING|LOGLINE|SYNOPSIS|WHAT’S WORKING|Concept|Structure|Pacing|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
+            
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length;
             isSequenceActive = true; 
             const settings = await (await fetch('/voice-settings')).json();
@@ -133,7 +136,7 @@
                     const data = await res.json();
                     audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
                     
-                    // INSTANT START: Triggers immediately to kill the 5-second lag
+                    // TRIGGER IMMEDIATELY ON FIRST CHUNK
                     if (!isPlaying && index === 0 && isSequenceActive) playSequentially();
                 } catch (e) { console.error("Audio Sync Error:", e); }
             }
