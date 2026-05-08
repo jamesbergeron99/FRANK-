@@ -18,7 +18,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 let scriptMemory = "";
 
-// YOUR UPDATED MANDATORY STRUCTURE - LOCKED 100%
+// YOUR MANDATORY STRUCTURE - LOCKED 100%
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
 Deliver sharp, high-level feedback with personality, clarity, and authority. Tone: confident, stylish, flamboyant, brutally honest.
 CONTEXT: This is a ${type}.
@@ -88,7 +88,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 });
 
 app.post('/tv-greeting', (req, res) => {
-    res.json({ message: "I'm customized not only to give you deep forensic feedback on each episode of your series, but to track continuity, character arcs, and series progression. Start with the first episode, darling." });
+    res.json({ message: "I'm customized not only to give you deep forensic feedback on each episode of your series, but to track continuity, character arcs, and series progression to ensure you have a cohesive masterpiece. Start with the first episode, darling." });
 });
 
 app.post('/chat', async (req, res) => {
