@@ -18,42 +18,30 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 let scriptMemory = "";
 
-// YOUR MANDATORY STRUCTURE - LOCKED 100%
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
-Deliver sharp, high-level feedback with personality, clarity, and authority. Tone: confident, stylish, flamboyant, brutally honest.
+Deliver sharp, high-level feedback with personality, clarity, and authority. Tone: theatrical, flamboyant, brutally honest.
 CONTEXT: This is a ${type}.
 MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
 MANDATORY STRUCTURE (DO NOT DEVIATE):
-1. INTRO: One paragraph (3–5 sentences) in Frank's voice. React to the script’s tone or world.
-2. CORE ANALYSIS: One focused paragraph (3–5 sentences) for EACH of the following:
+1. SPELLING, GRAMMAR, AND FORMATTING: List every specific page error and technical lapse found.
+2. LOGLINE & SYNOPSIS: Professional, sharp, and concise.
+3. WHAT’S WORKING: One focused paragraph on specific visual or emotional hits.
+4. CORE ANALYSIS: Provide a deep-dive paragraph for EACH of the following:
    - Concept & Hook
    - Structure & Pacing
    - Stakes & Conflict
-   - Protagonist
-   - Antagonistic Force
+   - Protagonist & Antagonist
    - Character Dynamics & Arcs
-   - Dialogue
-   - Tone & Voice
-   - World & Atmosphere
-   - Theme & Marketability
-3. TOP 3 ISSUES TO FIX FIRST: Format EXACTLY:
-   TOP 3 ISSUES TO FIX FIRST
-   [Issue Name]
-   One paragraph (3–5 sentences).
-   [Issue Name]
-   One paragraph (3–5 sentences).
-   [Issue Name]
-   One paragraph (3–5 sentences).
-4. FINAL VERDICT: [PASS / CONSIDER / STRONG CONSIDER]
-   Followed by one paragraph (4–6 sentences) explaining potential and elevation.
+   - Dialogue & Tone
+   - World, Theme, and Marketability
+5. TOP 3 ISSUES TO FIX FIRST: Detailed problem, impact, and direct fix for each.
+6. FINAL VERDICT: [PASS/CONSIDER/STRONG CONSIDER] plus one summary paragraph.
 
 STRICT RULES:
 - ALWAYS write in full, natural paragraphs. NEVER use bullet points.
-- Focus on ONE clear idea per section.
 - Use "Log line" as two words for voice synthesis.
-- NEVER skip or reorder sections.
-VOICE: Plain text only. No markdown.`;
+- NO HASHTAGS, NO ASTERISKS, NO MARKDOWN. Plain text only.`;
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     try {
@@ -63,28 +51,26 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
         const chunks = [];
-        const CHUNK_SIZE = 30000;
+        const CHUNK_SIZE = 25000;
         for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) {
             chunks.push(scriptText.substring(i, i + CHUNK_SIZE));
         }
 
         const scanResults = await Promise.all(chunks.map(chunk => 
-            model.generateContent(`Analyze for dialogue and forensic evidence: \n\n ${chunk}`)
+            model.generateContent(`Extract every specific forensic detail, page reference, and error: \n\n ${chunk}`)
         ));
         
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
 
         const finalResult = await model.generateContent({
             systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
-            contents: [{ role: "user", parts: [{ text: `Script: ${scriptText.substring(0, 85000)} \n\n Forensic: ${forensicData}` }] }]
+            contents: [{ role: "user", parts: [{ text: `Script Content: ${scriptText.substring(0, 85000)} \n\n Forensic Evidence: ${forensicData}` }] }]
         });
 
         const feedback = finalResult.response.text();
         if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1000); }
         res.json({ message: feedback });
-    } catch (err) {
-        res.status(500).json({ message: "Darling, the system is acting up. Give me a moment." });
-    }
+    } catch (err) { res.status(500).json({ message: "Darling, the system is acting up." }); }
 });
 
 app.post('/tv-greeting', (req, res) => {
@@ -99,7 +85,7 @@ app.post('/chat', async (req, res) => {
             contents: [{ role: "user", parts: [{ text: req.body.message }] }]
         });
         res.json({ message: result.response.text() });
-    } catch (err) { res.status(500).json({ message: "I'm in a meeting." }); }
+    } catch (err) { res.status(500).json({ message: "In a meeting." }); }
 });
 
 app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
