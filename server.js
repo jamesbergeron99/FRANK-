@@ -2,21 +2,45 @@ const express = require('express');
 const multer = require('multer');
 const pdf = require('pdf-parse');
 const path = require('path');
-const cors = require('cors'); 
+const cors = require('cors');
+const fs = require('fs');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-app.use(cors()); 
-app.use(express.json({limit: '100mb'})); 
+app.use(cors());
+app.use(express.json({limit: '100mb'}));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-let scriptMemory = "";
+// Memory file path — saves TV series memory to disk so it persists
+// across episodes, browser refreshes, and server restarts.
+const MEMORY_FILE = path.join(__dirname, 'tv-memory.json');
+
+function loadMemory() {
+    try {
+        if (fs.existsSync(MEMORY_FILE)) {
+            const data = JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf8'));
+            return data.memory || "";
+        }
+    } catch(e) {}
+    return "";
+}
+
+function saveMemory(memory) {
+    try {
+        fs.writeFileSync(MEMORY_FILE, JSON.stringify({ memory }), 'utf8');
+    } catch(e) {
+        console.warn("Could not save TV memory:", e);
+    }
+}
+
+// Load any existing memory on server start
+let scriptMemory = loadMemory();
 
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite, flamboyant Studio Executive. 
 CORE DIRECTIVE: Deliver high-personality, articulate, and brutally honest script coverage. 
@@ -42,7 +66,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const mode = req.body.mode || 'Feature Film';
         const data = await pdf(req.files[0].buffer);
         const scriptText = data.text;
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-05-20" });
         const chunks = [];
         const CHUNK_SIZE = 25000;
         for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) { chunks.push(scriptText.substring(i, i + CHUNK_SIZE)); }
@@ -53,25 +77,43 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             contents: [{ role: "user", parts: [{ text: `Script: ${scriptText.substring(0, 85000)} \n\n Forensic Evidence: ${forensicData}` }] }]
         });
         const feedback = finalResult.response.text();
-        if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1000); }
+        if (mode === 'T.V. Series') {
+            // Append this episode's feedback to the running memory and save to disk.
+            // Keeps the most recent 4000 characters so the context stays meaningful
+            // but doesn't grow so large it overflows the model's context window.
+            scriptMemory = (scriptMemory + "\n\nEPISODE FEEDBACK:\n" + feedback).slice(-4000);
+            saveMemory(scriptMemory);
+        }
         res.json({ message: feedback });
-    } catch (err) { res.status(500).json({ message: "Darling, the system is acting up." }); }
+    } catch (err) {
+        console.error("Analysis error:", err);
+        res.status(500).json({ message: "Darling, the system is acting up." });
+    }
+});
+
+// Endpoint to clear TV series memory when starting a new series
+app.post('/reset-memory', (req, res) => {
+    scriptMemory = "";
+    saveMemory("");
+    res.json({ message: "Memory cleared. Ready for a new series." });
 });
 
 app.post('/tv-greeting', (req, res) => {
-    res.json({ message: "Oh, we’re doing a series now? Good. That’s where things get interesting—and where most writers lose control of the wheel. In here, I’m not just looking at one script. I’m tracking everything—character arcs, continuity, the slow unraveling or sharpening of your story over time. Start with episode one. Don’t skip ahead. I need to see how this world breathes before I judge how it evolves. Let’s see if you’ve got something that can actually sustain itself—or if it collapses under its own ambition." });
+    res.json({ message: "Oh, we're doing a series now? Good. That's where things get interesting—and where most writers lose control of the wheel. In here, I'm not just looking at one script. I'm tracking everything—character arcs, continuity, the slow unraveling or sharpening of your story over time. Start with episode one. Don't skip ahead. I need to see how this world breathes before I judge how it evolves. Let's see if you've got something that can actually sustain itself—or if it collapses under its own ambition." });
 });
 
 app.post('/chat', async (req, res) => {
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-05-20" });
         const result = await model.generateContent({
-            systemInstruction: "You are Frank. Answer based on: " + scriptMemory,
+            systemInstruction: `You are Frank, an elite, flamboyant Studio Executive. High personality, brutally honest, theatrical. Answer the writer's question directly and specifically based on the script memory below. No generic answers.\n\nSCRIPT MEMORY:\n${scriptMemory}`,
             contents: [{ role: "user", parts: [{ text: req.body.message }] }]
         });
         res.json({ message: result.response.text() });
-    } catch (err) { res.status(500).json({ message: "In a meeting." }); }
+    } catch (err) {
+        res.status(500).json({ message: "In a meeting." });
+    }
 });
 
 app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
-app.listen(PORT, '0.0.0.0');
+app.listen(PORT, '0.0.0.0', () => console.log(`Frank's office open on port ${PORT}`));
