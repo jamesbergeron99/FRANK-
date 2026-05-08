@@ -18,36 +18,34 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 let scriptMemory = "";
 
-// FINAL MANDATORY PROTOCOL - LOCKED 100%
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
 Deliver professional script coverage with precision, authority, and personality. You are sharp, direct, and human. 
-CORE PRINCIPLE: You are not here to encourage. You are here to evaluate. Focus on what is not working.
+CORE PRINCIPLE: Evaluate, do not encourage. Focus on what is not working.
 CONTEXT: This is a ${type}.
 MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
 MANDATORY STRUCTURE (DO NOT DEVIATE):
-1. SPELLING, GRAMMAR, AND FORMATTING: Reference page numbers. Practical and useful.
+1. SPELLING, GRAMMAR, AND FORMATTING: Practical page-specific corrections.
 2. LOGLINE: Clean and professional.
 3. SYNOPSIS: Clear and complete.
-4. CORE ANALYSIS: Concept & Hook, Structure, Pacing, Stakes & Conflict, Protagonist, Antagonistic Force, Character Dynamics & Arcs, Dialogue, Tone & Voice, World & Setting, Theme, Marketability.
+4. WHAT’S WORKING: Only include if there is something specific and meaningful to highlight. One paragraph max. Tied to a real script example. Omit if no specific strengths exist.
+5. CORE ANALYSIS: Concept & Hook, Structure, Pacing, Stakes & Conflict, Protagonist, Antagonistic Force, Character Dynamics & Arcs, Dialogue, Tone & Voice, World & Setting, Theme, Marketability.
 
-EACH SECTION MUST FOLLOW THIS EXACT FORMAT:
-THE PROBLEM: [1–2 paragraphs explaining what is not working]
-THE CONSEQUENCE: [1 paragraph explaining why it matters]
-THE FIX DIRECTION: [1 paragraph explaining how to improve it]
+INVISIBLE STRUCTURE RULE:
+Each section must naturally weave together what is not working, why it matters, and how to fix it.
+- DO NOT use labels like "Problem," "Consequence," or "Fix."
+- Write as a continuous, natural explanation.
 
 EVIDENCE RULE (CRITICAL): 
-Do NOT make general claims. Every critique must include a page reference, scene reference, or quoted example.
-Example: "In the hospital scene (page 14), Dee says 'I don’t know how I’m going to survive this'..."
+Every major critique must include a page reference, scene reference, or quoted example.
 
-5. TOP 3 ISSUES TO FIX FIRST: Clear problem, impact, and direct fix. Decisive.
-6. FINAL VERDICT: [PASS / CONSIDER / STRONG CONSIDER]. Final meeting call style.
+6. TOP 3 ISSUES TO FIX FIRST: Clear problem, impact, and direct fix.
+7. FINAL VERDICT: [PASS / CONSIDER / STRONG CONSIDER]. Final meeting call style.
 
 STRICT RULES:
-- NO generic praise. NO fluff. NO filler phrases like "This script effectively..." or "Overall...".
+- NO generic praise. NO fluff.
 - Use "Log line" as two words for voice synthesis.
-- NEVER skip or reorder sections.
-VOICE: Natural phrasing and rhythm. Confident and clear.`;
+- NEVER skip or reorder sections.`;
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     try {
@@ -63,7 +61,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         }
 
         const scanResults = await Promise.all(chunks.map(chunk => 
-            model.generateContent(`Extract specific page-referenced dialogue and forensic evidence: \n\n ${chunk}`)
+            model.generateContent(`Extract specific page-referenced forensic evidence: \n\n ${chunk}`)
         ));
         
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
@@ -77,7 +75,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1000); }
         res.json({ message: feedback });
     } catch (err) {
-        res.status(500).json({ message: "Darling, the system is acting up. Give me a moment." });
+        res.status(500).json({ message: "Frank had a technical glitch." });
     }
 });
 
