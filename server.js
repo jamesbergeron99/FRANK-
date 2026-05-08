@@ -24,21 +24,14 @@ CORE PRINCIPLE: Evaluate, do not encourage. Focus on what is not working.
 CONTEXT: This is a ${type}.
 MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
-MANDATORY RULES:
-- DO NOT USE HASHTAGS (#), ASTERISKS (*), OR ANY MARKDOWN SYMBOLS.
-- Use plain text only. 
-- SPELLING, GRAMMAR, AND FORMATTING: Practical page-specific corrections.
-- LOGLINE: Clean and professional.
-- SYNOPSIS: Clear and complete.
-- WHAT’S WORKING: Only if specific and meaningful (1 paragraph max).
-- CORE ANALYSIS: Concept, Structure, Pacing, Stakes, Protagonist, Antagonist, Dynamics, Dialogue, Tone, World, Theme, Marketability.
-
-INVISIBLE STRUCTURE RULE:
-Weave what is not working, why it matters, and how to fix it into a natural, continuous explanation without labels.
-
-EVIDENCE RULE: Include page/scene references for every critique.
-TOP 3 ISSUES TO FIX FIRST: Problem, impact, and direct fix.
-FINAL VERDICT: [PASS/CONSIDER/STRONG CONSIDER] plus one summary paragraph.`;
+MANDATORY OUTPUT SECTIONS (DO NOT SKIP):
+1. SPELLING, GRAMMAR, AND FORMATTING: List specific page errors and technical lapses.
+2. LOGLINE: A professional one-sentence hook.
+3. SYNOPSIS: A concise summary of the pilot/feature.
+4. WHAT’S WORKING: Specific, meaningful praise (1 paragraph max).
+5. CORE ANALYSIS: Weave Concept, Structure, Pacing, Stakes, Protagonist, Antagonist, Dynamics, Dialogue, Tone, World, Theme, and Marketability into natural paragraphs. Use no hashtags or asterisks.
+6. TOP 3 ISSUES TO FIX FIRST: Problem, impact, and direct fix.
+7. FINAL VERDICT: [PASS/CONSIDER/STRONG CONSIDER] plus one summary paragraph.`;
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     try {
@@ -46,24 +39,15 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const data = await pdf(req.files[0].buffer);
         const scriptText = data.text;
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-
         const chunks = [];
         const CHUNK_SIZE = 30000;
-        for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) {
-            chunks.push(scriptText.substring(i, i + CHUNK_SIZE));
-        }
-
-        const scanResults = await Promise.all(chunks.map(chunk => 
-            model.generateContent(`Extract forensic evidence: \n\n ${chunk}`)
-        ));
-        
+        for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) { chunks.push(scriptText.substring(i, i + CHUNK_SIZE)); }
+        const scanResults = await Promise.all(chunks.map(chunk => model.generateContent(`Extract forensic evidence: \n\n ${chunk}`)));
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
-
         const finalResult = await model.generateContent({
             systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
             contents: [{ role: "user", parts: [{ text: `Script Content: ${scriptText.substring(0, 85000)} \n\n Forensic Evidence: ${forensicData}` }] }]
         });
-
         const feedback = finalResult.response.text();
         if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1000); }
         res.json({ message: feedback });
@@ -71,7 +55,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 });
 
 app.post('/tv-greeting', (req, res) => {
-    res.json({ message: "Oh, we’re doing a series now? Good. That’s where things get interesting—and where most writers lose control of the wheel. In here, I’m not just looking at one script. I’m tracking everything—character arcs, continuity, the slow unraveling or sharpening of your story over time. If something drifts, I’ll see it. If something builds properly, I’ll call it out. Start with episode one. Don’t skip ahead. I need to see how this world breathes before I judge how it evolves. Let’s see if you’ve got something that can actually sustain itself—or if it collapses under its own ambition." });
+    res.json({ message: "Oh, we’re doing a series now? Good. That’s where things get interesting—and where most writers lose control of the wheel. In here, I’m not just looking at one script. I’m tracking everything—character arcs, continuity, the slow unraveling or sharpening of your story over time. Start with episode one. Don’t skip ahead. I need to see how this world breathes before I judge how it evolves." });
 });
 
 app.post('/chat', async (req, res) => {
