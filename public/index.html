@@ -53,18 +53,15 @@
         const chatWindow = document.getElementById('chat-window');
         const textInput = document.getElementById('textInput');
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-
-        // Single audio state shared by all playback paths
-        let audioBuffers = {}, nextToPlay = 0, isPlaying = false;
-        let currentSource = null, totalSections = 0, isSequenceActive = false;
+        let audioBuffers = [], nextToPlay = 0, isPlaying = false;
+        let currentSource = null, isSequenceActive = false;
 
         const welcomeText = "Ah—there you are. Come in, don't hover in the doorway. If you've brought me a script, I assume you're ready for the truth—or at least a version of it that's useful. I'm Frank. Not just in name—by temperament. I don't do vague encouragement, and I don't hand out gold stars for effort. What I do is take your script apart, figure out what's working, what's not, and tell you exactly where the engine is stalling. Give me a moment. And try not to flinch when I get to the good part.";
 
-        window.onload = () => { localStorage.clear(); addMessage(welcomeText); preWarmGreeting(welcomeText); };
+        window.onload = () => { localStorage.clear(); addMessage(welcomeText); speak(welcomeText); };
 
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
 
-        // Speech recognition
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
         recognition.continuous = true; recognition.interimResults = true;
         let currentTranscript = '';
@@ -82,28 +79,16 @@
             else { currentTranscript = textInput.value ? textInput.value + ' ' : ''; recognition.start(); btn.classList.add('recording'); }
         }
 
-        // Mode toggle — stops current audio and plays new greeting
         document.getElementById('modeToggle').addEventListener('change', async function() {
             if (this.checked) {
                 const response = await fetch('/tv-greeting', { method: 'POST' });
                 const data = await response.json();
-                addMessage(data.message);
-                speak(data.message);
+                addMessage(data.message); speak(data.message);
             } else {
                 const fText = "Ah, back to features. Let's see if you can tell a complete story in one sitting.";
-                addMessage(fText);
-                speak(fText);
+                addMessage(fText); speak(fText);
             }
         });
-
-        // FIX: The overlap was caused by preWarmGreeting firing playSequentially
-        // every time ANY buffer arrived — so if buffers 0, 1, 2 all decoded quickly,
-        // playSequentially ran 3 times and started 3 simultaneous sources.
-        // Fix: preWarmGreeting now uses the same speak() path as everything else,
-        // which correctly gates playback so only one source plays at a time.
-        async function preWarmGreeting(text) {
-            speak(text);
-        }
 
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
@@ -114,23 +99,20 @@
             formData.append('scripts', fileInput.files[0]);
             const response = await fetch('/analyze', { method: 'POST', body: formData });
             const data = await response.json();
-            addMessage(data.message);
-            speak(data.message);
+            addMessage(data.message); speak(data.message);
         }
 
-        // speak() — single authoritative playback function.
-        // Stops whatever is playing, resets all state, then fetches TTS chunks
-        // in parallel but plays them strictly in order via playSequentially().
-        // Only non-empty sections are counted so totalSections is always accurate.
+        // THE FIX: All TTS fetches run in parallel via Promise.all, so every chunk
+        // decodes simultaneously. Only AFTER all chunks are ready does playback begin.
+        // This means playSequentially is called exactly ONCE and overlap is impossible.
         async function speak(fullText) {
             stopCurrentAudio();
             const raw = fullText.split(/(?=FORENSIC|LOG LINE|SYNOPSIS|Concept|Structure|Pacing|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
             const sections = raw.filter(s => s.trim().length >= 2);
-            audioBuffers = {}; nextToPlay = 0;
-            totalSections = sections.length;
-            isSequenceActive = true;
             const settings = await (await fetch('/voice-settings')).json();
-            sections.forEach(async (section, index) => {
+
+            // Fetch all chunks in parallel, decode each, store in order
+            const buffers = await Promise.all(sections.map(async (section) => {
                 try {
                     const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
                         method: "POST",
@@ -138,32 +120,38 @@
                         body: JSON.stringify({ text: section.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                     });
                     const data = await res.json();
-                    audioBuffers[index] = await audioCtx.decodeAudioData(
+                    if (!data.audioContent) return null;
+                    return await audioCtx.decodeAudioData(
                         Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
                     );
-                    // Resume context if still suspended (first user interaction may not have happened yet)
-                    if (audioCtx.state === 'suspended') audioCtx.resume();
-                    // Only kick off playback if we're not already playing — prevents overlap
-                    if (!isPlaying && isSequenceActive) playSequentially();
-                } catch (e) {}
-            });
+                } catch (e) { return null; }
+            }));
+
+            // Filter out any nulls from failed chunks
+            audioBuffers = buffers.filter(b => b !== null);
+            nextToPlay = 0;
+            isSequenceActive = true;
+
+            // Resume context if needed, then start — called exactly once
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+            playSequentially();
         }
 
-        // playSequentially — plays buffers one at a time in strict index order.
-        // If the next buffer hasn't decoded yet, polls every 50ms until it's ready.
         function playSequentially() {
-            if (!isSequenceActive || nextToPlay >= totalSections) { isPlaying = false; return; }
-            if (audioBuffers[nextToPlay]) {
-                isPlaying = true;
-                document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
-                currentSource = audioCtx.createBufferSource();
-                currentSource.buffer = audioBuffers[nextToPlay];
-                currentSource.connect(audioCtx.destination);
-                currentSource.onended = () => { if (isSequenceActive) { nextToPlay++; isPlaying = false; playSequentially(); } };
-                currentSource.start();
-            } else {
-                if (isSequenceActive) setTimeout(playSequentially, 50);
+            if (!isSequenceActive || nextToPlay >= audioBuffers.length) {
+                isPlaying = false;
+                document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
+                return;
             }
+            isPlaying = true;
+            document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
+            currentSource = audioCtx.createBufferSource();
+            currentSource.buffer = audioBuffers[nextToPlay];
+            currentSource.connect(audioCtx.destination);
+            currentSource.onended = () => {
+                if (isSequenceActive) { nextToPlay++; playSequentially(); }
+            };
+            currentSource.start();
         }
 
         function stopCurrentAudio() {
@@ -175,12 +163,10 @@
         function togglePlayback() { if (isPlaying) stopCurrentAudio(); else { isSequenceActive = true; playSequentially(); } }
 
         function sendBanter() {
-            const val = textInput.value;
-            textInput.value = '';
+            const val = textInput.value; textInput.value = '';
             addMessage(val, true);
             fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) })
-                .then(r => r.json())
-                .then(data => { addMessage(data.message); speak(data.message); });
+                .then(r => r.json()).then(data => { addMessage(data.message); speak(data.message); });
         }
 
         function addMessage(text, user = false) {
