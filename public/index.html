@@ -59,7 +59,6 @@
         let isSequenceActive = false;
         let stallStartTime = null; 
 
-        // VERBATIM MAIN GREETING RESTORED
         const welcomeText = "Ah—there you are. Come in, don’t hover in the doorway. If you’ve brought me a script, I assume you’re ready for the truth—or at least a version of it that’s useful. I’m Frank. Not just in name—by temperament. I don’t do vague encouragement, and I don’t hand out gold stars for effort. What I do is take your script apart, figure out what’s working, what’s not, and tell you exactly where the engine is stalling. You’ll get a full breakdown—structure, character, dialogue, tone—the works. More importantly, you’ll get the three things that actually matter. The fixes that move the needle. Upload your script. Give me a moment. And try not to flinch when I get to the good part.";
 
         window.onload = async () => { 
@@ -115,7 +114,8 @@
 
         async function speak(fullText) {
             stopCurrentAudio();
-            const sections = fullText.split(/(?=Concept & Hook|Structure & Pacing|Stakes & Conflict|Protagonist|Antagonistic Force|Character Dynamics|Dialogue|Tone & Voice|World & Atmosphere|Theme & Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
+            // Splitting logic based on the required THE PROBLEM headers
+            const sections = fullText.split(/(?=THE PROBLEM|SPELLING|LOGLINE|SYNOPSIS|TOP 3 ISSUES|FINAL VERDICT)/g);
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length;
             isSequenceActive = true;
             const settingsResp = await fetch('/voice-settings');
