@@ -26,15 +26,14 @@ MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
 MANDATORY RULES:
 - DO NOT USE HASHTAGS (#), ASTERISKS (*), OR ANY MARKDOWN SYMBOLS.
-- Use plain text only. 
+- Use plain text only. No bolding, no headers.
 - SPELLING, GRAMMAR, AND FORMATTING: Practical page-specific corrections.
 - LOGLINE: Clean and professional.
 - SYNOPSIS: Clear and complete.
 - WHAT’S WORKING: Only if specific and meaningful (1 paragraph max).
-- CORE ANALYSIS: Concept, Structure, Pacing, Stakes, Protagonist, Antagonist, Dynamics, Dialogue, Tone, World, Theme, Marketability.
 
-INVISIBLE STRUCTURE RULE:
-Weave what is not working, why it matters, and how to fix it into a natural, continuous explanation. Use plain text labels for sections.
+CORE ANALYSIS (THE INVISIBLE STRUCTURE):
+Weave the following elements into a natural, continuous explanation without using labels: Concept, Structure, Pacing, Stakes, Protagonist, Antagonist, Dynamics, Dialogue, Tone, World, Theme, and Marketability. Explain what is not working, why it matters, and how to fix it.
 
 EVIDENCE RULE: Include page/scene references for every critique.
 TOP 3 ISSUES TO FIX FIRST: Problem, impact, and direct fix.
