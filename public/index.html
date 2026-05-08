@@ -104,8 +104,7 @@
 
         async function speak(fullText) {
             stopCurrentAudio();
-            // Splitting logic based on forensic section headers
-            const sections = fullText.split(/(?=Concept & Hook|Structure|Pacing|Stakes & Conflict|Protagonist|Antagonistic Force|Character Dynamics|Dialogue|Tone & Voice|World & Setting|Theme|Marketability|SPELLING|LOGLINE|SYNOPSIS|TOP 3 ISSUES|FINAL VERDICT)/g);
+            const sections = fullText.split(/(?=WHAT’S WORKING|Concept & Hook|Structure|Pacing|Stakes & Conflict|Protagonist|Antagonistic Force|Character Dynamics|Dialogue|Tone & Voice|World & Setting|Theme|Marketability|SPELLING|LOGLINE|SYNOPSIS|TOP 3 ISSUES|FINAL VERDICT)/g);
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length;
             isSequenceActive = true;
             const settingsResp = await fetch('/voice-settings');
