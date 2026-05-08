@@ -51,14 +51,15 @@
 
         async function speak(fullText) {
             stopCurrentAudio();
-            const sections = fullText.split(/(?=SPELLING|LOGLINE|SYNOPSIS|WHAT’S WORKING|Concept|Structure|Pacing|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
+            const cleanedText = fullText.replace(/[*#]/g, '').replace(/Logline/gi, 'Log line');
+            const sections = cleanedText.split(/(?<=[.!?])\s+(?=SPELLING|LOGLINE|SYNOPSIS|WHAT’S WORKING|Concept|Structure|Pacing|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length; isSequenceActive = true; 
             const settings = await (await fetch('/voice-settings')).json();
             for (let i = 0; i < sections.length; i++) {
                 if (!isSequenceActive) break;
                 const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
                     method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ text: sections[i].replace(/[*#]/g, ''), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                    body: JSON.stringify({ text: sections[i], voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                 });
                 const data = await res.json();
                 audioBuffers[i] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
