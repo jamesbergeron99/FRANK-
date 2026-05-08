@@ -26,6 +26,8 @@
         .pill { flex-grow: 1; display: flex; background: #000; border: 1px solid var(--gold); border-radius: 40px; padding: 5px 20px; align-items: center; gap: 10px; }
         #textInput { flex-grow: 1; background: transparent; border: none; color: #fff; padding: 12px 0; outline: none; font-size: 1rem; }
         .icon-btn { background: none; border: none; color: var(--gold); cursor: pointer; font-size: 1.4rem; padding: 5px; display: flex; align-items: center; justify-content: center; }
+        #micBtn.recording { color: #ff4444; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
     </style>
 </head>
 <body onclick="initAudio()">
@@ -131,7 +133,7 @@
                     const data = await res.json();
                     audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
                     
-                    // INSTANT START: Triggers the first buffer immediately to kill the lag
+                    // INSTANT START: Triggers immediately to kill the 5-second lag
                     if (!isPlaying && index === 0 && isSequenceActive) playSequentially();
                 } catch (e) { console.error("Audio Sync Error:", e); }
             }
