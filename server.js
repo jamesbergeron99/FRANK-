@@ -19,29 +19,24 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 let scriptMemory = "";
 
 const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
-Deliver sharp, high-level feedback with personality, clarity, and authority. Tone: theatrical, flamboyant, brutally honest.
+You are sharp, theatrical, and honest. 
+CORE PRINCIPLE: Forensic evaluation. If you find an error, you must cite the page and quote the specific text.
 CONTEXT: This is a ${type}.
 MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
-MANDATORY STRUCTURE (DO NOT DEVIATE):
-1. SPELLING, GRAMMAR, AND FORMATTING: List every specific page error and technical lapse found.
-2. LOGLINE & SYNOPSIS: Professional, sharp, and concise.
-3. WHAT’S WORKING: One focused paragraph on specific visual or emotional hits.
-4. CORE ANALYSIS: Provide a deep-dive paragraph for EACH of the following:
-   - Concept & Hook
-   - Structure & Pacing
-   - Stakes & Conflict
-   - Protagonist & Antagonist
-   - Character Dynamics & Arcs
-   - Dialogue & Tone
-   - World, Theme, and Marketability
-5. TOP 3 ISSUES TO FIX FIRST: Detailed problem, impact, and direct fix for each.
-6. FINAL VERDICT: [PASS/CONSIDER/STRONG CONSIDER] plus one summary paragraph explaining potential and elevation.
+MANDATORY STRUCTURE (HIGH DENSITY - 6 PAGE TARGET):
+1. SPELLING, GRAMMAR, AND FORMATTING: Do not summarize. List specific page numbers and quote the exact misspelled or poorly formatted text (e.g., "cracker ass" on Page 4). 
+2. LOG LINE & SYNOPSIS: Clean, professional, and evocative.
+3. WHAT’S WORKING: Specific visual or emotional hits with page references.
+4. CORE ANALYSIS (THE 10-POINT DEEP DIVE): Provide an exhaustive, high-density paragraph for Concept, Structure, Pacing, Stakes, Protagonist, Antagonist, Dynamics, Dialogue, Tone, and World.
+   - EVIDENCE RULE: You must reference specific scenes, dialogue quotes, or page numbers for every point you make. 
+5. TOP 3 ISSUES TO FIX FIRST: Problem, impact, and direct fix.
+6. FINAL VERDICT: [PASS/CONSIDER/STRONG CONSIDER] plus a summary paragraph.
 
 STRICT RULES:
-- ALWAYS write in full, natural paragraphs. NEVER use bullet points.
-- Use "Log line" as two words for voice synthesis.
-- NO HASHTAGS, NO ASTERISKS, NO MARKDOWN. Plain text only.`;
+- NO HASHTAGS, NO ASTERISKS, NO MARKDOWN. Plain text only.
+- Use "Log line" as two words for the voice engine.
+- Always sound like Frank: theatrical, flamboyant, but brutally precise.`;
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     try {
@@ -49,19 +44,28 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const data = await pdf(req.files[0].buffer);
         const scriptText = data.text;
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+
         const chunks = [];
-        const CHUNK_SIZE = 25000;
-        for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) { chunks.push(scriptText.substring(i, i + CHUNK_SIZE)); }
-        const scanResults = await Promise.all(chunks.map(chunk => model.generateContent(`Extract forensic evidence: \n\n ${chunk}`)));
+        const CHUNK_SIZE = 20000; // Smaller chunks for more detailed forensic scanning
+        for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) {
+            chunks.push(scriptText.substring(i, i + CHUNK_SIZE));
+        }
+
+        const scanResults = await Promise.all(chunks.map(chunk => 
+            model.generateContent(`Act as a proofreader. Extract every single typo, grammar error, and formatting lapse with page numbers and quotes: \n\n ${chunk}`)
+        ));
+        
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
+
         const finalResult = await model.generateContent({
             systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
-            contents: [{ role: "user", parts: [{ text: `Script Content: ${scriptText.substring(0, 85000)} \n\n Forensic Evidence: ${forensicData}` }] }]
+            contents: [{ role: "user", parts: [{ text: `Script: ${scriptText.substring(0, 85000)} \n\n Forensic Evidence: ${forensicData}` }] }]
         });
+
         const feedback = finalResult.response.text();
         if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1000); }
         res.json({ message: feedback });
-    } catch (err) { res.status(500).json({ message: "Darling, the system is acting up." }); }
+    } catch (err) { res.status(500).json({ message: "System glitch, darling. I'm having a drink." }); }
 });
 
 app.post('/tv-greeting', (req, res) => {
@@ -72,7 +76,7 @@ app.post('/chat', async (req, res) => {
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
         const result = await model.generateContent({
-            systemInstruction: "You are Frank. Answer based on: " + scriptMemory,
+            systemInstruction: "You are Frank. Use the previous analysis to answer questions: " + scriptMemory,
             contents: [{ role: "user", parts: [{ text: req.body.message }] }]
         });
         res.json({ message: result.response.text() });
