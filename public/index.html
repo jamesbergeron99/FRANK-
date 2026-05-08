@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>Frank's Forensic Office</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <style>
         :root { --gold: #d4af37; --bg: #050505; --card: #121212; }
         body { background: var(--bg); color: #eee; font-family: 'Segoe UI', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
@@ -58,29 +58,7 @@
 
         const welcomeText = "Ah—there you are. Come in, don’t hover in the doorway. If you’ve brought me a script, I assume you’re ready for the truth—or at least a version of it that’s useful. I’m Frank. Not just in name—by temperament. I don’t do vague encouragement, and I don’t hand out gold stars for effort. What I do is take your script apart, figure out what’s working, what’s not, and tell you exactly where the engine is stalling. You’ll get a full breakdown—structure, character, dialogue, tone—the works. More importantly, you’ll get the three things that actually matter. The fixes that move the needle. Upload your script. Give me a moment. And try not to flinch when I get to the good part.";
 
-        window.onload = async () => { 
-            localStorage.clear();
-            addMessage(welcomeText); 
-            preWarmGreeting(welcomeText); 
-        };
-
-        async function preWarmGreeting(text) {
-            try {
-                const settings = await (await fetch('/voice-settings')).json();
-                const parts = text.split(/(?<=\. )/);
-                parts.forEach(async (part, index) => {
-                    const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
-                        method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: part.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
-                    });
-                    const data = await res.json();
-                    audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
-                    totalSections = parts.length;
-                    if (audioCtx.state === 'running' && index === 0 && !isPlaying) { isSequenceActive = true; playSequentially(); }
-                });
-            } catch (e) {}
-        }
-
+        window.onload = async () => { localStorage.clear(); addMessage(welcomeText); preWarmGreeting(welcomeText); };
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
 
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
@@ -104,12 +82,29 @@
             if (this.checked) {
                 const response = await fetch('/tv-greeting', { method: 'POST' });
                 const data = await response.json();
-                addMessage(data.message); speak(data.message);
+                addMessage(data.message); speak(data.message); // TRIGGER INSTANT AUDIO
             } else {
                 const fText = "Ah, back to features. Let's see if you can tell a complete story in one sitting.";
                 addMessage(fText); speak(fText);
             }
         });
+
+        async function preWarmGreeting(text) {
+            try {
+                const settings = await (await fetch('/voice-settings')).json();
+                const parts = text.split(/(?<=\. )/);
+                parts.forEach(async (part, index) => {
+                    const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
+                        method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ text: part.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                    });
+                    const data = await res.json();
+                    audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
+                    totalSections = parts.length;
+                    if (audioCtx.state === 'running' && index === 0 && !isPlaying) { isSequenceActive = true; playSequentially(); }
+                });
+            } catch (e) {}
+        }
 
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
@@ -118,17 +113,14 @@
             const formData = new FormData();
             formData.append('mode', document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film');
             formData.append('scripts', fileInput.files[0]);
-            try {
-                const response = await fetch('/analyze', { method: 'POST', body: formData });
-                const data = await response.json();
-                addMessage(data.message); speak(data.message);
-            } catch (err) { addMessage("Upload failed."); }
+            const response = await fetch('/analyze', { method: 'POST', body: formData });
+            const data = await response.json();
+            addMessage(data.message); speak(data.message);
         }
 
         async function speak(fullText) {
             stopCurrentAudio();
-            // Split by major forensic markers to ensure immediate trigger
-            const sections = fullText.split(/(?=SPELLING|LOGLINE|SYNOPSIS|WHAT’S WORKING|Concept & Hook|Structure|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
+            const sections = fullText.split(/(?=SPELLING|LOGLINE|SYNOPSIS|WHAT’S WORKING|Concept|Structure|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length; isSequenceActive = true; 
             const settings = await (await fetch('/voice-settings')).json();
             sections.forEach(async (section, index) => {
@@ -136,7 +128,7 @@
                 try {
                     const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
                         method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: section.replace(/[*#]/g, '').replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                        body: JSON.stringify({ text: section.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                     });
                     const data = await res.json();
                     audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
@@ -158,16 +150,10 @@
             } else { if (isSequenceActive) setTimeout(playSequentially, 50); }
         }
 
+        function stopCurrentAudio() { isSequenceActive = false; isPlaying = false; if (currentSource) { try { currentSource.stop(); } catch(e) {} currentSource = null; } document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>'; }
         function togglePlayback() { if (isPlaying) stopCurrentAudio(); else { isSequenceActive = true; playSequentially(); } }
-
-        function stopCurrentAudio() { 
-            isSequenceActive = false; isPlaying = false; 
-            if (currentSource) { try { currentSource.stop(); } catch(e) {} currentSource = null; } 
-            document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
-        }
-
-        function sendBanter() { const val = textInput.value; textInput.value = ''; addMessage(val, true); fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) }).then(r => r.json()).then(data => { addMessage(data.message); speak(data.message); }); }
         function addMessage(text, user = false) { const div = document.createElement('div'); div.className = user ? 'msg user-msg' : 'msg'; div.innerText = text; chatWindow.appendChild(div); chatWindow.scrollTop = chatWindow.scrollHeight; }
+        function sendBanter() { const val = textInput.value; textInput.value = ''; addMessage(val, true); fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) }).then(r => r.json()).then(data => { addMessage(data.message); speak(data.message); }); }
         function downloadPDF() { const element = document.createElement('div'); element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; font-family:serif; line-height:1.6;"><h1 style="color:#d4af37; border-bottom:2px solid #d4af37;">FRANK'S PRIVATE AUDIT</h1>${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m => `<p style="margin-bottom:20px; white-space:pre-wrap; border-left:3px solid #d4af37; padding-left:15px;">${m.innerText}</p>`).join('')}</div>`; html2pdf().from(element).save('Frank_Audit.pdf'); }
     </script>
 </body>
