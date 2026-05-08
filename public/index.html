@@ -51,108 +51,277 @@
     </div>
     <script>
         const chatWindow = document.getElementById('chat-window');
-        const textInput = document.getElementById('textInput');
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-        let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0, isSequenceActive = false;
+        const textInput  = document.getElementById('textInput');
+        const audioCtx   = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
 
-        const welcomeText = "Ah—there you are. Come in, don’t hover in the doorway. If you’ve brought me a script, I assume you’re ready for the truth—or at least a version of it that’s useful. I’m Frank. Not just in name—by temperament. I don’t do vague encouragement, and I don’t hand out gold stars for effort. What I do is take your script apart, figure out what’s working, what’s not, and tell you exactly where the engine is stalling. Give me a moment. And try not to flinch when I get to the good part.";
+        // ── Audio state ──────────────────────────────────────────────────────────
+        // Instead of tracking a fixed totalSections count (which was the root cause
+        // of playback stopping early), we now use a queue-based system:
+        //   • audioBuffers  – every successfully decoded buffer, keyed by index
+        //   • playbackQueue – sorted list of indices ready to play, rebuilt as buffers arrive
+        //   • nextQueuePos  – how far through playbackQueue we've played
+        // A failed or empty TTS chunk simply never enters the queue — it can't stall us.
+        let audioBuffers     = {};
+        let playbackQueue    = [];
+        let nextQueuePos     = 0;
+        let isPlaying        = false;
+        let currentSource    = null;
+        let isSequenceActive = false;
+        let expectedChunks   = 0;   // total chunks sent to TTS for current utterance
+        let resolvedChunks   = 0;   // how many have come back (success or fail)
 
-        window.onload = async () => { localStorage.clear(); addMessage(welcomeText); preWarmGreeting(welcomeText); };
-        function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
-
-        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        recognition.continuous = true; recognition.interimResults = true;
+        // ── Speech recognition ───────────────────────────────────────────────────
+        // Initialised after page load so any browser error here cannot crash
+        // the audio engine or prevent the page from rendering.
+        let recognition      = null;
         let currentTranscript = '';
-        recognition.onresult = (e) => {
-            let interimTranscript = '';
-            for (let i = e.resultIndex; i < e.results.length; ++i) {
-                if (e.results[i].isFinal) currentTranscript += e.results[i][0].transcript + ' ';
-                else interimTranscript += e.results[i][0].transcript;
-            }
-            textInput.value = currentTranscript + interimTranscript;
-        };
-        function toggleMic() {
-            const btn = document.getElementById('micBtn');
-            if (btn.classList.contains('recording')) { recognition.stop(); btn.classList.remove('recording'); }
-            else { currentTranscript = textInput.value ? textInput.value + ' ' : ''; recognition.start(); btn.classList.add('recording'); }
+        let micActive        = false;
+
+        function initSpeechRecognition() {
+            const micBtn = document.getElementById('micBtn');
+            const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SR) { micBtn.style.opacity = '0.3'; micBtn.title = 'Voice input not supported in this browser'; return; }
+            try {
+                recognition = new SR();
+                recognition.continuous    = true;
+                recognition.interimResults = true;
+                recognition.onresult = (e) => {
+                    let interim = '';
+                    for (let i = e.resultIndex; i < e.results.length; ++i) {
+                        if (e.results[i].isFinal) currentTranscript += e.results[i][0].transcript + ' ';
+                        else interim += e.results[i][0].transcript;
+                    }
+                    textInput.value = currentTranscript + interim;
+                };
+                recognition.onerror = (e) => {
+                    micActive = false; micBtn.classList.remove('recording');
+                    if (e.error === 'not-allowed') { micBtn.style.opacity = '0.3'; micBtn.title = 'Microphone access denied'; }
+                };
+                recognition.onend = () => { if (micActive) { micActive = false; micBtn.classList.remove('recording'); } };
+            } catch(e) { micBtn.style.opacity = '0.3'; }
         }
 
+        function toggleMic() {
+            const micBtn = document.getElementById('micBtn');
+            if (!recognition) return;
+            if (micActive) {
+                recognition.stop(); micActive = false; micBtn.classList.remove('recording');
+            } else {
+                currentTranscript = textInput.value ? textInput.value + ' ' : '';
+                try { recognition.start(); micActive = true; micBtn.classList.add('recording'); } catch(e) {}
+            }
+        }
+
+        // ── Page load ────────────────────────────────────────────────────────────
+        const welcomeText = "Ah—there you are. Come in, don't hover in the doorway. If you've brought me a script, I assume you're ready for the truth—or at least a version of it that's useful. I'm Frank. Not just in name—by temperament. I don't do vague encouragement, and I don't hand out gold stars for effort. What I do is take your script apart, figure out what's working, what's not, and tell you exactly where the engine is stalling. Give me a moment. And try not to flinch when I get to the good part.";
+
+        window.onload = () => {
+            localStorage.clear();
+            addMessage(welcomeText);
+            initSpeechRecognition();
+            preWarmGreeting(welcomeText);
+        };
+
+        function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
+
+        // ── Audio engine ─────────────────────────────────────────────────────────
+
+        // Hard-stop everything and reset all state for a new utterance
+        function resetAudioState() {
+            isSequenceActive = false;
+            isPlaying        = false;
+            if (currentSource) { try { currentSource.stop(); } catch(e) {} currentSource = null; }
+            audioBuffers   = {};
+            playbackQueue  = [];
+            nextQueuePos   = 0;
+            expectedChunks = 0;
+            resolvedChunks = 0;
+            isSequenceActive = true;
+            document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
+        }
+
+        // Called each time a buffer decodes successfully
+        function onBufferReady(index, buffer) {
+            audioBuffers[index] = buffer;
+            // Keep queue sorted so earlier chunks play first even if they arrive late
+            playbackQueue = Object.keys(audioBuffers).map(Number).sort((a, b) => a - b);
+            if (!isPlaying && isSequenceActive) playNext();
+        }
+
+        // Called whether a chunk succeeded or failed, so we know when we're done
+        function onChunkResolved() {
+            resolvedChunks++;
+            // If everything has come back and we've played it all, mark done
+            if (resolvedChunks >= expectedChunks && nextQueuePos >= playbackQueue.length) {
+                isPlaying = false;
+                document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
+            }
+        }
+
+        function playNext() {
+            if (!isSequenceActive) return;
+
+            // If we're still waiting on the very next chunk, poll
+            if (nextQueuePos >= playbackQueue.length) {
+                if (resolvedChunks < expectedChunks) {
+                    setTimeout(() => { if (isSequenceActive && !isPlaying) playNext(); }, 80);
+                } else {
+                    // All chunks resolved and nothing left to play — we're done
+                    isPlaying = false;
+                    document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
+                }
+                return;
+            }
+
+            const entry = playbackQueue[nextQueuePos];
+            isPlaying = true;
+            document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
+
+            currentSource = audioCtx.createBufferSource();
+            currentSource.buffer = audioBuffers[entry];
+            currentSource.connect(audioCtx.destination);
+            currentSource.onended = () => {
+                currentSource = null;
+                isPlaying     = false;
+                if (isSequenceActive) { nextQueuePos++; playNext(); }
+            };
+            currentSource.start();
+        }
+
+        // ── TTS fetch ────────────────────────────────────────────────────────────
+        async function fetchAndDecode(text, index, settings) {
+            if (!text || text.trim().length < 2) { onChunkResolved(); return; }
+            try {
+                const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
+                    method: "POST",
+                    headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        text: text.replace(/Logline/gi, 'Log line'),
+                        voiceId: "default-oglabcjnetcklcq7rghmbw__frank",
+                        modelId: "inworld-tts-1.5-max"
+                    })
+                });
+                const data = await res.json();
+                if (data.audioContent) {
+                    const buffer = await audioCtx.decodeAudioData(
+                        Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
+                    );
+                    onBufferReady(index, buffer);
+                }
+            } catch(e) { /* chunk failed — skip, don't stall */ }
+            onChunkResolved();
+        }
+
+        // ── Pre-warm welcome ─────────────────────────────────────────────────────
+        async function preWarmGreeting(text) {
+            try {
+                const settings = await (await fetch('/voice-settings')).json();
+                resetAudioState();
+                const parts = text.match(/[^.!?]+[.!?]+[\s]*/g) || [text];
+                expectedChunks = parts.length;
+                parts.forEach((part, index) => fetchAndDecode(part.trim(), index, settings));
+            } catch(e) {}
+        }
+
+        // ── Main speak ───────────────────────────────────────────────────────────
+        async function speak(fullText) {
+            try {
+                const settings = await (await fetch('/voice-settings')).json();
+                resetAudioState();
+
+                // Split on section headings first, then break any oversized piece
+                // into sentences so no single TTS call is too large to return cleanly
+                const sections = fullText.split(
+                    /(?=FORENSIC|LOG LINE|SYNOPSIS|Concept|Structure|Pacing|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g
+                );
+                const chunks = [];
+                sections.forEach(section => {
+                    if (section.length > 800) {
+                        const sentences = section.match(/[^.!?]+[.!?]+[\s]*/g) || [section];
+                        chunks.push(...sentences);
+                    } else {
+                        chunks.push(section);
+                    }
+                });
+
+                expectedChunks = chunks.length;
+                chunks.forEach((chunk, index) => fetchAndDecode(chunk.trim(), index, settings));
+            } catch(e) {}
+        }
+
+        // ── Toggle playback button ───────────────────────────────────────────────
+        function togglePlayback() {
+            if (isPlaying) {
+                isSequenceActive = false;
+                isPlaying = false;
+                if (currentSource) { try { currentSource.stop(); } catch(e) {} currentSource = null; }
+                document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
+            } else {
+                isSequenceActive = true;
+                document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
+                playNext();
+            }
+        }
+
+        // ── Mode toggle ──────────────────────────────────────────────────────────
         document.getElementById('modeToggle').addEventListener('change', async function() {
             if (this.checked) {
                 const response = await fetch('/tv-greeting', { method: 'POST' });
                 const data = await response.json();
-                addMessage(data.message); speak(data.message);
+                addMessage(data.message);
+                speak(data.message);
             } else {
                 const fText = "Ah, back to features. Let's see if you can tell a complete story in one sitting.";
-                addMessage(fText); speak(fText);
+                addMessage(fText);
+                speak(fText);
             }
         });
 
-        async function preWarmGreeting(text) {
-            try {
-                const settings = await (await fetch('/voice-settings')).json();
-                const parts = text.split(/(?<=\. )/);
-                parts.forEach(async (part, index) => {
-                    const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
-                        method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: part.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
-                    });
-                    const data = await res.json();
-                    audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
-                    if (audioCtx.state === 'running' && index === 0 && !isPlaying) { isSequenceActive = true; playSequentially(); }
-                });
-            } catch (e) {}
-        }
-
+        // ── Upload & analyze ─────────────────────────────────────────────────────
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
             if (fileInput.files.length === 0) return;
-            addMessage(`Analyzing... This takes a few moments, darling...`, false);
+            addMessage('Analyzing... This takes a few moments, darling...', false);
             const formData = new FormData();
             formData.append('mode', document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film');
             formData.append('scripts', fileInput.files[0]);
             const response = await fetch('/analyze', { method: 'POST', body: formData });
             const data = await response.json();
-            addMessage(data.message); speak(data.message);
+            addMessage(data.message);
+            speak(data.message);
         }
 
-        async function speak(fullText) {
-            stopCurrentAudio();
-            const sections = fullText.split(/(?=FORENSIC|LOG LINE|SYNOPSIS|Concept|Structure|Pacing|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
-            audioBuffers = {}; nextToPlay = 0; totalSections = sections.length; isSequenceActive = true; 
-            const settings = await (await fetch('/voice-settings')).json();
-            sections.forEach(async (section, index) => {
-                if (section.trim().length < 2) return;
-                try {
-                    const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
-                        method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: section.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
-                    });
-                    const data = await res.json();
-                    audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
-                    if (!isPlaying && isSequenceActive && index === 0) playSequentially();
-                } catch (e) {}
-            });
+        // ── Chat ─────────────────────────────────────────────────────────────────
+        function sendBanter() {
+            const val = textInput.value.trim();
+            if (!val) return;
+            textInput.value = '';
+            currentTranscript = '';
+            addMessage(val, true);
+            fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) })
+                .then(r => r.json())
+                .then(data => { addMessage(data.message); speak(data.message); });
         }
 
-        function playSequentially() {
-            if (!isSequenceActive || nextToPlay >= totalSections) { isPlaying = false; return; }
-            if (audioBuffers[nextToPlay]) {
-                isPlaying = true;
-                document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
-                currentSource = audioCtx.createBufferSource();
-                currentSource.buffer = audioBuffers[nextToPlay];
-                currentSource.connect(audioCtx.destination);
-                currentSource.onended = () => { if (isSequenceActive) { nextToPlay++; playSequentially(); } };
-                currentSource.start();
-            } else { if (isSequenceActive) setTimeout(playSequentially, 50); }
+        // ── UI helpers ───────────────────────────────────────────────────────────
+        function addMessage(text, user = false) {
+            const div = document.createElement('div');
+            div.className = user ? 'msg user-msg' : 'msg';
+            div.innerText = text;
+            chatWindow.appendChild(div);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
         }
 
-        function stopCurrentAudio() { isSequenceActive = false; isPlaying = false; if (currentSource) { try { currentSource.stop(); } catch(e) {} currentSource = null; } document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>'; }
-        function togglePlayback() { if (isPlaying) stopCurrentAudio(); else { isSequenceActive = true; playSequentially(); } }
-        function addMessage(text, user = false) { const div = document.createElement('div'); div.className = user ? 'msg user-msg' : 'msg'; div.innerText = text; chatWindow.appendChild(div); chatWindow.scrollTop = chatWindow.scrollHeight; }
-        function sendBanter() { const val = textInput.value; textInput.value = ''; addMessage(val, true); fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) }).then(r => r.json()).then(data => { addMessage(data.message); speak(data.message); }); }
-        function downloadPDF() { const element = document.createElement('div'); element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; font-family:serif; line-height:1.6;"><h1 style="color:#d4af37; border-bottom:2px solid #d4af37;">FRANK'S PRIVATE AUDIT</h1>${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m => `<p style="margin-bottom:20px; white-space:pre-wrap; border-left:3px solid #d4af37; padding-left:15px;">${m.innerText}</p>`).join('')}</div>`; html2pdf().from(element).save('Frank_Audit.pdf'); }
+        function downloadPDF() {
+            const element = document.createElement('div');
+            element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; font-family:serif; line-height:1.6;">
+                <h1 style="color:#d4af37; border-bottom:2px solid #d4af37;">FRANK'S PRIVATE AUDIT</h1>
+                ${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m =>
+                    `<p style="margin-bottom:20px; white-space:pre-wrap; border-left:3px solid #d4af37; padding-left:15px;">${m.innerText}</p>`
+                ).join('')}
+            </div>`;
+            html2pdf().from(element).save('Frank_Audit.pdf');
+        }
     </script>
 </body>
 </html>
