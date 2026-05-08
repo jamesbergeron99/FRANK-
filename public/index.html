@@ -46,6 +46,8 @@
         <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadFiles()">
         <div class="pill">
             <input type="text" id="textInput" placeholder="Consult Frank..." onkeypress="if(event.key==='Enter') sendBanter()">
+            <!-- DICTATION MIC ICON -->
+            <button class="icon-btn" id="micBtn"><i class="fas fa-microphone"></i></button>
         </div>
         <button class="icon-btn" onclick="sendBanter()"><i class="fas fa-paper-plane"></i></button>
         <button class="icon-btn" onclick="downloadPDF()"><i class="fas fa-file-pdf"></i></button>
@@ -96,7 +98,8 @@
                 const data = await response.json();
                 addMessage(data.message); speak(data.message);
             } else {
-                speak("Feature mode activated.");
+                addMessage("Feature mode activated.");
+                speak("Ah, back to features. Let's see if you can tell a complete story in one sitting.");
             }
         });
 
@@ -114,8 +117,7 @@
 
         async function speak(fullText) {
             stopCurrentAudio();
-            // Splitting logic based on the required THE PROBLEM headers
-            const sections = fullText.split(/(?=THE PROBLEM|SPELLING|LOGLINE|SYNOPSIS|TOP 3 ISSUES|FINAL VERDICT)/g);
+            const sections = fullText.split(/(?=WHAT’S WORKING|Concept & Hook|Structure|Pacing|Stakes & Conflict|Protagonist|Antagonistic Force|Character Dynamics|Dialogue|Tone & Voice|World & Setting|Theme|Marketability|SPELLING|LOGLINE|SYNOPSIS|TOP 3 ISSUES|FINAL VERDICT)/g);
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length;
             isSequenceActive = true;
             const settingsResp = await fetch('/voice-settings');
