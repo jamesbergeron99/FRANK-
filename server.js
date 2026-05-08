@@ -1,55 +1,100 @@
-Listen up, darling. Frank is in the building, and I have had a look at your little neon-soaked tragedy. Pull up a chair, grab a martini—extra olives, I need the salt—and let’s dissect this "Kandi Land" before the glow-sticks fade. It is raw, it is filthy, and it has a heartbeat, but it needs a surgeon’s touch to survive the pilot season.
+const express = require('express');
+const multer = require('multer');
+const pdf = require('pdf-parse');
+const path = require('path');
+const cors = require('cors'); 
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+require('dotenv').config();
 
-1. FORENSIC SPELLING, GRAMMAR, AND FORMATTING:
-Page 19: "DEE-LITE plays on the stereo." Fix: "Deee-Lite." We respect the groove in this house. Page 37: "fucked-up pulls off her wig." Fix: "fucked-up, pulls off her wig." You need a comma there, honey; she's high, not a sentence fragment. Page 23: "MUSHU, sleeps on her lap." Fix: "Mushu sleeps on her lap." You’ve got a stray comma acting like a backup dancer who forgot the choreography. Page 28: "INTERCUT PHONE CONVERSATION" is followed by a full slugline on page 29. Fix: If it is intercut, do not waste my time with full slugs for every flip-flop.
+const app = express();
+const PORT = process.env.PORT || 10000;
 
-2. LOG LINE: 
-After a house fire leaves her family destitute and a failed engagement sends him spiraling back to his industrial hometown, a fierce Black woman and her reckless gay best friend launch an underground ecstasy empire in the year 2000 to buy back their lives.
+app.use(cors()); 
+app.use(express.json({limit: '100mb'})); 
+app.use(express.static(path.join(__dirname, 'public')));
 
-3. SYNOPSIS:
-Robert returns to Windsor with 3,000 pills and a broken heart. His best friend Dee is facing homelessness after a fire and an insurance lapse. Together with a flamboyant drag queen named Cotton, they transform a grimy warehouse into "Kandi Land"—an after-hours rave. As the money rolls in, they face threats from a predatory stepfather, a local drug socialite, and their own crumbling families.
+const upload = multer({ storage: multer.memoryStorage() });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-4. WHAT’S WORKING:
-The emotional desperation is palpable. Page 22: "She looks to the heavens and screams. DEE: What do you want from me?" This isn't just a drug story; it’s a poverty story. The contrast between the neon euphoria of the club and the "damp cinder block unfinished basement" (page 24) is a visual knockout.
+let scriptMemory = "";
 
-5. CONCEPT & HOOK:
-The "Pez Dispenser" gimmick is pure marketing gold. Page 9: "ROBERT: They fit in the dispensers." It’s tactile, it’s nostalgic, and it’s a brilliant visual motif for a series. It turns a felony into a toy, which is exactly the kind of irony that sells.
+// FINAL MANDATORY PROTOCOL - LOCKED 100%
+const FRANK_IDENTITY = (type, memory) => `You are Frank, an elite Studio Executive and Script Doctor. 
+Deliver professional script coverage with precision, authority, and personality. You are sharp, direct, and human. 
+CORE PRINCIPLE: You are not here to encourage. You are here to evaluate. Focus on what is not working.
+CONTEXT: This is a ${type}.
+MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
-6. STRUCTURE:
-The transition from the Vancouver cold open to the Windsor grit is solid. However, the Act One break is a bit soft. Page 22: "DEE: I'll host, but I’m not selling." This is our "Lock and Load" moment, but the buildup to it needs more of a ticking clock.
+MANDATORY STRUCTURE (DO NOT DEVIATE):
+1. SPELLING, GRAMMAR, AND FORMATTING: Reference page numbers. Practical and useful.
+2. LOGLINE: Clean and professional.
+3. SYNOPSIS: Clear and complete.
+4. CORE ANALYSIS: Concept & Hook, Structure, Pacing, Stakes & Conflict, Protagonist, Antagonistic Force, Character Dynamics & Arcs, Dialogue, Tone & Voice, World & Setting, Theme, Marketability.
 
-7. PACING:
-The middle drags like a queen in six-inch heels on gravel. The cleaning montage on page 42-45 is fun, but we spend too much time on the logistics of the warehouse and not enough on the "Will they get caught?" tension. The adrenaline should be spiking higher.
+EACH SECTION MUST FOLLOW THIS EXACT FORMAT:
+THE PROBLEM: [1–2 paragraphs explaining what is not working]
+THE CONSEQUENCE: [1 paragraph explaining why it matters]
+THE FIX DIRECTION: [1 paragraph explaining how to improve it]
 
-8. STAKES:
-The stakes are literally "home or the street." Page 21: "Ms. Black... I'm afraid we cannot approve a loan at this time." If they fail, Dee’s family is in the gutter. That is the engine of the show. Don’t let them forget it for a second.
+EVIDENCE RULE (CRITICAL): 
+Do NOT make general claims. Every critique must include a page reference, scene reference, or quoted example.
+Example: "In the hospital scene (page 14), Dee says 'I don’t know how I’m going to survive this'..."
 
-9. CONFLICT:
-The Joey/Robert dynamic is the secret sauce. Page 28: "Joey leans against the doorframe and blocks the entrance... JOEY: Midnight. That’s your curfew." This isn't just about rules; it’s a power struggle infused with an uncomfortable, latent sexual tension that is far more interesting than the drug dealing.
+5. TOP 3 ISSUES TO FIX FIRST: Clear problem, impact, and direct fix. Decisive.
+6. FINAL VERDICT: [PASS / CONSIDER / STRONG CONSIDER]. Final meeting call style.
 
-10. PROTAGONIST:
-Robert is a delightful mess, but Dee is the anchor. Page 5: "ROBERT: I'm too out of control, the wedding's off." He is a flight risk. Dee is the one with the "shaking hand" (page 22) who makes the hard choices. She is the Walter White in Manolo Blahniks.
+STRICT RULES:
+- NO generic praise. NO fluff. NO filler phrases like "This script effectively..." or "Overall...".
+- Use "Log line" as two words for voice synthesis.
+- NEVER skip or reorder sections.
+VOICE: Natural phrasing and rhythm. Confident and clear.`;
 
-11. ANTAGONISTIC FORCE:
-Tommy Teflon is a cockroach, but Bianca Odisko is the shark. Page 47: "BIANCA: Well then get your ass inside. (beat) And get me a sample." She represents the "Old Money" drug world that won't appreciate these upstarts. She needs more screen time to feel like a lethal threat.
+app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
+    try {
+        const mode = req.body.mode || 'Feature Film';
+        const data = await pdf(req.files[0].buffer);
+        const scriptText = data.text;
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
-12. CHARACTER DYNAMICS:
-The Robert/Dee bond is the only thing that feels safe in this world. Page 8: "ROBERT: Cry away. Your life officially sucks. They laugh." That is a "ride or die" friendship. Protect it, but test it until it bleeds.
+        const chunks = [];
+        const CHUNK_SIZE = 30000;
+        for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) {
+            chunks.push(scriptText.substring(i, i + CHUNK_SIZE));
+        }
 
-13. CHARACTER ARCS:
-Ronnie is the moral compass, and she’s spinning. Page 11: "Ronnie gasps awake, drenched in sweat." Her descent from a "traumatized sister" to someone seeing through the "Kandi Land" lie (page 51) provides the necessary internal friction for the family.
+        const scanResults = await Promise.all(chunks.map(chunk => 
+            model.generateContent(`Extract specific page-referenced dialogue and forensic evidence: \n\n ${chunk}`)
+        ));
+        
+        const forensicData = scanResults.map(r => r.response.text()).join("\n");
 
-14. DIALOGUE:
-It’s sharp, but watch the repetition. Page 33: "dirtier than Robbie's stinky hole" and Page 42: "dirtier than my starfish." We get it, Robert’s hygiene is a punchline. Give us some variety, darling. However, Tommy’s line on page 14, "Suicide doesn't pay," is a cold, hard diamond.
+        const finalResult = await model.generateContent({
+            systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
+            contents: [{ role: "user", parts: [{ text: `Script Content: ${scriptText.substring(0, 85000)} \n\n Forensic Evidence: ${forensicData}` }] }]
+        });
 
-15. TONE & VOICE:
-The tone is "Gritty Glitter." It feels like a 2000s time capsule. Page 30: "A live model, wrapped in black latex and monster platforms." The voice is confident, queer, and unapologetic.
+        const feedback = finalResult.response.text();
+        if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1000); }
+        res.json({ message: feedback });
+    } catch (err) {
+        res.status(500).json({ message: "Darling, the system is acting up. Give me a moment." });
+    }
+});
 
-16. WORLD & ATMOSPHERE:
-Windsor in 2000 feels like a character. Page 33: "ominous shadows off the weathered heritage buildings." It feels claustrophobic, which makes the "Cloud 9" sequence on page 11-12 feel like a necessary escape for the audience.
+app.post('/tv-greeting', (req, res) => {
+    res.json({ message: "Oh, we’re doing a series now? Good. That’s where things get interesting—and where most writers lose control of the wheel. In here, I’m not just looking at one script. I’m tracking everything—character arcs, continuity, the slow unraveling or sharpening of your story over time. If something drifts, I’ll see it. If something builds properly, I’ll call it out. Start with episode one. Don’t skip ahead. I need to see how this world breathes before I judge how it evolves. Let’s see if you’ve got something that can actually sustain itself—or if it collapses under its own ambition." });
+});
 
-17. THEME:
-The theme is "The Cost of Survival." Is it better to be a "black drug dealer" (page 13) or homeless? The script poses the question: how much of your soul is a house worth?
+app.post('/chat', async (req, res) => {
+    try {
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+        const result = await model.generateContent({
+            systemInstruction: "You are Frank. Answer based on: " + scriptMemory,
+            contents: [{ role: "user", parts: [{ text: req.body.message }] }]
+        });
+        res.json({ message: result.response.text() });
+    } catch (err) { res.status(500).json({ message: "I'm in a meeting." }); }
+});
 
-18. MARKETABILITY:
-This is "Euphoria" for the Gen X/Millennial cusp. It has the fashion, the music, and the drug-fueled drama that streamers crave. If you sharpen the threat of the Odisko family and lean into the Joey/Robert psychological warfare, you have a hit. Now, get back to your typewriter and make it sparkle. Frank out.
+app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
+app.listen(PORT, '0.0.0.0');
