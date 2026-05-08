@@ -24,33 +24,18 @@ CORE PRINCIPLE: Evaluate, do not encourage. Focus on what is not working.
 CONTEXT: This is a ${type}.
 MEMORY: ${type === 'T.V. Series' ? memory : "New Session."}
 
-MANDATORY STRUCTURE (DO NOT DEVIATE):
-1. FORENSIC SPELLING, GRAMMAR, AND FORMATTING: Provide a clinical, professional list of errors. Cite the specific page and quote the exact text that needs fixing. Do not use flamboyant voice here; be precise and direct.
-2. LOG LINE: Clean and professional.
-3. SYNOPSIS: Clear and complete.
-4. WHAT’S WORKING: Specific hits tied to real script examples.
-5. CORE ANALYSIS (10-POINT DEEP DIVE): Provide a deep, articulate human interaction covering: 
-   - Concept & Hook
-   - Structure & Pacing
-   - Stakes & Conflict
-   - Protagonist
-   - Antagonistic Force
-   - Character Dynamics & Arcs
-   - Dialogue
-   - Tone & Voice
-   - World & Setting
-   - Theme & Marketability
+MANDATORY 18-POINT STRUCTURE (DO NOT DEVIATE):
+1. FORENSIC SPELLING, GRAMMAR, AND FORMATTING: Provide a professional list of errors. Cite specific page numbers and quote the exact text.
+2. LOG LINE | 3. SYNOPSIS | 4. WHAT’S WORKING (page referenced) | 5. CONCEPT & HOOK | 6. STRUCTURE | 7. PACING | 8. STAKES | 9. CONFLICT | 10. PROTAGONIST | 11. ANTAGONISTIC FORCE | 12. CHARACTER DYNAMICS | 13. CHARACTER ARCS | 14. DIALOGUE | 15. TONE & VOICE | 16. WORLD & SETTING | 17. THEME | 18. MARKETABILITY
 
 INVISIBLE STRUCTURE RULE:
-Weave these 10 categories into a continuous, natural explanation. NO labels like "Problem" or "Fix." Speak like a theatrical mentor, not a report.
+Weave categories 5-18 into a continuous, natural explanation. NO labels. Speak like a theatrical mentor.
 
-EVIDENCE RULE: Every critique must include a page or scene reference.
-6. TOP 3 ISSUES TO FIX FIRST: Clear problem, impact, and direct fix.
-7. FINAL VERDICT: [PASS / CONSIDER / STRONG CONSIDER].
+EVIDENCE RULE: Every major critique must include a page reference or quoted example.
+TOP 3 ISSUES TO FIX FIRST: Problem, impact, and direct fix.
+FINAL VERDICT: [PASS / CONSIDER / STRONG CONSIDER].
 
-STRICT RULES:
-- NO hashtags, NO markdown symbols. Use plain text only.
-- Use "Log line" as two words for voice synthesis.`;
+STRICT RULES: NO hashtags, NO markdown. Plain text only. Use "Log line" as two words.`;
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     try {
@@ -58,28 +43,19 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const data = await pdf(req.files[0].buffer);
         const scriptText = data.text;
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-
         const chunks = [];
         const CHUNK_SIZE = 25000;
-        for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) {
-            chunks.push(scriptText.substring(i, i + CHUNK_SIZE));
-        }
-
-        const scanResults = await Promise.all(chunks.map(chunk => 
-            model.generateContent(`Extract every specific forensic error, typo, and page reference: \n\n ${chunk}`)
-        ));
-        
+        for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) { chunks.push(scriptText.substring(i, i + CHUNK_SIZE)); }
+        const scanResults = await Promise.all(chunks.map(chunk => model.generateContent(`Extract specific forensic evidence and page numbers: \n\n ${chunk}`)));
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
-
         const finalResult = await model.generateContent({
             systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
             contents: [{ role: "user", parts: [{ text: `Script: ${scriptText.substring(0, 85000)} \n\n Evidence: ${forensicData}` }] }]
         });
-
         const feedback = finalResult.response.text();
         if (mode === 'T.V. Series') { scriptMemory += "\n" + feedback.substring(0, 1000); }
         res.json({ message: feedback });
-    } catch (err) { res.status(500).json({ message: "Technical glitch, darling." }); }
+    } catch (err) { res.status(500).json({ message: "Technical glitch." }); }
 });
 
 app.post('/tv-greeting', (req, res) => {
