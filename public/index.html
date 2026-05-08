@@ -53,16 +53,18 @@
         const chatWindow = document.getElementById('chat-window');
         const textInput = document.getElementById('textInput');
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-        let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0, isSequenceActive = false;
+
+        // Single audio state shared by all playback paths
+        let audioBuffers = {}, nextToPlay = 0, isPlaying = false;
+        let currentSource = null, totalSections = 0, isSequenceActive = false;
 
         const welcomeText = "Ah—there you are. Come in, don't hover in the doorway. If you've brought me a script, I assume you're ready for the truth—or at least a version of it that's useful. I'm Frank. Not just in name—by temperament. I don't do vague encouragement, and I don't hand out gold stars for effort. What I do is take your script apart, figure out what's working, what's not, and tell you exactly where the engine is stalling. Give me a moment. And try not to flinch when I get to the good part.";
 
-        window.onload = async () => { localStorage.clear(); addMessage(welcomeText); preWarmGreeting(welcomeText); };
+        window.onload = () => { localStorage.clear(); addMessage(welcomeText); preWarmGreeting(welcomeText); };
 
-        // Resume audio context on any user interaction — required by browsers
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
 
-        // Speech recognition — unchanged
+        // Speech recognition
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
         recognition.continuous = true; recognition.interimResults = true;
         let currentTranscript = '';
@@ -80,88 +82,75 @@
             else { currentTranscript = textInput.value ? textInput.value + ' ' : ''; recognition.start(); btn.classList.add('recording'); }
         }
 
+        // Mode toggle — stops current audio and plays new greeting
         document.getElementById('modeToggle').addEventListener('change', async function() {
             if (this.checked) {
                 const response = await fetch('/tv-greeting', { method: 'POST' });
                 const data = await response.json();
-                addMessage(data.message); speak(data.message);
+                addMessage(data.message);
+                speak(data.message);
             } else {
                 const fText = "Ah, back to features. Let's see if you can tell a complete story in one sitting.";
-                addMessage(fText); speak(fText);
+                addMessage(fText);
+                speak(fText);
             }
         });
 
-        // FIX 1: Opening audio.
-        // Old code checked `audioCtx.state === 'running'` before starting playback.
-        // Browsers always start with the context 'suspended' until a user gesture,
-        // so that check always failed and the greeting never played.
-        // Fix: remove that check entirely. Instead, attempt to resume the context
-        // and start playback as soon as the first chunk decodes. If the context is
-        // still suspended (no user click yet), playSequentially will just poll every
-        // 50ms until it's ready — which happens the moment the user clicks anywhere.
+        // FIX: The overlap was caused by preWarmGreeting firing playSequentially
+        // every time ANY buffer arrived — so if buffers 0, 1, 2 all decoded quickly,
+        // playSequentially ran 3 times and started 3 simultaneous sources.
+        // Fix: preWarmGreeting now uses the same speak() path as everything else,
+        // which correctly gates playback so only one source plays at a time.
         async function preWarmGreeting(text) {
-            try {
-                const settings = await (await fetch('/voice-settings')).json();
-                const parts = text.split(/(?<=\. )/);
-                totalSections = parts.length; // set total BEFORE firing off fetches
-                parts.forEach(async (part, index) => {
-                    const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
-                        method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: part.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
-                    });
-                    const data = await res.json();
-                    audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
-                    // Resume context in case browser suspended it, then kick off playback
-                    if (audioCtx.state === 'suspended') audioCtx.resume();
-                    if (!isPlaying && isSequenceActive) playSequentially();
-                });
-                isSequenceActive = true; // arm the sequence before parts start arriving
-            } catch (e) {}
+            speak(text);
         }
 
         async function uploadFiles() {
             const fileInput = document.getElementById('scriptInput');
             if (fileInput.files.length === 0) return;
-            addMessage(`Analyzing... This takes a few moments, darling...`, false);
+            addMessage('Analyzing... This takes a few moments, darling...', false);
             const formData = new FormData();
             formData.append('mode', document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film');
             formData.append('scripts', fileInput.files[0]);
             const response = await fetch('/analyze', { method: 'POST', body: formData });
             const data = await response.json();
-            addMessage(data.message); speak(data.message);
+            addMessage(data.message);
+            speak(data.message);
         }
 
-        // FIX 2: Audio cutting out mid-feedback.
-        // Old code set totalSections = sections.length, but then skipped empty
-        // sections with `return` inside the forEach. So totalSections was, say, 12,
-        // but only 9 sections actually decoded audio. playSequentially would reach
-        // index 9 and correctly stop — but indices 10, 11, 12 never existed, so
-        // it hit `nextToPlay >= totalSections` prematurely on any gap in numbering.
-        // Fix: filter out empty sections FIRST, then set totalSections to the count
-        // of sections that will actually produce audio. Indices are now contiguous.
+        // speak() — single authoritative playback function.
+        // Stops whatever is playing, resets all state, then fetches TTS chunks
+        // in parallel but plays them strictly in order via playSequentially().
+        // Only non-empty sections are counted so totalSections is always accurate.
         async function speak(fullText) {
             stopCurrentAudio();
             const raw = fullText.split(/(?=FORENSIC|LOG LINE|SYNOPSIS|Concept|Structure|Pacing|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
-            // Filter to only non-empty sections before assigning indices
             const sections = raw.filter(s => s.trim().length >= 2);
             audioBuffers = {}; nextToPlay = 0;
-            totalSections = sections.length; // now accurate — no gaps
+            totalSections = sections.length;
             isSequenceActive = true;
             const settings = await (await fetch('/voice-settings')).json();
             sections.forEach(async (section, index) => {
                 try {
                     const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
-                        method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                        method: "POST",
+                        headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
                         body: JSON.stringify({ text: section.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                     });
                     const data = await res.json();
-                    audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
+                    audioBuffers[index] = await audioCtx.decodeAudioData(
+                        Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
+                    );
+                    // Resume context if still suspended (first user interaction may not have happened yet)
+                    if (audioCtx.state === 'suspended') audioCtx.resume();
+                    // Only kick off playback if we're not already playing — prevents overlap
                     if (!isPlaying && isSequenceActive) playSequentially();
                 } catch (e) {}
             });
         }
 
-        // playSequentially — unchanged
+        // playSequentially — plays buffers one at a time in strict index order.
+        // If the next buffer hasn't decoded yet, polls every 50ms until it's ready.
         function playSequentially() {
             if (!isSequenceActive || nextToPlay >= totalSections) { isPlaying = false; return; }
             if (audioBuffers[nextToPlay]) {
@@ -170,16 +159,43 @@
                 currentSource = audioCtx.createBufferSource();
                 currentSource.buffer = audioBuffers[nextToPlay];
                 currentSource.connect(audioCtx.destination);
-                currentSource.onended = () => { if (isSequenceActive) { nextToPlay++; playSequentially(); } };
+                currentSource.onended = () => { if (isSequenceActive) { nextToPlay++; isPlaying = false; playSequentially(); } };
                 currentSource.start();
-            } else { if (isSequenceActive) setTimeout(playSequentially, 50); }
+            } else {
+                if (isSequenceActive) setTimeout(playSequentially, 50);
+            }
         }
 
-        function stopCurrentAudio() { isSequenceActive = false; isPlaying = false; if (currentSource) { try { currentSource.stop(); } catch(e) {} currentSource = null; } document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>'; }
+        function stopCurrentAudio() {
+            isSequenceActive = false; isPlaying = false;
+            if (currentSource) { try { currentSource.stop(); } catch(e) {} currentSource = null; }
+            document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
+        }
+
         function togglePlayback() { if (isPlaying) stopCurrentAudio(); else { isSequenceActive = true; playSequentially(); } }
-        function addMessage(text, user = false) { const div = document.createElement('div'); div.className = user ? 'msg user-msg' : 'msg'; div.innerText = text; chatWindow.appendChild(div); chatWindow.scrollTop = chatWindow.scrollHeight; }
-        function sendBanter() { const val = textInput.value; textInput.value = ''; addMessage(val, true); fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) }).then(r => r.json()).then(data => { addMessage(data.message); speak(data.message); }); }
-        function downloadPDF() { const element = document.createElement('div'); element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; font-family:serif; line-height:1.6;"><h1 style="color:#d4af37; border-bottom:2px solid #d4af37;">FRANK'S PRIVATE AUDIT</h1>${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m => `<p style="margin-bottom:20px; white-space:pre-wrap; border-left:3px solid #d4af37; padding-left:15px;">${m.innerText}</p>`).join('')}</div>`; html2pdf().from(element).save('Frank_Audit.pdf'); }
+
+        function sendBanter() {
+            const val = textInput.value;
+            textInput.value = '';
+            addMessage(val, true);
+            fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) })
+                .then(r => r.json())
+                .then(data => { addMessage(data.message); speak(data.message); });
+        }
+
+        function addMessage(text, user = false) {
+            const div = document.createElement('div');
+            div.className = user ? 'msg user-msg' : 'msg';
+            div.innerText = text;
+            chatWindow.appendChild(div);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        function downloadPDF() {
+            const element = document.createElement('div');
+            element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; font-family:serif; line-height:1.6;"><h1 style="color:#d4af37; border-bottom:2px solid #d4af37;">FRANK'S PRIVATE AUDIT</h1>${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m => `<p style="margin-bottom:20px; white-space:pre-wrap; border-left:3px solid #d4af37; padding-left:15px;">${m.innerText}</p>`).join('')}</div>`;
+            html2pdf().from(element).save('Frank_Audit.pdf');
+        }
     </script>
 </body>
 </html>
