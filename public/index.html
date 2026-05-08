@@ -49,14 +49,13 @@
         <button class="icon-btn" onclick="sendBanter()"><i class="fas fa-paper-plane"></i></button>
         <button class="icon-btn" onclick="downloadPDF()"><i class="fas fa-file-pdf"></i></button>
     </div>
-
     <script>
         const chatWindow = document.getElementById('chat-window');
         const textInput = document.getElementById('textInput');
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0, isSequenceActive = false;
 
-        const welcomeText = "Ah—there you are. Come in, don’t hover in the doorway. If you’ve brought me a script, I assume you’re ready for the truth—or at least a version of it that’s useful. I’m Frank. Not just in name—by temperament. I don’t do vague encouragement, and I don’t hand out gold stars for effort. What I do is take your script apart, figure out what’s working, what’s not, and tell you exactly where the engine is stalling. Upload your script. Give me a moment. And try not to flinch when I get to the good part.";
+        const welcomeText = "Ah—there you are. Come in, don’t hover in the doorway. If you’ve brought me a script, I assume you’re ready for the truth—or at least a version of it that’s useful. I’m Frank. Not just in name—by temperament. I don’t do vague encouragement, and I don’t hand out gold stars for effort. What I do is take your script apart, figure out what’s working, what’s not, and tell you exactly where the engine is stalling. Give me a moment. And try not to flinch when I get to the good part.";
 
         window.onload = async () => { localStorage.clear(); addMessage(welcomeText); preWarmGreeting(welcomeText); };
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
@@ -84,8 +83,8 @@
                 const data = await response.json();
                 addMessage(data.message); speak(data.message);
             } else {
-                const ft = "Ah, back to features. Let's see if you can tell a complete story in one sitting.";
-                addMessage(ft); speak(ft);
+                const fText = "Ah, back to features. Let's see if you can tell a complete story in one sitting.";
+                addMessage(fText); speak(fText);
             }
         });
 
@@ -112,16 +111,14 @@
             const formData = new FormData();
             formData.append('mode', document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film');
             formData.append('scripts', fileInput.files[0]);
-            try {
-                const response = await fetch('/analyze', { method: 'POST', body: formData });
-                const data = await response.json();
-                addMessage(data.message); speak(data.message);
-            } catch (err) { addMessage("Upload failed."); }
+            const response = await fetch('/analyze', { method: 'POST', body: formData });
+            const data = await response.json();
+            addMessage(data.message); speak(data.message);
         }
 
         async function speak(fullText) {
             stopCurrentAudio();
-            const sections = fullText.split(/(?=WHAT’S WORKING|Concept & Hook|Structure|Pacing|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|SPELLING|LOGLINE|SYNOPSIS|TOP 3 ISSUES|FINAL VERDICT)/g);
+            const sections = fullText.split(/(?=FORENSIC|LOG LINE|SYNOPSIS|Concept|Structure|Pacing|Stakes|Protagonist|Antagonist|Dynamics|Dialogue|Tone|World|Theme|Marketability|TOP 3 ISSUES|FINAL VERDICT)/g);
             audioBuffers = {}; nextToPlay = 0; totalSections = sections.length; isSequenceActive = true; 
             const settings = await (await fetch('/voice-settings')).json();
             sections.forEach(async (section, index) => {
@@ -129,7 +126,7 @@
                 try {
                     const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
                         method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: section.replace(/[*#]/g, '').replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                        body: JSON.stringify({ text: section.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                     });
                     const data = await res.json();
                     audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
@@ -151,15 +148,10 @@
             } else { if (isSequenceActive) setTimeout(playSequentially, 50); }
         }
 
-        function stopCurrentAudio() { 
-            isSequenceActive = false; isPlaying = false; 
-            if (currentSource) { try { currentSource.stop(); } catch(e) {} currentSource = null; } 
-            document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
-        }
-
+        function stopCurrentAudio() { isSequenceActive = false; isPlaying = false; if (currentSource) { try { currentSource.stop(); } catch(e) {} currentSource = null; } document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>'; }
         function togglePlayback() { if (isPlaying) stopCurrentAudio(); else { isSequenceActive = true; playSequentially(); } }
-        function sendBanter() { const val = textInput.value; textInput.value = ''; addMessage(val, true); fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) }).then(r => r.json()).then(data => { addMessage(data.message); speak(data.message); }); }
         function addMessage(text, user = false) { const div = document.createElement('div'); div.className = user ? 'msg user-msg' : 'msg'; div.innerText = text; chatWindow.appendChild(div); chatWindow.scrollTop = chatWindow.scrollHeight; }
+        function sendBanter() { const val = textInput.value; textInput.value = ''; addMessage(val, true); fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) }).then(r => r.json()).then(data => { addMessage(data.message); speak(data.message); }); }
         function downloadPDF() { const element = document.createElement('div'); element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; font-family:serif; line-height:1.6;"><h1 style="color:#d4af37; border-bottom:2px solid #d4af37;">FRANK'S PRIVATE AUDIT</h1>${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m => `<p style="margin-bottom:20px; white-space:pre-wrap; border-left:3px solid #d4af37; padding-left:15px;">${m.innerText}</p>`).join('')}</div>`; html2pdf().from(element).save('Frank_Audit.pdf'); }
     </script>
 </body>
