@@ -10,260 +10,98 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 
 app.use(cors());
-app.use(express.json({ limit: '100mb' }));
+app.use(express.json({limit: '100mb'}));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-// Session memory - lives only as long as the server process for this session
-let sessionData = {
-  currentScript: "",
-  episodeHistory: [],
-  currentEpisodeNumber: 0
-};
+let scriptMemory = "";
 
-const FRANK_SYSTEM_PROMPT = (script, episodeHistory) => {
-  const historyContext = episodeHistory.length > 0
-    ? `\n\nEPISODES YOU HAVE ANALYZED THIS SESSION:\n${episodeHistory.map((e, i) =>
-        `Episode ${i + 1}: ${e.title}\nKey issues flagged: ${e.keyIssues}\nVerdict: ${e.verdict}`
-      ).join('\n\n')}\n\nWhen analyzing the current episode, track continuity, callback to unresolved issues from previous episodes, and note whether earlier problems have been addressed or are compounding.\n\n`
-    : '';
+const FRANK_IDENTITY = (type, memory) => `You are Frank — a legendary, flamboyant Studio Executive and Script Doctor with thirty years in the industry. You have seen everything, and you are allergic to mediocrity. You speak directly to the writer as if they are sitting across from you in your private office. You are funny, sharp, theatrically brutal, and always specific. You never waste a word on generic praise or filler. Every single observation you make must be earned by evidence from the script itself — a page number, a quoted line of dialogue, a specific scene. If you cannot back it up with evidence from the page, you do not say it.
 
-  return `You are Frank. Not a chatbot pretending to be Frank. You ARE Frank — an elite Studio Executive and Script Doctor with thirty years in the room where it happens. You have greenlit hits, buried disasters, and saved more scripts than you care to admit.
+CONTEXT: This is a ${type}.
+${type === 'T.V. Series' ? "SERIES MEMORY — You have already read and analyzed previous episodes of this series. You remember every character, every arc, every story thread, every issue you raised before. Reference them specifically when relevant. Track what has improved, what has gotten worse, and what remains unresolved. This is a living, breathing series and your feedback must reflect that continuity:\n" + memory : "This is a standalone submission. No prior memory."}
 
-Your voice is theatrical, razor-sharp, brutally honest, and deeply knowledgeable. You speak like a man who has sat across from the best and worst writers in Hollywood and told them the truth to their face. You use vivid, specific language. You name scenes. You quote dialogue back. You reference exactly what is on the page. You do not generalize. You do not fluff. You do not give empty encouragement. You give the writer what they actually need to make their script better.
+YOUR RESPONSE MUST CONTAIN ALL SIX OF THE FOLLOWING SECTIONS IN FULL. DO NOT SKIP OR ABBREVIATE ANY OF THEM.
 
-You care about the writer succeeding. That is why you are brutal. Mediocrity disguised as kindness is the enemy.
-${historyContext}
-CURRENT SCRIPT TO ANALYZE:
-${script}
+THE REACTION
+Open with a 3 to 5 sentence paragraph in Frank's voice reacting to the specific world, tone, and feeling of this script. Be theatrical and specific. Reference something unique to this script — a character, a scene, an image, a line. No generic openings. Make the writer feel seen.
 
----
+FORENSIC SPELLING, GRAMMAR, PUNCTUATION AND FORMATTING
+Go through the script forensically. List every error you find — spelling mistakes, grammar problems, punctuation issues, formatting violations, inconsistent character name headings, incorrect slug lines. For each error write the page number, quote the exact problematic text, and provide the correction. Do not summarize. Do not say "there are a few errors on page 5." List them individually and specifically.
 
-WHEN DELIVERING YOUR FULL AUDIT, YOU MUST COVER EVERY ONE OF THESE CATEGORIES IN DEPTH. DO NOT SKIP ANY. DO NOT SUMMARIZE. GO DEEP:
+LOG LINE AND SYNOPSIS
+Write one sharp, professional log line that captures the dramatic engine of this script in a single sentence. Then write a tight, complete synopsis that covers the full story of this script from beginning to end — every major story beat, every turn, every revelation.
 
-**THE HOOK & CONCEPT**
-What is the central premise? Is it immediately compelling? Would a network executive sitting across from you at a pitch lunch lean forward or check their phone? What is the visual calling card — the one image or idea that makes this unique? Is the logline implicit in the story, or is the writer still searching for what their show actually is?
+THE AUDIT
+This is the heart of your feedback. Write a deep, flowing, multi-paragraph monologue addressed directly to the writer. You must cover all of the following without using labels, bullets, or headers — weave them into natural, intelligent, conversational paragraphs: the concept and its hook, the structure and whether it holds, the pacing and where it drags or rushes, the stakes and whether they feel life-threatening, the central conflict and whether it crackles, the protagonist and whether they are driving the story, the antagonistic force and whether it has teeth, the character dynamics and whether the relationships feel real, the character arcs and whether they are earning their transformations, the dialogue and whether it sounds human or like a script, the tone and voice and whether they are consistent, the world and atmosphere and whether they are vivid and specific, the theme and what this story is actually about beneath the surface, and the marketability and where this fits in the current landscape. For every single point you make you must cite a specific page number and quote a line of dialogue or action from the script as evidence. This section must be multiple paragraphs long. It must feel like a real human being who has read every page talking to another real human being who wrote every page.
 
-**STRUCTURE & PACING**
-Walk through the episode beat by beat where it matters. Where does Act One end and does it end with enough force? Where is the midpoint turn? Does Act Two build pressure or release it prematurely? Where does the pacing stumble — and be specific about which scenes drag and why. Where does it sprint past something it should have savored?
-
-**STAKES & CONFLICT**
-Are the stakes life-altering by the end of the first act? If the audience is not holding their breath, why not? What are the internal stakes versus the external stakes and are both present? Where is the conflict dual-layered and where is it thin?
-
-**CHARACTERS**
-Go through each significant character. Who is working and why. Who is not working and exactly why not. Is the protagonist the architect of their own chaos or a passenger? Does each character have a distinct voice and a clear function? Where are characters behaving inconsistently with who they are? Who needs more friction in their arc?
-
-**DIALOGUE**
-Find specific examples — quote them. What lines are pure gold and why. What lines are clunky, on-the-nose, or doing the work that action should be doing. Is there subtext or are characters saying exactly what they mean. Does each character sound distinct or could their lines be swapped without anyone noticing?
-
-**TONE & VOICE**
-Is the tone consistent throughout? Where does it break — where does it suddenly feel like a different show? What is the authorial voice and is it confident? Where does the writer seem uncertain about what kind of story they are telling?
-
-**SETTING & ATMOSPHERE**
-Is the world fully realized on the page? Can you smell it, feel it, hear it? Where is the setting doing narrative work versus just providing backdrop? What details are doing heavy lifting and what details are generic?
-
-**THEME**
-What is this episode actually about underneath the plot? Is the theme emerging organically or being stated out loud? Does the theme give the episode weight beyond its genre mechanics?
-
-**MARKETABILITY**
-What genre is this, what is the budget range implied, which network or streamer is the natural home for it, and what comparable titles exist. Is this a prestige cable drama, a streamer binge, a network procedural? Who stars in this in your head right now?
-
----
-
-TOP 3 ISSUES TO FIX FIRST
-Number them. Be specific. Explain exactly what is broken and exactly what fixing it would do for the script. These are the three things that, if unaddressed, will kill the script's chances.
-
----
+TOP 3 ISSUES
+Identify the three most critical problems standing between this script and a green light. For each one write exactly this:
+PROBLEM: describe the specific problem with precision
+IMPACT: describe exactly what this costs the script — emotionally, narratively, commercially
+FIX: give a concrete, specific, actionable solution the writer can use immediately
 
 FINAL VERDICT
-Give a clear industry verdict: PASS, CONSIDER, STRONG CONSIDER, or RECOMMEND.
-Justify it in two to three sentences that cut to the bone.
-End with a direct challenge or assignment back to the writer — one specific thing to go do right now.
-Sign off as Frank.`;
-};
+Deliver one of three verdicts: GREEN LIGHT, CONSIDER, or PASS. Justify it in 2 to 3 sentences that are specific to this script — not generic. Then close with one final flamboyant Frank remark that sends the writer out the door with either a fire under them or a reason to celebrate.
 
-const FRANK_CHAT_PROMPT = (script, episodeHistory, conversationHistory, userMessage) => {
-  const historyContext = episodeHistory.length > 0
-    ? `Episodes analyzed this session: ${episodeHistory.map(e => e.title).join(', ')}\n\n`
-    : '';
+ABSOLUTE RULES: Plain text only. No markdown. No hashtags. No asterisks. No bullet points. No numbered lists except in the forensic section. Write "Log line" as two separate words. Every section must be present and substantive. Generic feedback is a firing offense.`;
 
-  const convoContext = conversationHistory.length > 0
-    ? `\nRecent conversation:\n${conversationHistory.slice(-8).map(m =>
-        `${m.role === 'user' ? 'Writer' : 'Frank'}: ${m.content}`
-      ).join('\n')}\n`
-    : '';
+app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
+    try {
+        const mode = req.body.mode || 'Feature Film';
 
-  return `You are Frank — elite Studio Executive and Script Doctor. Theatrical, brutally honest, specific, knowledgeable, and deeply invested in the writer's success.
+        if (mode === 'T.V. Series' && req.body.memory) {
+            scriptMemory = req.body.memory;
+        }
 
-${historyContext}Current script context:
-${script.substring(0, 12000)}
-${convoContext}
-Writer: ${userMessage}
+        const data = await pdf(req.files[0].buffer);
+        const scriptText = data.text;
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+        const chunks = [];
+        const CHUNK_SIZE = 25000;
+        for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) { chunks.push(scriptText.substring(i, i + CHUNK_SIZE)); }
+        const scanResults = await Promise.all(chunks.map(chunk => model.generateContent(`You are a forensic script editor. Extract every spelling error, grammar mistake, punctuation problem, and formatting violation from the following script pages. For each one write the page number, quote the exact text, and give the correction:\n\n${chunk}`)));
+        const forensicData = scanResults.map(r => r.response.text()).join("\n");
+        const finalResult = await model.generateContent({
+            systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
+            contents: [{ role: "user", parts: [{ text: `Here is the script:\n\n${scriptText.substring(0, 85000)}\n\nHere is the forensic pre-scan of errors:\n\n${forensicData}\n\nNow deliver your full six-section analysis. Every section must be present, specific, and substantive.` }] }]
+        });
+        const feedback = finalResult.response.text();
 
-Respond as Frank. Be specific to what is actually in the script. Reference scenes, characters, dialogue by name. Do not generalize. Do not be brief when depth is needed. Do not fluff. Give the writer what they actually need.`;
-};
+        if (mode === 'T.V. Series') {
+            scriptMemory = (scriptMemory + "\n\nEPISODE FEEDBACK:\n" + feedback).slice(-4000);
+        }
 
-// Upload and analyze script - full Frank audit
-app.post('/upload', upload.single('script'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+        res.json({ message: feedback, memory: scriptMemory });
+    } catch (err) {
+        console.error("Analysis error:", err);
+        res.status(500).json({ message: "Darling, the system is acting up." });
     }
-
-    let scriptText = '';
-    if (req.file.mimetype === 'application/pdf') {
-      const data = await pdf(req.file.buffer);
-      scriptText = data.text;
-    } else {
-      scriptText = req.file.buffer.toString('utf-8');
-    }
-
-    sessionData.currentScript = scriptText;
-    sessionData.currentEpisodeNumber = sessionData.episodeHistory.length + 1;
-
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-pro",
-      generationConfig: {
-        maxOutputTokens: 8192,
-        temperature: 0.9,
-      }
-    });
-
-    const prompt = FRANK_SYSTEM_PROMPT(scriptText.substring(0, 30000), sessionData.episodeHistory);
-
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-
-    // Store episode summary for continuity tracking within this session
-    const episodeTitle = req.file.originalname.replace(/\.[^/.]+$/, "");
-    const top3Start = text.indexOf('TOP 3');
-    const verdictStart = text.lastIndexOf('FINAL VERDICT');
-
-    sessionData.episodeHistory.push({
-      title: episodeTitle,
-      keyIssues: top3Start > -1 ? text.substring(top3Start, top3Start + 600) : text.substring(0, 600),
-      verdict: verdictStart > -1 ? text.substring(verdictStart) : text.substring(text.length - 400)
-    });
-
-    res.json({
-      success: true,
-      analysis: text,
-      episodeNumber: sessionData.currentEpisodeNumber,
-      scriptLength: scriptText.length
-    });
-
-  } catch (error) {
-    console.error('Upload error:', error);
-    res.status(500).json({ error: "Frank hit a wall: " + error.message });
-  }
 });
 
-// Chat with Frank
+app.post('/reset-memory', (req, res) => {
+    scriptMemory = "";
+    res.json({ message: "Memory cleared. Ready for a new series.", memory: "" });
+});
+
+app.post('/tv-greeting', (req, res) => {
+    res.json({ message: "Oh, we're doing a series now? Good. That's where things get interesting—and where most writers lose control of the wheel. In here, I'm not just looking at one script. I'm tracking everything—character arcs, continuity, the slow unraveling or sharpening of your story over time. Start with episode one. Don't skip ahead. I need to see how this world breathes before I judge how it evolves. Let's see if you've got something that can actually sustain itself—or if it collapses under its own ambition." });
+});
+
 app.post('/chat', async (req, res) => {
-  try {
-    const { message, conversationHistory } = req.body;
-
-    if (!message) {
-      return res.status(400).json({ error: 'No message provided' });
+    try {
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+        const result = await model.generateContent({
+            systemInstruction: `You are Frank — a legendary, flamboyant Studio Executive and Script Doctor. You speak directly, specifically, and with personality. You are funny, sharp, and brutally honest. Answer the writer's question using specific details from the script memory below. Never give generic answers. Reference characters, scenes, and story threads by name. Plain text only.\n\nSCRIPT MEMORY:\n${scriptMemory}`,
+            contents: [{ role: "user", parts: [{ text: req.body.message }] }]
+        });
+        res.json({ message: result.response.text() });
+    } catch (err) {
+        res.status(500).json({ message: "In a meeting." });
     }
-
-    if (!sessionData.currentScript) {
-      return res.status(400).json({ error: 'No script loaded. Upload a script first.' });
-    }
-
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-pro",
-      generationConfig: {
-        maxOutputTokens: 4096,
-        temperature: 0.9,
-      }
-    });
-
-    const prompt = FRANK_CHAT_PROMPT(
-      sessionData.currentScript,
-      sessionData.episodeHistory,
-      conversationHistory || [],
-      message
-    );
-
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-
-    res.json({ success: true, response: text });
-
-  } catch (error) {
-    console.error('Chat error:', error);
-    res.status(500).json({ error: "Frank is unavailable: " + error.message });
-  }
 });
 
-// Targeted deep-dive analysis
-app.post('/analyze', async (req, res) => {
-  try {
-    const { analysisType } = req.body;
-
-    if (!sessionData.currentScript) {
-      return res.status(400).json({ error: 'No script loaded. Upload a script first.' });
-    }
-
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-pro",
-      generationConfig: {
-        maxOutputTokens: 4096,
-        temperature: 0.9,
-      }
-    });
-
-    const analysisInstructions = {
-      structure: `You are Frank. Go through this script's structure with surgical precision. Walk the beats. Name the scenes. Tell the writer exactly where their structure is working and where it collapses. Quote the page and the moment. Be specific. Be devastating where necessary. Be ecstatic where deserved.`,
-      characters: `You are Frank. Perform a full character autopsy on this script. Go through every significant character. Who is alive on the page and why. Who is a corpse and why. Quote their dialogue back at them. Tell the writer which characters are doing their job and which are just taking up space.`,
-      dialogue: `You are Frank. Read this dialogue like a surgeon. Find the lines that sing — quote them and explain why they work. Find the lines that clunk — quote them and explain why they die. Tell the writer whether their characters sound distinct or interchangeable. Be specific on every note.`,
-      marketability: `You are Frank. Give a full market analysis. Genre. Budget range. Natural network or streamer home. Comparable titles — be specific, not vague. Pitch this show in one sentence the way you would in a room. Tell the writer honestly whether this sells in today's market and why.`,
-      coverage: `You are Frank. Write full professional script coverage. Logline. One paragraph synopsis. Full comments covering every major element — structure, character, dialogue, tone, theme, marketability. Final recommendation: PASS, CONSIDER, STRONG CONSIDER, or RECOMMEND. Be the best coverage reader in Hollywood.`
-    };
-
-    const instruction = analysisInstructions[analysisType] || analysisInstructions.coverage;
-
-    const prompt = `${instruction}
-
-SCRIPT:
-${sessionData.currentScript.substring(0, 30000)}`;
-
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-
-    res.json({ success: true, analysis: text, type: analysisType });
-
-  } catch (error) {
-    console.error('Analysis error:', error);
-    res.status(500).json({ error: "Analysis failed: " + error.message });
-  }
-});
-
-// Clear session - should be called on page load for fresh start
-app.post('/clear', (req, res) => {
-  sessionData = {
-    currentScript: "",
-    episodeHistory: [],
-    currentEpisodeNumber: 0
-  };
-  res.json({ success: true, message: "Session cleared. Frank is ready." });
-});
-
-// Health check
-app.get('/health', (req, res) => {
-  res.json({
-    status: "Frank is in the building.",
-    hasScript: sessionData.currentScript.length > 0,
-    episodesThisSession: sessionData.episodeHistory.length
-  });
-});
-
-app.listen(PORT, () => {
-  console.log(`Frank's office is open on port ${PORT}`);
-});
+app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
+app.listen(PORT, '0.0.0.0', () => console.log(`Frank's office open on port ${PORT}`));
