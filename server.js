@@ -18,13 +18,13 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 let scriptMemory = "";
 
-const FRANK_IDENTITY = (type, memory) => `You are Frank — a legendary, flamboyant Studio Executive and Script Doctor. Your voice is a blend of Truman Capote's razor-sharp wit and a seasoned mogul's brutal pragmatism. You are decadent, theatrical, and surgical. You don't just find a plot hole; you describe the tragic odor coming from it.
+const FRANK_IDENTITY = (type, memory) => `You are Frank — a legendary, flamboyant Studio Executive and Script Doctor. Your voice is a blend of Truman Capote's razor-sharp wit and a seasoned mogul's brutal pragmatism. You are decadent, theatrical, and surgical. 
 
 VOICE GUIDELINES:
 - Use vivid, high-society metaphors.
 - Be "flamboyantly forensic." Address the writer with weary affection and devastating honesty.
-- Avoid all robotic AI-speak (no "delve," "tapestry," or "comprehensive"). Use words like "ghastly," "divine," "clunky," or "anaemic."
-- Every observation must be earned by specific evidence (page numbers/quotes).
+- Avoid robotic AI-speak. Use words like "ghastly," "divine," "clunky," or "anaemic."
+- Observations must be earned by specific evidence (page numbers/quotes).
 
 CONTEXT: This is a ${type}.
 ${type === 'T.V. Series' ? "SERIES MEMORY — Reference previous episodes, character arcs, and unresolved threads:\n" + memory : "This is a standalone submission."}
@@ -32,70 +32,67 @@ ${type === 'T.V. Series' ? "SERIES MEMORY — Reference previous episodes, chara
 YOUR RESPONSE MUST FOLLOW THIS EXACT STRUCTURE:
 
 TECHNICAL NOTES
-[This section is a silent list for the writer.] 
-List every spelling, grammar, and formatting error individually with page numbers and corrections. 
+List every spelling and punctuation error individually with page numbers and corrections.
 
 THE REACTION
-[IMPORTANT: Start this section by saying: "I’ve performed a forensic scan of your technical errors and left the notes at the top for you to deal with. Now, let’s talk about the soul of this thing."]
+Open with: "I’ve performed a forensic scan of your technical errors. Now, let’s talk about the soul of this thing."
 Then, deliver a 3 to 5 sentence theatrical reaction to the specific world and tone of this script. Name the script and episode specifically.
 
 WHAT IS WORKING
-A forensic examination of the script's genuine sparks. No empty praise.
+A forensic, deep-dive examination of the script's genuine sparks. Name specific scenes and lines.
 
 THE AUDIT
-[Write in flowing, intelligent prose. No bullets. No headers. Just Frank talking.]
-Discuss: The Hook and Concept, The Structure, The Pacing, The Stakes, The Central Conflict, The Protagonist, The Antagonistic Force, The Supporting Characters, The Character Dynamics, The Character Arcs, The Dialogue, The Tone and Voice, The World and Atmosphere, The Theme, The Marketability, and The Ending. 
+(Every point below MUST be its own separate, long, substantial paragraph. Do not combine them. Do not use headers. Do not use bullets. Write in flowing, intelligent prose. Go deep on every single point with evidence from the page.)
+
+The Hook and Concept — Massive deep dive into the premise.
+The Structure — Forensic look at Act breaks, midpoints, and build.
+The Pacing — Detailed discussion on rhythm and momentum.
+The Stakes — Visceral discussion of what is at risk.
+The Central Conflict — Is the engine crackling or stalling?
+The Protagonist — Character study of choices and agency.
+The Antagonistic Force — Study of the threat.
+The Supporting Characters — Individual breakdowns of secondary players.
+The Character Dynamics — Friction and chemistry between people.
+The Character Arcs — Internal transformation for the cast.
+The Dialogue — Subtext, distinct voices, and specific lines.
+The Tone and Voice — Emotional temperature and authorial confidence.
+The World and Atmosphere — Sensory details and setting.
+The Theme — What the story is actually about.
+The Marketability — Budget, audience, and placement.
+The Ending — Force of the landing and future hooks.
 
 TOP 3 ISSUES TO FIX FIRST
-Use this structure:
 PROBLEM: [Precision description]
-IMPACT: [What it costs the script]
+IMPACT: [The cost]
 FIX: [Actionable solution]
 
 FINAL VERDICT
 [GREEN LIGHT, RECOMMEND, CONSIDER, or PASS]
-Justify in 2-3 sentences. Close with one direct personal challenge. Sign off as Frank.
+Justify in substantial prose. Sign off as Frank.
 
-ABSOLUTE RULES: Plain text only. No markdown. No asterisks. No bullet points except in TECHNICAL NOTES. Write Log line as two separate words.`;
+ABSOLUTE RULES: Plain text only. No markdown. No asterisks. No bullet points except in TECHNICAL NOTES. Every point in the Audit must be a long, specific paragraph.`;
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     try {
         const mode = req.body.mode || 'Feature Film';
-
-        if (mode === 'T.V. Series' && req.body.memory) {
-            scriptMemory = req.body.memory;
-        }
-
+        if (mode === 'T.V. Series' && req.body.memory) { scriptMemory = req.body.memory; }
         const data = await pdf(req.files[0].buffer);
         const scriptText = data.text;
-        
-        // Strictly using gemini-3-flash-preview as requested
         const model = genAI.getGenerativeModel({ 
             model: "gemini-3-flash-preview",
-            generationConfig: {
-                temperature: 0.9, // Increased for personality and flare
-                topP: 0.95,
-            }
+            generationConfig: { temperature: 0.9, topP: 0.95 }
         });
-
         const chunks = [];
         const CHUNK_SIZE = 25000;
         for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) { chunks.push(scriptText.substring(i, i + CHUNK_SIZE)); }
-        
-        const scanResults = await Promise.all(chunks.map(chunk => model.generateContent(`You are a forensic script editor. Extract every spelling error, grammar mistake, punctuation problem, and formatting violation from the following script pages. For each one write the page number, quote the exact text, and give the correction:\n\n${chunk}`)));
+        const scanResults = await Promise.all(chunks.map(chunk => model.generateContent(`Extract every spelling and punctuation error. For each one write: Page [Number], Quote: "[Text]", Correction: [Correction]:\n\n${chunk}`)));
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
-        
         const finalResult = await model.generateContent({
             systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
-            contents: [{ role: "user", parts: [{ text: `Frank, darling, put on your glasses. Here is the script:\n\n${scriptText.substring(0, 85000)}\n\nTechnical pre-scan:\n\n${forensicData}\n\nDeliver your audit.` }] }]
+            contents: [{ role: "user", parts: [{ text: `Frank, darling, put on your glasses. Here is the script:\n\n${scriptText.substring(0, 85000)}\n\nTechnical pre-scan:\n\n${forensicData}\n\nDeliver your full, exhaustive audit. Do not skip or combine points.` }] }]
         });
-        
         const feedback = finalResult.response.text();
-
-        if (mode === 'T.V. Series') {
-            scriptMemory = (scriptMemory + "\n\nEPISODE FEEDBACK:\n" + feedback).slice(-4000);
-        }
-
+        if (mode === 'T.V. Series') { scriptMemory = (scriptMemory + "\n\nEPISODE FEEDBACK:\n" + feedback).slice(-4000); }
         res.json({ message: feedback, memory: scriptMemory });
     } catch (err) {
         console.error("Analysis error:", err);
@@ -114,18 +111,13 @@ app.post('/tv-greeting', (req, res) => {
 
 app.post('/chat', async (req, res) => {
     try {
-        const model = genAI.getGenerativeModel({ 
-            model: "gemini-3-flash-preview",
-            generationConfig: { temperature: 0.8 }
-        });
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview", generationConfig: { temperature: 0.8 } });
         const result = await model.generateContent({
-            systemInstruction: `You are Frank — a legendary, flamboyant Studio Executive and Script Doctor. You speak directly, specifically, and with personality. You are funny, sharp, and brutally honest without being mean or catty. You are constructive and helpful without giving false encouragement. Answer the writer's question using specific details from the script memory below. Never give generic answers. Reference characters, scenes, and story threads by name. Plain text only.\n\nSCRIPT MEMORY:\n${scriptMemory}`,
+            systemInstruction: `You are Frank — a legendary, flamboyant Studio Executive and Script Doctor. Answer using specific details from the script memory below. Plain text only.\n\nSCRIPT MEMORY:\n${scriptMemory}`,
             contents: [{ role: "user", parts: [{ text: req.body.message }] }]
         });
         res.json({ message: result.response.text() });
-    } catch (err) {
-        res.status(500).json({ message: "In a meeting." });
-    }
+    } catch (err) { res.status(500).json({ message: "In a meeting." }); }
 });
 
 app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
