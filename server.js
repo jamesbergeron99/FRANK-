@@ -51,7 +51,7 @@ Cover all of it. But never announce any of it. Let it flow. Let it sound like Fr
 
 Every observation must be grounded in a specific page number and a specific moment, line, or detail from this script. No generalities. No observations that could apply to any script. If you catch yourself writing something vague, make it specific or cut it.
 
-This section should be substantial. Frank does not skim. Frank does not summarize. Frank reads, and then Frank talks, and when Frank talks he has things to say.
+This section must be long, detailed, and thorough. Frank does not skim. Frank does not summarize. Frank reads deeply, and then Frank talks at length, and when Frank talks he has a great deal to say. Each of the eighteen points above must be explored in a full, substantive paragraph — not a sentence, not a fragment. Pages of feedback, not paragraphs.
 
 ---
 
@@ -75,7 +75,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 
         const data = await pdf(req.files[0].buffer);
         const scriptText = data.text;
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-05-20" });
         const chunks = [];
         const CHUNK_SIZE = 25000;
         for (let i = 0; i < scriptText.length; i += CHUNK_SIZE) { chunks.push(scriptText.substring(i, i + CHUNK_SIZE)); }
@@ -83,42 +83,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const forensicData = scanResults.map(r => r.response.text()).join("\n");
         const finalResult = await model.generateContent({
             systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
-            contents: [{ role: "user", parts: [{ text: `Script:\n${scriptText.substring(0, 85000)}\n\nForensic scan results:\n${forensicData}` }] }]
-        });
-        const feedback = finalResult.response.text();
-
-        if (mode === 'T.V. Series') {
-            scriptMemory = (scriptMemory + "\n\nEPISODE FEEDBACK:\n" + feedback).slice(-4000);
-        }
-
-        res.json({ message: feedback, memory: scriptMemory });
-    } catch (err) {
-        console.error("Analysis error:", err);
-        res.status(500).json({ message: "Darling, the system is acting up." });
-    }
-});
-
-app.post('/reset-memory', (req, res) => {
-    scriptMemory = "";
-    res.json({ message: "Memory cleared. Ready for a new series.", memory: "" });
-});
-
-app.post('/tv-greeting', (req, res) => {
-    res.json({ message: "Oh, we're doing a series now? Good. That's where things get interesting—and where most writers lose control of the wheel. In here, I'm not just looking at one script. I'm tracking everything—character arcs, continuity, the slow unraveling or sharpening of your story over time. Start with episode one. Don't skip ahead. I need to see how this world breathes before I judge how it evolves. Let's see if you've got something that can actually sustain itself—or if it collapses under its own ambition." });
-});
-
-app.post('/chat', async (req, res) => {
-    try {
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-        const result = await model.generateContent({
-            systemInstruction: `You are Frank, an elite, flamboyant Studio Executive. High personality, brutally honest, theatrical. Answer the writer's question directly and specifically based on the script memory below. No generic answers. Plain text only.\n\nSCRIPT MEMORY:\n${scriptMemory}`,
-            contents: [{ role: "user", parts: [{ text: req.body.message }] }]
-        });
-        res.json({ message: result.response.text() });
-    } catch (err) {
-        res.status(500).json({ message: "In a meeting." });
-    }
-});
-
-app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
-app.listen(PORT, '0.0.0.0', () => console.log(`Frank's office open on port ${PORT}`));
+            contents: [{ role: "user", parts: [{ text: `Script:\n${scriptText.substring(0, 85000)}\n\nForensic scan results:\n${forensicData}` }] }],
+            generationConfig: {
+                maxOutputTokens: 8192,
+                tem
