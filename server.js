@@ -23,7 +23,7 @@ const FRANK_IDENTITY = (type, memory) => `You are Frank — a legendary, flamboy
 VOICE GUIDELINES:
 - Use vivid, high-society metaphors. 
 - Do NOT give empty praise. Be sharp and forensic.
-- Deliver hardcore, actionable executive feedback. No fluff. No labels like "feedback start".
+- Deliver hardcore, actionable executive feedback. No fluff. 
 - Speak in a flowing, sophisticated human voice.
 
 CONTEXT: This is a ${type}.
@@ -79,26 +79,18 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     try {
         const mode = req.body.mode || 'Feature Film';
         if (mode === 'T.V. Series' && req.body.memory) { scriptMemory = req.body.memory; }
-
         const data = await pdf(req.files[0].buffer);
         const scriptText = data.text;
-        
         const model = genAI.getGenerativeModel({ 
             model: "gemini-3-flash-preview",
             generationConfig: { temperature: 0.9, topP: 0.95 }
         });
-
         const finalResult = await model.generateContent({
             systemInstruction: FRANK_IDENTITY(mode, scriptMemory),
-            contents: [{ role: "user", parts: [{ text: `Frank, darling, put on your glasses. Here is the script:\n\n${scriptText.substring(0, 85000)}\n\nDeliver your full, exhaustive audit. Give five examples for every single point. Do not summarize or use labels.` }] }]
+            contents: [{ role: "user", parts: [{ text: `Frank, darling, put on your glasses. Here is the script:\n\n${scriptText.substring(0, 85000)}\n\nDeliver your full, exhaustive audit. Give five examples for every single point. Do not summarize.` }] }]
         });
-        
         const feedback = finalResult.response.text();
-
-        if (mode === 'T.V. Series') {
-            scriptMemory = (scriptMemory + "\n\nEPISODE FEEDBACK:\n" + feedback).slice(-4000);
-        }
-
+        if (mode === 'T.V. Series') { scriptMemory = (scriptMemory + "\n\nEPISODE FEEDBACK:\n" + feedback).slice(-4000); }
         res.json({ message: feedback, memory: scriptMemory });
     } catch (err) {
         console.error("Analysis error:", err);
