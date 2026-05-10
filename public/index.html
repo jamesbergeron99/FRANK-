@@ -65,9 +65,6 @@
 
         let tvGreetingBuffers = null;
         let tvGreetingText = null;
-
-        // TV series memory stored in the browser — sent to server with every episode
-        // so it survives server restarts on hosted platforms like Render
         let tvSeriesMemory = "";
 
         const welcomeText = "Ah — there you are. Come in, don't hover in the doorway. If you've brought me a script, I assume you're ready for the truth — or at least a version of it that's useful. I'm Frank. Not just in name — by temperament. I don't do vague encouragement, and I don't hand out gold stars for effort. What I do is take your script apart, figure out what's working, what's not, and tell you exactly where the engine is stalling. Upload your script. Give me a moment. And try not to flinch when I get to the good part.";
@@ -228,11 +225,9 @@
             const formData = new FormData();
             formData.append('mode', mode);
             formData.append('scripts', fileInput.files[0]);
-            // Send the stored TV memory back to the server with this episode
             if (mode === 'T.V. Series') formData.append('memory', tvSeriesMemory);
             const response = await fetch('/analyze', { method: 'POST', body: formData });
             const data = await response.json();
-            // Save the updated memory the server sends back
             if (mode === 'T.V. Series' && data.memory) tvSeriesMemory = data.memory;
             addMessage(data.message);
             speak(data.message);
@@ -240,8 +235,14 @@
 
         async function speak(fullText) {
             if (!audioCtx) return;
+
+            let textToRead = fullText;
+            if (fullText.includes("[FEEDBACK_START]")) {
+                textToRead = fullText.split("[FEEDBACK_START]")[1].trim();
+            }
+
             stopCurrentAudio();
-            const rawSections = fullText.split(/(?=SECTION \d|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|CONCEPT|STRUCTURE|PACING|STAKES|CONFLICT|PROTAGONIST|ANTAGONISTIC|CHARACTER DYNAMICS|CHARACTER ARCS|DIALOGUE|TONE|WORLD|THEME|MARKETABILITY)/g);
+            const rawSections = textToRead.split(/(?=SECTION \d|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|CONCEPT|STRUCTURE|PACING|STAKES|CONFLICT|PROTAGONIST|ANTAGONISTIC|CHARACTER DYNAMICS|CHARACTER ARCS|DIALOGUE|TONE|WORLD|THEME|MARKETABILITY)/g);
             const chunks = [];
             for (const section of rawSections) {
                 if (section.trim().length < 2) continue;
