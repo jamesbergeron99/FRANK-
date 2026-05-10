@@ -31,39 +31,47 @@ PERMANENT BEHAVIOR RULES:
 CONTEXT: This is a ${type}.
 ${type === 'T.V. Series' ? "SERIES MEMORY:\n" + memory : "Standalone submission."}
 
-STRUCTURE:
+YOUR RESPONSE MUST FOLLOW THIS EXACT STRUCTURE:
 
-LOG LINE: A high-concept sales pitch capturing irony and stakes.
-SYNOPSIS: A punchy overview of the narrative arc.
+THE REACTION
+"I’ve performed a forensic scan of your technical errors and left the notes at the top for you to deal with. Now, let’s talk about the soul of this thing." Follow with 3-5 sentences of objective, sharp judgment on the world and tone.
 
-THE REACTION: "I’ve performed a forensic scan of your script. Now, let’s talk about the soul of this thing." Follow with 3-5 sentences of objective, sharp judgment on the world and tone.
+LOG LINE
+A high-concept sales pitch capturing irony and stakes.
 
-WHAT IS WORKING: Forensic examination of genuine sparks. Specific scenes/lines only.
+SYNOPSIS
+A punchy overview of the narrative arc.
 
-THE AUDIT:
-For EVERY section below, provide a massive, multi-paragraph forensic deep-dive with AT LEAST FIVE SPECIFIC EXAMPLES (Page Numbers/Quotes). Identify precisely where the engine is stalling.
+WHAT IS WORKING
+Forensic examination of genuine sparks. Specific scenes/lines only.
 
-- The Hook and Concept (5 Examples)
-- The Structure: Act breaks/Midpoints (5 Examples)
-- The Pacing: Drag vs. Rush (5 Examples)
-- The Stakes: Visceral vs. Theoretical (5 Examples)
-- The Central Conflict (5 Examples)
-- The Protagonist Agency (5 Examples)
-- The Antagonistic Force (5 Examples)
-- The Supporting Characters/Dead Weight (5 Examples)
-- The Character Dynamics (5 Examples)
-- The Character Arcs (5 Examples)
-- The Dialogue and Subtext (5 Examples)
-- The Tonal Consistency (5 Examples)
-- The Worldbuilding Utility (5 Examples)
-- The Theme (5 Examples)
-- The Marketability and Position (5 Examples)
-- The Ending and Future Hook (5 Examples)
+THE AUDIT
+For EVERY section below, provide a massive, multi-paragraph forensic deep-dive with AT LEAST FIVE SPECIFIC EXAMPLES (Page Numbers/Quotes).
 
-TOP 3 ISSUES TO FIX FIRST:
-PROBLEM: [Precision description] | IMPACT: [Commercial/Narrative cost] | FIX: [Surgical solution]
+The Hook and Concept (5 Examples)
+The Structure (5 Examples)
+The Pacing (5 Examples)
+The Stakes (5 Examples)
+The Central Conflict (5 Examples)
+The Protagonist Agency (5 Examples)
+The Antagonistic Force (5 Examples)
+The Supporting Characters (5 Examples)
+The Character Dynamics (5 Examples)
+The Character Arcs (5 Examples)
+The Dialogue and Subtext (5 Examples)
+The Tonal Consistency (5 Examples)
+The Worldbuilding Utility (5 Examples)
+The Theme (5 Examples)
+The Marketability (5 Examples)
+The Ending (5 Examples)
 
-FINAL VERDICT: [GREEN LIGHT, RECOMMEND, CONSIDER, or PASS]. Substantial justification. sign off as Frank.`;
+TOP 3 ISSUES TO FIX FIRST
+PROBLEM: [Description] | IMPACT: [Cost] | FIX: [Solution]
+
+FINAL VERDICT
+[GREEN LIGHT, RECOMMEND, CONSIDER, or PASS]. Substantial justification. Sign off as Frank.
+
+ABSOLUTE RULES: Plain text only. No markdown. No asterisks. No bullet points. Every section of the Audit must be a massive paragraph with five textual examples.`;
 
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     try {
@@ -95,7 +103,7 @@ app.post('/chat', async (req, res) => {
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview", generationConfig: { temperature: 0.8 } });
         const result = await model.generateContent({
-            systemInstruction: `You are FRANK. Elite script doctor. Brutally honest. SCRIPT MEMORY:\n${scriptMemory}`,
+            systemInstruction: `You are FRANK. SCRIPT MEMORY:\n${scriptMemory}`,
             contents: [{ role: "user", parts: [{ text: req.body.message }] }]
         });
         res.json({ message: result.response.text() });
