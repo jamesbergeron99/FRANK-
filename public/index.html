@@ -145,7 +145,7 @@
                 const parts = text.split(/(?<=\. )/); totalSections = parts.length; isSequenceActive = true;
                 parts.forEach(async (part, index) => {
                     const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
-                        method: "POST headers": { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                        method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
                         body: JSON.stringify({ text: part.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                     });
                     const data = await res.json(); if (!data.audioContent) return;
@@ -166,8 +166,9 @@
         }
         async function speak(fullText) {
             if (!audioCtx) return;
+            let textToRead = fullText; if (fullText.includes("[FEEDBACK_START]")) { textToRead = fullText.split("[FEEDBACK_START]")[1].trim(); }
             stopCurrentAudio();
-            const rawSections = fullText.split(/(?=SECTION \d|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|CONCEPT|STRUCTURE|PACING|STAKES|CONFLICT|PROTAGONIST|ANTAGONISTIC|CHARACTER DYNAMICS|CHARACTER ARCS|DIALOGUE|TONE|WORLD|THEME|MARKETABILITY)/g);
+            const rawSections = textToRead.split(/(?=SECTION \d|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|CONCEPT|STRUCTURE|PACING|STAKES|CONFLICT|PROTAGONIST|ANTAGONISTIC|CHARACTER DYNAMICS|CHARACTER ARCS|DIALOGUE|TONE|WORLD|THEME|MARKETABILITY)/g);
             const chunks = [];
             for (const section of rawSections) {
                 if (section.trim().length < 2) continue;
