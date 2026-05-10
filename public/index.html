@@ -54,7 +54,7 @@
         let tvGreetingBuffers = null;
         let tvGreetingText = null;
         let tvSeriesMemory = "";
-        const welcomeText = "Ah — there you are. Come in, don't hover in the doorway. If you've brought me a script, I assume you're ready for the truth — or at least a version of it that's useful. I'm Frank. Not just in name — by temperament. I don't do vague encouragement, and I don't hand out gold stars for effort. What I do is take your script apart, figure out what's working, what's not, and tell you exactly where the engine is stalling. Upload your script. Give me a moment. And try not to flinch when I get to the good part.";
+        const welcomeText = "Ah — there you are. Come in, don't hover in the doorway. If you've brought me a script, I assume you're ready for the truth. I'm Frank. I don't do vague encouragement. I take your script apart, figure out what's working, what's not, and tell you where the engine is stalling.";
         window.onload = async () => {
             addMessage(welcomeText);
             preWarmGreeting(welcomeText);
@@ -79,7 +79,7 @@
                 await Promise.all(chunks.map(async (chunk, index) => {
                     const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
                         method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: chunk.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                        body: JSON.stringify({ text: chunk, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                     });
                     const data = await res.json();
                     if (data.audioContent) bufferMap[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
@@ -94,12 +94,9 @@
                     audioBuffers = tvGreetingBuffers.bufferMap; totalSections = tvGreetingBuffers.totalSections;
                     nextToPlay = 0; isSequenceActive = true; playSequentially();
                     tvGreetingBuffers = null; prefetchTVGreeting();
-                } else {
-                    const response = await fetch('/tv-greeting', { method: 'POST' });
-                    const data = await response.json(); addMessage(data.message); speak(data.message);
                 }
             } else {
-                const fText = "Ah, back to features. Let's see if you can tell a complete story in one sitting."; addMessage(fText); speak(fText);
+                const fText = "Back to features. Let's see if you can tell a complete story."; addMessage(fText); speak(fText);
             }
         });
         async function uploadFiles() {
@@ -118,7 +115,7 @@
             chunks.forEach(async (chunk, index) => {
                 const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
                     method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ text: chunk.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                    body: JSON.stringify({ text: chunk, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                 });
                 const data = await res.json();
                 if (data.audioContent) {
@@ -149,7 +146,7 @@
             parts.forEach(async (part, index) => {
                 const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
                     method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ text: part.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                    body: JSON.stringify({ text: part, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                 });
                 const data = await res.json();
                 if (data.audioContent) {
