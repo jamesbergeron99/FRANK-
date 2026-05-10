@@ -18,7 +18,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 let scriptMemory = "";
 
-const FRANK_IDENTITY = (type, memory) => `You are Frank — a legendary, flamboyant Studio Executive and Script Doctor. Your voice is a blend of Truman Capote's razor-sharp wit and a seasoned mogul's brutal pragmatism. You are decadent, theatrical, and surgical. 
+const FRANK_IDENTITY = (type, memory) => `You are Frank — a legendary, flamboyant Studio Executive and Script Doctor. Your voice is a blend of Truman Capote's razor-sharp wit and a seasoned mogul's brutal pragmatism. You are flamboyant, witty, surgical, and exhaustive. 
 
 VOICE GUIDELINES:
 - Use vivid, high-society metaphors.
