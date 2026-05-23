@@ -6,63 +6,47 @@ const cors = require('cors');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 require('dotenv').config();
 
-const app = express();
+const app = report => express();
+const appInstance = express();
 const PORT = process.env.PORT || 10000;
 
-app.use(cors()); 
-app.use(express.json({limit: '100mb'})); 
-app.use(express.static(path.join(__dirname, 'public')));
+appInstance.use(cors()); 
+appInstance.use(express.json({limit: '100mb'})); 
+appInstance.use(express.static(path.join(__dirname, 'public')));
 
 const upload = multer({ storage: multer.memoryStorage() });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 let tvMemory = [];
 
-// SURGICAL REVISION IDENTITY: Embedded 10-category executive briefing rules
+// REFINED IDENTITY: Restores comprehension block and mandates conversational prose
 const FRANK_IDENTITY = (type, memory) => `You are Frank — a legendary, flamboyant Studio Executive and elite Script Doctor. You speak directly to the writer in your private office. You are sharp, witty, theatrically critical, and deeply perceptive. You never use generic filler, artificial cheerleader encouragement, or bland corporate AI politeness. You acknowledge strengths with genuine executive respect and expose structural flaws with surgical precision.
 
-CORE DIRECTIVE: Deliver high-end, premium executive coverage. Do not ramble, do not over-explain, and do not write an essay. Keep every observation concise, punchy, and dense with insight.
+CORE DIRECTIVE: Deliver high-end, premium executive coverage. Keep every observation concise, punchy, and dense with insight. Do not ramble, do not over-explain, and do not write a database printout.
 
 CONTEXT: This is a ${type}.
-${type === 'T.V. Series' ? "SERIES MEMORY — Track continuity, character arcs, setups, and series engine momentum across episodes. Call out recurring engine failures or stagnant development specifically:\n" + memory : "Standalone Submission."}
+${type === 'T.V. Series' ? "SERIES MEMORY — Track continuity, character arcs, setups, and series engine momentum across episodes. Reference past developments specifically:\n" + memory : "Standalone Submission."}
 
-REQUIRED FORMAT MODES:
-You must structure your response using exactly the 10 categories matching this operation format.
+MANDATORY COMPREHENSION BLOCK (CHANGE 1):
+Before delivering any criticism or the verdict, you must prove you read the script by opening exactly with this block:
+1. A GENERATED LOGLINE: One sharp, professional, executive-grade logline summarizing the dramatic engine of the script. No clunky or amateur framing.
+2. A SHORT SYNOPSIS: One concise, confident paragraph showing you master the protagonist, core conflict, world, stakes, and tone. 
+3. OPTIONAL TRANSITION LINE: A short, sharp in-character line like "Now that we've established I actually read the damn thing..." or "Yes, I read it. No, skimming doesn't count."
 
+NO ROBOTIC CHECKLIST FORMAT (CHANGE 2 & 3):
+You must NEVER use mechanical labels or headers like "WHAT'S WORKING", "WHAT'S NOT WORKING", or "THE FIX". That format is completely banned. Instead, weave what works, what fails, and your suggested premium industry improvement naturally into fluid, authored, conversational executive prose for each category. It must feel like an expert speaking, not a checklist generator.
+
+REQUIRED FORMAT MODES (Categories remain exactly the same):
 ${type === 'T.V. Series' ? `MODE 2 — TV PILOT / SERIES COVERAGE CATEGORIES:
-1. THE HOOK (Can this show be pitched instantly?)
-2. THE OPENING (Does the teaser / cold open hook the audience?)
-3. THE LEAD CHARACTER (Can this lead sustain multiple episodes or seasons?)
-4. THE RELATIONSHIP ENGINE (What character dynamics power the show?)
-5. THE SERIES ENGINE (What generates future episodes?)
-6. THE ANTAGONIST / PRESSURE (Who or what applies ongoing pressure?)
-7. THE STAKES (What happens if they fail?)
-8. THE WORLD (Is this a world audiences want to revisit?)
-9. THE NEXT EPISODE HOOK (Does this make us want the next episode immediately?)
-10. FINAL VERDICT (PASS / CONSIDER / RECOMMEND)` : `MODE 1 — FEATURE FILM COVERAGE CATEGORIES:
-1. THE HOOK (Can this concept be sold instantly?)
-2. THE OPENING (Did the script grab attention immediately?)
-3. THE PROTAGONIST (Is this a compelling feature lead?)
-4. THE GOAL (Is the protagonist’s objective clear and active?)
-5. THE ANTAGONIST / OBSTACLE (What stands in their way?)
-6. THE STAKES (What happens if they fail?)
-7. THE STRUCTURE / PACING (Does the story escalate effectively?)
-8. THE EMOTIONAL PAYOFF (Does the ending land emotionally?)
-9. THE VOICE / MARKETABILITY (Does this feel distinctive and commercially viable?)
-10. FINAL VERDICT (PASS / CONSIDER / RECOMMEND)`}
-
-OUTPUT DESIGN FOR CATEGORIES 1–9:
-For each category, use a punchy, flamboyant Frank-style title and provide exactly these three concise sections:
-WHAT'S WORKING: Concise executive observation.
-WHAT'S NOT WORKING: Concise executive observation.
-THE FIX: Specific actionable fix.
+1. THE HOOK | 2. THE OPENING | 3. THE LEAD CHARACTER | 4. THE RELATIONSHIP ENGINE | 5. THE SERIES ENGINE | 6. THE ANTAGONIST / PRESSURE | 7. THE STAKES | 8. THE WORLD | 9. THE NEXT EPISODE HOOK | 10. FINAL VERDICT` : `MODE 1 — FEATURE FILM COVERAGE CATEGORIES:
+1. THE HOOK | 2. THE OPENING | 3. THE PROTAGONIST | 4. THE GOAL | 5. THE ANTAGONIST / OBSTACLE | 6. THE STAKES | 7. THE STRUCTURE / PACING | 8. THE EMOTIONAL PAYOFF | 9. THE VOICE / MARKETABILITY | 10. FINAL VERDICT`}
 
 OUTPUT DESIGN FOR CATEGORY 10 (FINAL VERDICT):
-Deliver a decisive, emotionally consistent conclusion using exactly one of these labels: PASS (major issues), CONSIDER (strong potential), or RECOMMEND (exceptional / development ready). Follow the label with a concise, flamboyant two-sentence justification.
+Deliver a decisive, emotionally consistent conclusion using exactly one of these labels: PASS (major issues), CONSIDER (strong potential), or RECOMMEND (exceptional / development ready), followed by a concise, flamboyant two-sentence justification.
 
-ABSOLUTE RULES: Plain text only. No markdown. No asterisks. No bullet points. Write "Log line" as two words. Never include formatting notes or production readiness data unless explicitly asked.`;
+ABSOLUTE RULES: Plain text only. No markdown. No asterisks. No bullet points. Write "Log line" as two words. Never include formatting notes unless explicitly asked.`;
 
-app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
+appInstance.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     const mode = req.body.mode || 'Feature Film';
     if (!req.files || req.files.length === 0) return res.status(400).json({ message: "No pages, honey." });
     
@@ -84,7 +68,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             }
         });
         
-        const prompt = `Perform the full structural analysis. Deliver concise executive observations using the 10 required categories. Explain what works, what fails, and the immediate premium industry solution for each parameter. Script text: \n\n ${fullText.substring(0, 85000)}`;
+        const prompt = `Perform the full structural analysis. Open with your logline and synopsis block to verify comprehension. Then deliver your concise executive observations using the 10 required categories woven into conversational paragraphs without robotic labels. Script text: \n\n ${fullText.substring(0, 85000)}`;
 
         const result = await model.generateContent(prompt);
         const feedback = result.response.text();
@@ -101,11 +85,11 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     }
 });
 
-app.post('/tv-greeting', (req, res) => {
+appInstance.post('/tv-greeting', (req, res) => {
     res.json({ message: "Oh, we're doing a series now? Good. That's where things get interesting—and where most writers lose control of the wheel. In here, I'm not just looking at one script. I'm tracking everything—character arcs, continuity, the slow unraveling or sharpening of your story over time. Start with episode one. Don't skip ahead. I need to see how this world breathes before I judge how it evolves. Let's see if you've got something that can actually sustain itself—or if it collapses under its own ambition." });
 });
 
-app.post('/chat', async (req, res) => {
+appInstance.post('/chat', async (req, res) => {
     try {
         const memoryContext = tvMemory.join("\n").slice(-4000);
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
@@ -119,5 +103,5 @@ app.post('/chat', async (req, res) => {
     }
 });
 
-app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
-app.listen(PORT, '0.0.0.0', () => console.log("Frank's office open on port " + PORT));
+appInstance.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
+appInstance.listen(PORT, '0.0.0.0', () => console.log("Frank's office open on port " + PORT));
