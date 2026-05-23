@@ -161,7 +161,6 @@
             if (micActive) {
                 recognition.stop(); micActive = false; micBtn.classList.remove('recording');
             } else {
-                // FIXED: Instantaneous initialization logic prevents multi-click dropouts
                 currentTranscript = textInput.value ? textInput.value.trim() + ' ' : '';
                 textInput.value = currentTranscript;
                 micActive = true; 
