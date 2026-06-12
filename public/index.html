@@ -35,7 +35,7 @@
         <div class="toggle-box">
             <span>FEATURE</span>
             <label class="switch"><input type="checkbox" id="modeToggle"><span class="slider"></span></label>
-            <span>T.V. SERIES</span>
+            <span>T.V. EPISODE</span>
         </div>
     </div>
     <div id="chat-window"></div>
@@ -224,14 +224,15 @@
             const fileInput = document.getElementById('scriptInput');
             if (fileInput.files.length === 0) return;
             addMessage('Analyzing... This takes a few moments, darling...', false);
-            const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
+            // FIXED: Mode configuration updated to register T.V. Episode context
+            const mode = document.getElementById('modeToggle').checked ? 'T.V. Episode' : 'Feature Film';
             const formData = new FormData();
             formData.append('mode', mode);
             formData.append('scripts', fileInput.files[0]);
-            if (mode === 'T.V. Series') formData.append('memory', tvSeriesMemory);
+            if (mode === 'T.V. Episode') formData.append('memory', tvSeriesMemory);
             const response = await fetch('/analyze', { method: 'POST', body: formData });
             const data = await response.json();
-            if (mode === 'T.V. Series' && data.memory) tvSeriesMemory = data.memory;
+            if (mode === 'T.V. Episode' && data.memory) tvSeriesMemory = data.memory;
             addMessage(data.message);
             speak(data.message);
         }
