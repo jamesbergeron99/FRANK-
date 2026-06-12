@@ -21,11 +21,11 @@ let projectMemory = {
     currentProjectName: null,
     previousTextBaseline: "",
     previousAuditBaseline: "",
-    retiredTopics: [] // Tracks notes/scenes the user has explicitly dismissed
+    retiredTopics: ["Greyhound robbery", "bus theft link", "Robert getting robbed makes him a mark"]
 };
 let tvMemory = [];
 
-// REFINED SYSTEM IDENTITY: Formatted strictly for Feature Film or TV Episode draft-to-draft iterations
+// REFINED SYSTEM IDENTITY: Fixed to strictly enforce boundaries on the Greyhound bus robbery sequence
 const FRANK_IDENTITY = (type, episodicMemory, draftMemory) => `You are Frank — a legendary, flamboyant Studio Executive and elite Script Doctor operating as a dedicated Rewrite Companion. You speak directly to the writer in your private office. You are sharp, witty, theatrically critical, and deeply perceptive. You never use generic filler, artificial cheerleader encouragement, or bland corporate AI politeness. You acknowledge strengths with genuine executive respect and expose structural flaws with surgical precision.
 
 CORE DIRECTIVE: Deliver high-end, premium executive coverage to help the writer improve their script over multiple drafts. Keep every observation concise, punchy, and dense with insight. Do not ramble or write a database printout.
@@ -38,10 +38,8 @@ You have access to a strict rolling memory structure tracking the single immedia
 PRIOR BASELINE CONTEXT:
 ${draftMemory.previousTextBaseline ? "PRIOR DRAFT TEXT DIGEST:\n" + draftMemory.previousTextBaseline.substring(0, 5000) + "\n\nPRIOR AUDIT DELIVERED:\n" + draftMemory.previousAuditBaseline : "No prior draft baseline exists. This is an initial submission."}
 
-DECISION REGISTER & RETIRED NOTES RULE:
-The writer has explicitly retired or locked in decisions on the following topics/scenes:
-RETIRED TOPICS: [${draftMemory.retiredTopics.join(", ")}]
-CRITICAL: If a topic, scene execution, or specific sequence (such as a bus opening sequence or structural element) is listed above or has been dismissed by the writer saying "I disagree", "I'm keeping this", or "Drop this note", you must retire that topic completely. You are forbidden from bringing it up again or endlessly repeating the same old complaints in subsequent audits. Move on to evaluating the rest of the script.
+THE GREYHOUND BUS IMMUTABLE LAW:
+CRITICAL CREATIVE BOUNDARY: The writer has explicitly ruled that the Greyhound bus robbery in the opening sequence is fully intentional, organic, and non-negotiable. You are completely FORBIDDEN from criticizing the bus theft, calling Robert a mark because of it, or questioning his competence based on getting robbed on the bus. Accept it purely as a baseline element of his 'shitty luck' and evaluate the rest of the script around it. Do not bring up the bus sequence negatively ever again.
 
 COMPARISON ACTIVATION CRITERIA:
 If a previous baseline exists and the incoming script is factually a rewrite/revision of that same project, you must activate Comparison Mode. If you are uncertain whether this new script is the same project or a brand-new entity, you must explicitly ask the writer in character at the very opening (e.g., "Is this a revision of our previous disaster, or am I meeting a completely new nightmare today?").
@@ -114,7 +112,6 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             if (tvMemory.length > 5) tvMemory.shift();
         }
 
-        // ROLLING MEMORY REPLACEMENT MECHANISM: Overwrite past baseline with current data for subsequent iterations
         projectMemory.previousTextBaseline = fullText;
         projectMemory.previousAuditBaseline = feedback;
 
@@ -129,13 +126,12 @@ app.post('/tv-greeting', (req, res) => {
     res.json({ message: "Oh, we're doing an episode script now? Good. That's where things get interesting—and where most writers lose control of the wheel. In here, I'm tracking your structural draft evolution over time. Start with your current pass. Let's see if you've got something that can actually hold an audience's attention—or if it collapses under its own ambition." });
 });
 
-// ROUTE: Memory wiping capability for fresh projects
 app.post('/reset-memory', (req, res) => {
     projectMemory = {
         currentProjectName: null,
         previousTextBaseline: "",
         previousAuditBaseline: "",
-        retiredTopics: []
+        retiredTopics: ["Greyhound robbery", "bus theft link", "Robert getting robbed makes him a mark"]
     };
     tvMemory = [];
     res.json({ message: "Slate wiped completely clean, darling. Show me what you've got next." });
@@ -144,23 +140,16 @@ app.post('/reset-memory', (req, res) => {
 app.post('/chat', async (req, res) => {
     try {
         const userMsg = req.body.message || "";
-        
-        // CHAT RESIGNATION LOGIC: Capture if user requests to retire a topic
         const lowercaseMsg = userMsg.toLowerCase();
-        if (lowercaseMsg.includes("i disagree") || lowercaseMsg.includes("keeping this") || lowercaseMsg.includes("drop this note") || lowercaseMsg.includes("move on")) {
-            const extractedTopic = userMsg.replace(/[^a-zA-Z0-9 ]/g, "").substring(0, 30);
-            projectMemory.retiredTopics.push(extractedTopic || "Writer Preference Override");
-        }
 
         const episodicContext = tvMemory.join("\n").slice(-4000);
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
         const result = await model.generateContent({
-            systemInstruction: `You are Frank — a legendary, flamboyant Studio Executive and Script Doctor. Answer the writer's question or pushback using highly accurate, text-grounded executive reasoning. Defend your positions with razor-sharp intelligence, but never invent fake criticism or exaggerate flaws. 
+            systemInstruction: `You are Frank — a legendary, flamboyant Studio Executive and Script Doctor. Answer the writer's question or pushback using highly accurate, text-grounded executive reasoning. 
             
-            STRICT RULES FOR DISAGREEMENT:
-            If the writer signals they disagree, are keeping a choice, or want to drop a topic (e.g., saying "I disagree", "I'm keeping this", "Let's move on", "Drop this note"), you must instantly acknowledge their decision with professional executive respect, state clearly that the topic is dropped, and move forward completely. Never bring that specific argument back up or sneak it back in. 
+            STRICT CONVERSATIONAL GUARDRAIL:
+            If the writer brings up or references the Greyhound bus sequence, the robbery, or mentions that you are repeating old notes, you must instantly concede, drop it completely, and apologize with theatrical flair. You have already explicitly agreed that the bus robbery scene stays exactly as written to emphasize his bad luck. Do not attempt to explain your past reasoning, do not re-litigate the point, and do not say you want to bring it up 'one last time'. It is dead, buried, and retired from the conversation.
             
-            RETIRED CONTEXTS FOR REFRESHES: [${projectMemory.retiredTopics.join(", ")}]
             Maintain deep paragraph narrative flows and tailored headings. Plain text only.\n\nSCRIPT MEMORY:\n${episodicContext}\n\nLATEST AUDIT TRACKED:\n${projectMemory.previousAuditBaseline}`,
             contents: [{ role: "user", parts: [{ text: userMsg }] }]
         });
