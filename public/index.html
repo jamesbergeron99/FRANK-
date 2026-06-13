@@ -57,19 +57,12 @@
         const chatWindow = document.getElementById('chat-window');
         const textInput = document.getElementById('textInput');
 
+        // RESTORED: Direct instantiation immediately baseline ensures all background preload functions decoding works perfectly
         let audioCtx;
-        let isAudioUnlocked = false; // FIXED: Prevents double audio generation on body clicks
-
-        function initAudio() {
-            if (!audioCtx) {
-                try {
-                    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-                } catch(e) { console.warn("AudioContext unavailable:", e); }
-            }
-            if (audioCtx && audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-            isAudioUnlocked = true;
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        } catch(e) {
+            console.warn("AudioContext unavailable:", e);
         }
 
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0, isSequenceActive = false;
@@ -87,6 +80,12 @@
             initSpeechRecognition();
             prefetchTVGreeting();
         };
+
+        function initAudio() {
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
 
         function splitIntoChunks(text, maxChars = 400) {
             const sections = text.split(/(?=\n|[.!?]\s)/);
@@ -209,7 +208,7 @@
                 const response = await fetch('/reset-memory', { method: 'POST' });
                 const data = await response.json();
                 tvSeriesMemory = "";
-                document.getElementById('scriptInput').value = ""; // FIXED: Forces internal reset on input value string mapping
+                document.getElementById('scriptInput').value = "";
                 addMessage(data.message);
                 speak(data.message);
             } catch(e) {
@@ -237,7 +236,11 @@
                             Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
                         );
                         if (index === 0 && !isPlaying) {
-                            audioCtx.resume().then(() => playSequentially());
+                            if (audioCtx.state === 'suspended') {
+                                // Background pre-load ready, awaiting user click engagement state trigger
+                            } else {
+                                playSequentially();
+                            }
                         }
                     }
                 });
@@ -257,7 +260,7 @@
             try {
                 const response = await fetch('/analyze', { method: 'POST', body: formData });
                 const data = await response.json();
-                fileInput.value = ""; // FIXED: Clears file input state path allowing immediate re-upload
+                fileInput.value = "";
                 if (mode === 'T.V. Episode' && data.memory) tvSeriesMemory = data.memory;
                 addMessage(data.message);
                 speak(data.message);
@@ -268,10 +271,9 @@
         }
 
         async function speak(fullText) {
-            if (!audioCtx) initAudio();
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
 
             stopCurrentAudio();
-            // FIXED: Added dynamic numeral lookahead tracking pattern mapping to Frank's Refined '1. THE HOOK' presentation structure
             const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|FINAL VERDICT|\d+\.\s[A-Z]|THREE FIRES|FRANK REMEMBERS)/g);
             const chunks = [];
             for (const section of rawSections) {
@@ -303,6 +305,8 @@
         function playSequentially() {
             if (!isSequenceActive || nextToPlay >= totalSections) { isPlaying = false; return; }
             if (audioBuffers[nextToPlay]) {
+                // FIXED: Explicitly stop any rogue active buffer node link to permanently block echo replication overlaps
+                if (currentSource) { try { currentSource.stop(); } catch(e){} }
                 isPlaying = true;
                 document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
                 currentSource = audioCtx.createBufferSource();
