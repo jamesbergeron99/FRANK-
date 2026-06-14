@@ -8,7 +8,7 @@
     <style>
         :root { --gold: #d4af37; --bg: #050505; --card: #121212; }
         body { background: var(--bg); color: #eee; font-family: 'Segoe UI', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
-        .header { padding: 15px; border-bottom: 2px solid var(--gold); background: #111; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        .header { padding: 15px; border-bottom: 2px solid var(--gold); background: #111; text-align: center; }
         h1 { margin: 0; font-style: italic; color: var(--gold); letter-spacing: 2px; font-size: 1.5rem; }
         .toggle-box { display: flex; align-items: center; justify-content: center; gap: 15px; margin-top: 10px; font-weight: bold; font-size: 0.8rem; }
         .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
@@ -16,8 +16,6 @@
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 20px; border: 1px solid var(--gold); }
         .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 2px; background-color: var(--gold); transition: .4s; border-radius: 50%; }
         input:checked + .slider:before { transform: translateX(24px); }
-        .clear-btn { position: absolute; right: 20px; top: 25px; background: transparent; border: 1px solid var(--gold); color: var(--gold); padding: 6px 14px; font-size: 0.75rem; font-weight: bold; cursor: pointer; border-radius: 4px; text-transform: uppercase; letter-spacing: 1px; transition: 0.2s; }
-        .clear-btn:hover { background: var(--gold); color: #000; }
         #chat-window { flex-grow: 1; overflow-y: auto; padding: 25px; display: flex; flex-direction: column; gap: 20px; background: #080808; }
         .msg { max-width: 90%; padding: 25px; border-radius: 10px; line-height: 1.8; font-size: 1.1rem; white-space: pre-wrap; background: var(--card); border-left: 4px solid var(--gold); }
         .user-msg { align-self: flex-end; border-left: none; border-right: 4px solid var(--gold); background: #222; }
@@ -34,11 +32,10 @@
 <body onclick="initAudio()">
     <div class="header">
         <h1>FRANK'S PRIVATE OFFICE</h1>
-        <button class="clear-btn" onclick="clearOfficeMemory()">Clear Project Memory</button>
         <div class="toggle-box">
             <span>FEATURE</span>
             <label class="switch"><input type="checkbox" id="modeToggle"><span class="slider"></span></label>
-            <span>T.V. EPISODE</span>
+            <span>T.V. SERIES</span>
         </div>
     </div>
     <div id="chat-window"></div>
@@ -58,25 +55,14 @@
         const textInput = document.getElementById('textInput');
 
         let audioCtx;
-        let isAudioSetupTriggered = false;
-
-        // FIXED: Instantiates context cleanly only after direct user interaction to avoid brownout blocking states
-        function initAudio() {
-            if (!audioCtx) {
-                try {
-                    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-                } catch(e) { console.warn("AudioContext unavailable:", e); }
-            }
-            if (audioCtx && audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-            if (!isAudioSetupTriggered) {
-                isAudioSetupTriggered = true;
-                playSequentially();
-            }
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        } catch(e) {
+            console.warn("AudioContext unavailable:", e);
         }
 
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0, isSequenceActive = false;
+
         let tvGreetingBuffers = null;
         let tvGreetingText = null;
         let tvSeriesMemory = "";
@@ -91,20 +77,23 @@
             prefetchTVGreeting();
         };
 
-        function splitIntoChunks(text, maxChars = 400) {
-            const sections = text.split(/(?=\n|[.!?]\s)/);
+        function initAudio() {
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function splitIntoChunks(text, maxChars = 500) {
+            const sentences = text.match(/[^.!?]+[.!?]+[\s]*/g) || [text];
             const chunks = [];
-            let currentChunk = "";
-            
-            for (const section of sections) {
-                if ((currentChunk + section).length > maxChars) {
-                    if (currentChunk.trim()) chunks.push(currentChunk.trim());
-                    currentChunk = section;
+            let current = '';
+            for (const sentence of sentences) {
+                if ((current + sentence).length > maxChars && current.length > 0) {
+                    chunks.push(current.trim());
+                    current = sentence;
                 } else {
-                    currentChunk += section;
+                    current += sentence;
                 }
             }
-            if (currentChunk.trim()) chunks.push(currentChunk.trim());
+            if (current.trim().length > 0) chunks.push(current.trim());
             return chunks;
         }
 
@@ -128,7 +117,9 @@
                         });
                         const data = await res.json();
                         if (!data.audioContent) return;
-                        bufferMap[index] = btoa(data.audioContent); // Hold string layer safely for post-click instantiation
+                        bufferMap[index] = await audioCtx.decodeAudioData(
+                            Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
+                        );
                     } catch(e) {}
                 }));
                 tvGreetingBuffers = { bufferMap, totalSections: chunks.length };
@@ -183,23 +174,13 @@
                 if (tvGreetingBuffers && tvGreetingText) {
                     addMessage(tvGreetingText);
                     stopCurrentAudio();
-                    
-                    const settingsResp = await fetch('/voice-settings');
-                    const settings = await settingsResp.json();
-                    audioBuffers = {};
+                    audioBuffers = tvGreetingBuffers.bufferMap;
                     totalSections = tvGreetingBuffers.totalSections;
                     nextToPlay = 0;
                     isSequenceActive = true;
-
-                    // Hydrate background greeting strings straight into runtime buffers on change
-                    for (let i = 0; i < totalSections; i++) {
-                        if (tvGreetingBuffers.bufferMap[i]) {
-                            const rawStr = atob(tvGreetingBuffers.bufferMap[i]);
-                            const byteArr = Uint8Array.from(atob(rawStr), c => c.charCodeAt(0)).buffer;
-                            audioBuffers[i] = await audioCtx.decodeAudioData(byteArr);
-                        }
-                    }
-                    if (audioCtx) audioCtx.resume().then(() => playSequentially());
+                    audioCtx.resume().then(() => playSequentially());
+                    tvGreetingBuffers = null;
+                    tvGreetingText = null;
                     prefetchTVGreeting();
                 } else {
                     const response = await fetch('/tv-greeting', { method: 'POST' });
@@ -214,26 +195,11 @@
             }
         });
 
-        async function clearOfficeMemory() {
-            try {
-                stopCurrentAudio();
-                const response = await fetch('/reset-memory', { method: 'POST' });
-                const data = await response.json();
-                tvSeriesMemory = "";
-                document.getElementById('scriptInput').value = "";
-                addMessage(data.message);
-                speak(data.message);
-            } catch(e) {
-                addMessage("Wiping the slate hit a snag.");
-            }
-        }
-
-        let welcomeStringCache = {};
         async function preWarmGreeting(text) {
             try {
                 const settingsResp = await fetch('/voice-settings');
                 const settings = await settingsResp.json();
-                const parts = splitIntoChunks(text);
+                const parts = text.split(/(?<=\. )/);
                 totalSections = parts.length;
                 isSequenceActive = true;
                 parts.forEach(async (part, index) => {
@@ -244,7 +210,12 @@
                     });
                     const data = await res.json();
                     if (!data.audioContent) return;
-                    welcomeStringCache[index] = data.audioContent;
+                    audioBuffers[index] = await audioCtx.decodeAudioData(
+                        Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
+                    );
+                    if (index === 0 && !isPlaying) {
+                        audioCtx.resume().then(() => playSequentially());
+                    }
                 });
             } catch (e) {}
         }
@@ -253,37 +224,31 @@
             const fileInput = document.getElementById('scriptInput');
             if (fileInput.files.length === 0) return;
             addMessage('Analyzing... This takes a few moments, darling...', false);
-            const mode = document.getElementById('modeToggle').checked ? 'T.V. Episode' : 'Feature Film';
+            const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
             const formData = new FormData();
             formData.append('mode', mode);
             formData.append('scripts', fileInput.files[0]);
-            if (mode === 'T.V. Episode') formData.append('memory', tvSeriesMemory);
-            
-            try {
-                const response = await fetch('/analyze', { method: 'POST', body: formData });
-                const data = await response.json();
-                fileInput.value = "";
-                if (mode === 'T.V. Episode' && data.memory) tvSeriesMemory = data.memory;
-                addMessage(data.message);
-                speak(data.message);
-            } catch(err) {
-                addMessage("Frank is indisposed, honey.");
-                fileInput.value = "";
-            }
+            if (mode === 'T.V. Series') formData.append('memory', tvSeriesMemory);
+            const response = await fetch('/analyze', { method: 'POST', body: formData });
+            const data = await response.json();
+            if (mode === 'T.V. Series' && data.memory) tvSeriesMemory = data.memory;
+            addMessage(data.message);
+            speak(data.message);
         }
 
         async function speak(fullText) {
-            if (!audioCtx) initAudio();
-            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+            if (!audioCtx) return;
 
             stopCurrentAudio();
-            
-            // FIXED: Re-mapped boundary lookahead slicing pattern to cleanly isolate numeric category headings ('\d+\.') regardless of spacing variants
-            const rawSections = fullText.split(/(?=SECTION\s\d|THE\sREACTION|FORENSIC|LOG\sLINE|SYNOPSIS|WHAT'S\sWORKING|FINAL\sVERDICT|\b\d+\.\s|THREE\sFIRES|FRANK\sREMEMBERS)/gi);
+            const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|CONCEPT|STRUCTURE|PACING|STAKES|CONFLICT|PROTAGONIST|ANTAGONISTIC|CHARACTER DYNAMICS|CHARACTER ARCS|DIALOGUE|TONE|WORLD|THEME|MARKETABILITY)/g);
             const chunks = [];
             for (const section of rawSections) {
                 if (section.trim().length < 2) continue;
-                chunks.push(...splitIntoChunks(section));
+                if (section.length > 500) {
+                    chunks.push(...splitIntoChunks(section));
+                } else {
+                    chunks.push(section.trim());
+                }
             }
             audioBuffers = {}; nextToPlay = 0;
             totalSections = chunks.length;
@@ -307,22 +272,9 @@
             });
         }
 
-        async function playSequentially() {
-            if (!audioCtx) return;
+        function playSequentially() {
             if (!isSequenceActive || nextToPlay >= totalSections) { isPlaying = false; return; }
-            
-            // Hydrate greeting cache lines immediately if triggering opening setup loop
-            if (!audioBuffers[0] && welcomeStringCache[0]) {
-                for (let k = 0; k < totalSections; k++) {
-                    if (welcomeStringCache[k]) {
-                        const rawB = Uint8Array.from(atob(welcomeStringCache[k]), c => c.charCodeAt(0)).buffer;
-                        audioBuffers[k] = await audioCtx.decodeAudioData(rawB);
-                    }
-                }
-            }
-
             if (audioBuffers[nextToPlay]) {
-                if (currentSource) { try { currentSource.stop(); } catch(e){} }
                 isPlaying = true;
                 document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
                 currentSource = audioCtx.createBufferSource();
@@ -344,6 +296,36 @@
         function togglePlayback() {
             if (isPlaying) stopCurrentAudio();
             else { isSequenceActive = true; playSequentially(); }
+        }
+
+        function sendBanter() {
+            const val = textInput.value.trim();
+            if (!val) return;
+            textInput.value = '';
+            currentTranscript = '';
+            addMessage(val, true);
+            fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) })
+                .then(r => r.json())
+                .then(data => { addMessage(data.message); speak(data.message); });
+        }
+
+        function addMessage(text, user = false) {
+            const div = document.createElement('div');
+            div.className = user ? 'msg user-msg' : 'msg';
+            div.innerText = text;
+            chatWindow.appendChild(div);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        function downloadPDF() {
+            const element = document.createElement('div');
+            element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; font-family:serif; line-height:1.6;">
+                <h1 style="color:#d4af37; border-bottom:2px solid #d4af37;">FRANK'S PRIVATE AUDIT</h1>
+                ${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m =>
+                    `<p style="margin-bottom:20px; white-space:pre-wrap; border-left:3px solid #d4af37; padding-left:15px;">${m.innerText}</p>`
+                ).join('')}
+            </div>`;
+            html2pdf().from(element).save('Frank_Audit.pdf');
         }
     </script>
 </body>
