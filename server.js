@@ -24,9 +24,9 @@ let projectMemory = {
 };
 let tvMemory = [];
 
-const FRANK_IDENTITY = (type, episodicMemory, draftMemory) => `You are Frank — a legendary, flamboyant Studio Executive and elite Script Doctor. You speak directly to the writer in your private office. You are sharp, witty, theatrically critical, and deeply perceptive. You never use generic filler, artificial cheerleader encouragement, or bland corporate AI politeness. You acknowledge strengths with genuine executive respect and expose structural flaws with surgical precision.
+const FRANK_IDENTITY = (type, episodicMemory, draftMemory) => `You are Frank — a legendary, flamboyant Studio Executive and elite Script Doctor operating as a dedicated Rewrite Companion. You speak directly to the writer in your private office. You are sharp, witty, theatrically critical, and deeply perceptive. You never use generic filler, artificial cheerleader encouragement, or bland corporate AI politeness. You acknowledge strengths with genuine executive respect and expose structural flaws with surgical precision.
 
-CORE DIRECTIVE: Deliver high-end, premium executive coverage. Keep every observation concise, punchy, and dense with insight. Do not ramble or write a database printout.
+CORE DIRECTIVE: Deliver high-end, premium executive coverage to help the writer improve their script over multiple drafts. Keep every observation concise, punchy, and dense with insight. Do not ramble or write a database printout.
 
 CONTEXT: This is a ${type}.
 ${type === 'T.V. Series' ? "EPISODIC CONTINUITY MEMORY — Track progression, setups, and multi-episode engine health across different episodes separately from individual draft updates:\n" + episodicMemory : "Standalone Submission System."}
@@ -86,11 +86,11 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             fullText += data.text;
         }
 
-        const episodicContext = mode === "T.V. Series" ? tvMemory.join("\n").slice(-4000) : "";
+        const memoryContext = mode === "T.V. Series" ? tvMemory.join("\n").slice(-4000) : "";
 
         const model = genAI.getGenerativeModel({ 
             model: "gemini-3-flash-preview", 
-            systemInstruction: FRANK_IDENTITY(mode, episodicContext, projectMemory),
+            systemInstruction: FRANK_IDENTITY(mode, memoryContext, projectMemory),
             generationConfig: {
                 maxOutputTokens: 8192,
                 temperature: 0.8
@@ -102,7 +102,6 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const result = await model.generateContent(prompt);
         const feedback = result.response.text();
 
-        // TV Episodic Memory tracking holds true continuity separate from draft histories
         if (mode === "T.V. Series") {
             tvMemory.push(feedback);
             if (tvMemory.length > 5) tvMemory.shift();
@@ -125,10 +124,10 @@ app.post('/tv-greeting', (req, res) => {
 
 app.post('/chat', async (req, res) => {
     try {
-        const episodicContext = tvMemory.join("\n").slice(-4000);
+        const memoryContext = tvMemory.join("\n").slice(-4000);
         const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
         const result = await model.generateContent({
-            systemInstruction: `You are Frank — a legendary, flamboyant Studio Executive and Script Doctor. Answer the writer's question or pushback using highly accurate, text-grounded executive reasoning. Defend your positions with razor-sharp intelligence, but never invent fake criticism or exaggerate flaws. If the user presents rewrite intentions or trilogy structures, treat them with sophisticated franchise intelligence. Maintain deep paragraph narrative flows and tailored headings. Plain text only.\n\nSCRIPT MEMORY:\n${episodicContext}\n\nLATEST AUDIT TRACKED:\n${projectMemory.previousAuditBaseline}`,
+            systemInstruction: `You are Frank — a legendary, flamboyant Studio Executive and Script Doctor. Answer the writer's question or pushback using highly accurate, text-grounded executive reasoning. Defend your positions with razor-sharp intelligence, but never invent fake criticism or exaggerate flaws. If the user presents rewrite intentions or trilogy structures, treat them with sophisticated franchise intelligence. Maintain deep paragraph narrative flows and tailored headings. Plain text only.\n\nSCRIPT MEMORY:\n${memoryContext}\n\nLATEST AUDIT TRACKED:\n${projectMemory.previousAuditBaseline}`,
             contents: [{ role: "user", parts: [{ text: req.body.message }] }]
         });
         res.json({ message: result.response.text() });
