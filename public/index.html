@@ -240,7 +240,9 @@
             if (!audioCtx) return;
 
             stopCurrentAudio();
-            const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|CONCEPT|STRUCTURE|PACING|STAKES|CONFLICT|PROTAGONIST|ANTAGONISTIC|CHARACTER DYNAMICS|CHARACTER ARCS|DIALOGUE|TONE|WORLD|THEME|MARKETABILITY)/g);
+            
+            // ISOLATED PATCH: Added case-insensitive matching (/gi) and explicit digit-dot section lookahead mapping (\\d+\\.\\s) to stop payload overflow freezes
+            const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|FINAL VERDICT|\b\d+\.\s|THREE FIRES|FRANK REMEMBERS)/gi);
             const chunks = [];
             for (const section of rawSections) {
                 if (section.trim().length < 2) continue;
