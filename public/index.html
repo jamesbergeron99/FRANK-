@@ -57,7 +57,6 @@
         const chatWindow = document.getElementById('chat-window');
         const textInput = document.getElementById('textInput');
 
-        // RESTORED: Direct instantiation immediately baseline ensures all background preload functions decoding works perfectly
         let audioCtx;
         try {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
@@ -207,8 +206,11 @@
                 stopCurrentAudio();
                 const response = await fetch('/reset-memory', { method: 'POST' });
                 const data = await response.json();
+                
+                // FIXED: Explicitly wipe the browser state memory strings to force complete memory amnesia
                 tvSeriesMemory = "";
                 document.getElementById('scriptInput').value = "";
+                
                 addMessage(data.message);
                 speak(data.message);
             } catch(e) {
@@ -235,13 +237,6 @@
                         audioBuffers[index] = await audioCtx.decodeAudioData(
                             Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
                         );
-                        if (index === 0 && !isPlaying) {
-                            if (audioCtx.state === 'suspended') {
-                                // Background pre-load ready, awaiting user click engagement state trigger
-                            } else {
-                                playSequentially();
-                            }
-                        }
                     }
                 });
             } catch (e) {}
@@ -274,7 +269,9 @@
             if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
 
             stopCurrentAudio();
-            const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|FINAL VERDICT|\d+\.\s[A-Z]|THREE FIRES|FRANK REMEMBERS)/g);
+            
+            // FIXED: Added case-insensitive 'gi' triggers across formatting splitting checks to prevent giant text chunk leaks
+            const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|FINAL VERDICT|\d+\.\s[A-Z]|THREE FIRES|FRANK REMEMBERS)/gi);
             const chunks = [];
             for (const section of rawSections) {
                 if (section.trim().length < 2) continue;
@@ -305,7 +302,6 @@
         function playSequentially() {
             if (!isSequenceActive || nextToPlay >= totalSections) { isPlaying = false; return; }
             if (audioBuffers[nextToPlay]) {
-                // FIXED: Explicitly stop any rogue active buffer node link to permanently block echo replication overlaps
                 if (currentSource) { try { currentSource.stop(); } catch(e){} }
                 isPlaying = true;
                 document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
