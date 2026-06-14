@@ -58,14 +58,25 @@
         const textInput = document.getElementById('textInput');
 
         let audioCtx;
-        try {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-        } catch(e) {
-            console.warn("AudioContext unavailable:", e);
+        let isAudioSetupTriggered = false;
+
+        // FIXED: Instantiates context cleanly only after direct user interaction to avoid brownout blocking states
+        function initAudio() {
+            if (!audioCtx) {
+                try {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+                } catch(e) { console.warn("AudioContext unavailable:", e); }
+            }
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            if (!isAudioSetupTriggered) {
+                isAudioSetupTriggered = true;
+                playSequentially();
+            }
         }
 
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0, isSequenceActive = false;
-
         let tvGreetingBuffers = null;
         let tvGreetingText = null;
         let tvSeriesMemory = "";
@@ -79,12 +90,6 @@
             initSpeechRecognition();
             prefetchTVGreeting();
         };
-
-        function initAudio() {
-            if (audioCtx && audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-        }
 
         function splitIntoChunks(text, maxChars = 400) {
             const sections = text.split(/(?=\n|[.!?]\s)/);
@@ -123,9 +128,7 @@
                         });
                         const data = await res.json();
                         if (!data.audioContent) return;
-                        bufferMap[index] = await audioCtx.decodeAudioData(
-                            Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
-                        );
+                        bufferMap[index] = btoa(data.audioContent); // Hold string layer safely for post-click instantiation
                     } catch(e) {}
                 }));
                 tvGreetingBuffers = { bufferMap, totalSections: chunks.length };
@@ -180,13 +183,23 @@
                 if (tvGreetingBuffers && tvGreetingText) {
                     addMessage(tvGreetingText);
                     stopCurrentAudio();
-                    audioBuffers = tvGreetingBuffers.bufferMap;
+                    
+                    const settingsResp = await fetch('/voice-settings');
+                    const settings = await settingsResp.json();
+                    audioBuffers = {};
                     totalSections = tvGreetingBuffers.totalSections;
                     nextToPlay = 0;
                     isSequenceActive = true;
+
+                    // Hydrate background greeting strings straight into runtime buffers on change
+                    for (let i = 0; i < totalSections; i++) {
+                        if (tvGreetingBuffers.bufferMap[i]) {
+                            const rawStr = atob(tvGreetingBuffers.bufferMap[i]);
+                            const byteArr = Uint8Array.from(atob(rawStr), c => c.charCodeAt(0)).buffer;
+                            audioBuffers[i] = await audioCtx.decodeAudioData(byteArr);
+                        }
+                    }
                     if (audioCtx) audioCtx.resume().then(() => playSequentially());
-                    tvGreetingBuffers = null;
-                    tvGreetingText = null;
                     prefetchTVGreeting();
                 } else {
                     const response = await fetch('/tv-greeting', { method: 'POST' });
@@ -206,11 +219,8 @@
                 stopCurrentAudio();
                 const response = await fetch('/reset-memory', { method: 'POST' });
                 const data = await response.json();
-                
-                // FIXED: Explicitly wipe the browser state memory strings to force complete memory amnesia
                 tvSeriesMemory = "";
                 document.getElementById('scriptInput').value = "";
-                
                 addMessage(data.message);
                 speak(data.message);
             } catch(e) {
@@ -218,6 +228,7 @@
             }
         }
 
+        let welcomeStringCache = {};
         async function preWarmGreeting(text) {
             try {
                 const settingsResp = await fetch('/voice-settings');
@@ -233,11 +244,7 @@
                     });
                     const data = await res.json();
                     if (!data.audioContent) return;
-                    if (audioCtx) {
-                        audioBuffers[index] = await audioCtx.decodeAudioData(
-                            Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
-                        );
-                    }
+                    welcomeStringCache[index] = data.audioContent;
                 });
             } catch (e) {}
         }
@@ -266,12 +273,13 @@
         }
 
         async function speak(fullText) {
+            if (!audioCtx) initAudio();
             if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
 
             stopCurrentAudio();
             
-            // FIXED: Added case-insensitive 'gi' triggers across formatting splitting checks to prevent giant text chunk leaks
-            const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|FINAL VERDICT|\d+\.\s[A-Z]|THREE FIRES|FRANK REMEMBERS)/gi);
+            // FIXED: Re-mapped boundary lookahead slicing pattern to cleanly isolate numeric category headings ('\d+\.') regardless of spacing variants
+            const rawSections = fullText.split(/(?=SECTION\s\d|THE\sREACTION|FORENSIC|LOG\sLINE|SYNOPSIS|WHAT'S\sWORKING|FINAL\sVERDICT|\b\d+\.\s|THREE\sFIRES|FRANK\sREMEMBERS)/gi);
             const chunks = [];
             for (const section of rawSections) {
                 if (section.trim().length < 2) continue;
@@ -299,8 +307,20 @@
             });
         }
 
-        function playSequentially() {
+        async function playSequentially() {
+            if (!audioCtx) return;
             if (!isSequenceActive || nextToPlay >= totalSections) { isPlaying = false; return; }
+            
+            // Hydrate greeting cache lines immediately if triggering opening setup loop
+            if (!audioBuffers[0] && welcomeStringCache[0]) {
+                for (let k = 0; k < totalSections; k++) {
+                    if (welcomeStringCache[k]) {
+                        const rawB = Uint8Array.from(atob(welcomeStringCache[k]), c => c.charCodeAt(0)).buffer;
+                        audioBuffers[k] = await audioCtx.decodeAudioData(rawB);
+                    }
+                }
+            }
+
             if (audioBuffers[nextToPlay]) {
                 if (currentSource) { try { currentSource.stop(); } catch(e){} }
                 isPlaying = true;
@@ -324,36 +344,6 @@
         function togglePlayback() {
             if (isPlaying) stopCurrentAudio();
             else { isSequenceActive = true; playSequentially(); }
-        }
-
-        function sendBanter() {
-            const val = textInput.value.trim();
-            if (!val) return;
-            textInput.value = '';
-            currentTranscript = '';
-            addMessage(val, true);
-            fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) })
-                .then(r => r.json())
-                .then(data => { addMessage(data.message); speak(data.message); });
-        }
-
-        function addMessage(text, user = false) {
-            const div = document.createElement('div');
-            div.className = user ? 'msg user-msg' : 'msg';
-            div.innerText = text;
-            chatWindow.appendChild(div);
-            chatWindow.scrollTop = chatWindow.scrollHeight;
-        }
-
-        function downloadPDF() {
-            const element = document.createElement('div');
-            element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; font-family:serif; line-height:1.6;">
-                <h1 style="color:#d4af37; border-bottom:2px solid #d4af37;">FRANK'S PRIVATE AUDIT</h1>
-                ${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m =>
-                    `<p style="margin-bottom:20px; white-space:pre-wrap; border-left:3px solid #d4af37; padding-left:15px;">${m.innerText}</p>`
-                ).join('')}
-            </div>`;
-            html2pdf().from(element).save('Frank_Audit.pdf');
         }
     </script>
 </body>
