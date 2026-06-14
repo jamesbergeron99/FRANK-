@@ -241,7 +241,7 @@
 
             stopCurrentAudio();
             
-            // ISOLATED PATCH: Added case-insensitive matching (/gi) and explicit digit-dot section lookahead mapping (\\d+\\.\\s) to stop payload overflow freezes
+            // ISOLATED PATCH: Added case-insensitive matching (/gi) and explicit digit-dot section lookahead mapping (\\b\\d+\\.\\s) to stop payload overflow cuts
             const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|FINAL VERDICT|\b\d+\.\s|THREE FIRES|FRANK REMEMBERS)/gi);
             const chunks = [];
             for (const section of rawSections) {
@@ -277,6 +277,8 @@
         function playSequentially() {
             if (!isSequenceActive || nextToPlay >= totalSections) { isPlaying = false; return; }
             if (audioBuffers[nextToPlay]) {
+                // ISOLATED PATCH: Force clean closure of any active buffer node to prevent background echo tracks from duplicating
+                if (currentSource) { try { currentSource.stop(); } catch(e){} }
                 isPlaying = true;
                 document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
                 currentSource = audioCtx.createBufferSource();
