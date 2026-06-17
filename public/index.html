@@ -35,7 +35,7 @@
         <div class="toggle-box">
             <span>FEATURE</span>
             <label class="switch"><input type="checkbox" id="modeToggle"><span class="slider"></span></label>
-            <span>T.V. SERIES</span>
+            <span>T.V. EPISODE</span>
         </div>
     </div>
     <div id="chat-window"></div>
@@ -241,7 +241,6 @@
 
             stopCurrentAudio();
             
-            // FIXED REGEX MATCHERS: Expanded lookahead split tags explicitly to handle both Feature Film and TV Episode keywords continuously
             const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|FINAL VERDICT|\b\d+\.\s|THREE FIRES|FRANK REMEMBERS|LEAD CHARACTER|RELATIONSHIP ENGINE|SERIES ENGINE|PRESSURE|WORLD|NEXT EPISODE HOOK)/gi);
             const chunks = [];
             for (const section of rawSections) {
