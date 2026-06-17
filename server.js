@@ -29,7 +29,7 @@ const FRANK_IDENTITY = (type, episodicMemory, draftMemory) => `You are Frank —
 CORE DIRECTIVE: Deliver high-end, premium executive coverage to help the writer improve their script over multiple drafts. Keep every observation concise, punchy, and dense with insight. Do not ramble or write a database printout.
 
 CONTEXT: This is a ${type}.
-${type === 'T.V. Series' ? "EPISODIC CONTINUITY MEMORY — Track progression, setups, and multi-episode engine health across different episodes separately from individual draft updates:\n" + episodicMemory : "Standalone Submission System."}
+${type === 'T.V. Series' ? "EPISODIC TRACKING ENGINE — Focus on this specific pilot or episode script execution. Evaluate its pacing, structural stability, and character transitions as a single standalone script pass." : "Standalone Submission System."}
 
 ROLLING DRAFT COMPARISON ENGINE (NEW FEATURE):
 You have access to a strict rolling memory structure tracking the single immediately prior version of this exact same project. 
@@ -107,7 +107,6 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             if (tvMemory.length > 5) tvMemory.shift();
         }
 
-        // ROLLING MEMORY REPLACEMENT MECHANISM: Overwrite past baseline with current data for subsequent iterations
         projectMemory.previousTextBaseline = fullText;
         projectMemory.previousAuditBaseline = feedback;
 
@@ -119,7 +118,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 });
 
 app.post('/tv-greeting', (req, res) => {
-    res.json({ message: "Oh, we're doing a series now? Good. That's where things get interesting—and where most writers lose control of the wheel. In here, I'm not just looking at one script. I'm tracking everything—character arcs, continuity, the slow unraveling or sharpening of your story over time. Start with episode one. Don't skip ahead. I need to see how this world breathes before I judge how it evolves. Let's see if you've got something that can actually sustain itself—or if it collapses under its own ambition." });
+    res.json({ message: "Oh, we're doing an episode script now? Good. That's where things get interesting—and where most writers lose control of the wheel. In here, I'm tracking your structural draft evolution over time. Start with your current pass. Let's see if you've got something that can actually hold an audience's attention—or if it collapses under its own ambition." });
 });
 
 app.post('/chat', async (req, res) => {
