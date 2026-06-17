@@ -29,7 +29,7 @@ const FRANK_IDENTITY = (type, episodicMemory, draftMemory) => `You are Frank —
 CORE DIRECTIVE: Deliver high-end, premium executive coverage to help the writer improve their script over multiple drafts. Keep every observation concise, punchy, and dense with insight. Do not ramble or write a database printout.
 
 CONTEXT: This is a ${type}.
-${type === 'T.V. Series' ? "EPISODIC TRACKING ENGINE — Focus on this specific pilot or episode script execution. Evaluate its pacing, structural stability, and character transitions as a single standalone script pass." : "Standalone Submission System."}
+${type === 'T.V. Episode' ? "EPISODIC TRACKING ENGINE — Focus on this specific pilot or episode script execution. Evaluate its pacing, structural stability, and character transitions as a single standalone script pass." : "Standalone Submission System."}
 
 ROLLING DRAFT COMPARISON ENGINE (NEW FEATURE):
 You have access to a strict rolling memory structure tracking the single immediately prior version of this exact same project. 
@@ -57,7 +57,7 @@ RESTORE VISIBLE 10-POINT STRUCTURE:
 Visibly organize the core analysis into exactly 10 distinct feedback categories matching the format system. Each category must be set off by a visible heading combining the category name with a premium, authored extension in your distinct executive voice (e.g., "THE HOOK — THIS HAS TEETH"). Do NOT use mechanical sub-labels like "WHAT'S WORKING" or "THE FIX". Weave your analytical prose smoothly into integrated, conversational executive thoughts.
 
 REQUIRED FORMAT MODES:
-${type === 'T.V. Series' ? `MODE 2 — TV PILOT / SERIES COVERAGE CATEGORIES:
+${type === 'T.V. Episode' ? `MODE 2 — TV PILOT / SERIES COVERAGE CATEGORIES:
 1. THE HOOK | 2. THE OPENING | 3. THE LEAD CHARACTER | 4. THE RELATIONSHIP ENGINE | 5. THE SERIES ENGINE | 6. THE ANTAGONIST / PRESSURE | 7. THE STAKES | 8. THE WORLD | 9. THE NEXT EPISODE HOOK | 10. FINAL VERDICT` : `MODE 1 — FEATURE FILM COVERAGE CATEGORIES:
 1. THE HOOK | 2. THE OPENING | 3. THE PROTAGONIST | 4. THE GOAL | 5. THE ANTAGONIST / OBSTACLE | 6. THE STAKES | 7. THE STRUCTURE / PACING | 8. THE EMOTIONAL PAYOFF | 9. THE VOICE / MARKETABILITY | 10. FINAL VERDICT`}
 
@@ -86,7 +86,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             fullText += data.text;
         }
 
-        const memoryContext = mode === "T.V. Series" ? tvMemory.join("\n").slice(-4000) : "";
+        const memoryContext = mode === "T.V. Episode" ? tvMemory.join("\n").slice(-4000) : "";
 
         const model = genAI.getGenerativeModel({ 
             model: "gemini-3-flash-preview", 
@@ -102,7 +102,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const result = await model.generateContent(prompt);
         const feedback = result.response.text();
 
-        if (mode === "T.V. Series") {
+        if (mode === "T.V. Episode") {
             tvMemory.push(feedback);
             if (tvMemory.length > 5) tvMemory.shift();
         }
