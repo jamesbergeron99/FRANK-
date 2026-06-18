@@ -224,7 +224,6 @@
             const fileInput = document.getElementById('scriptInput');
             if (fileInput.files.length === 0) return;
             addMessage('Analyzing... This takes a few moments, darling...', false);
-            // FIXED: Mode mapping explicitly points to T.V. Series variable store connection
             const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
             const formData = new FormData();
             formData.append('mode', mode);
@@ -242,7 +241,6 @@
 
             stopCurrentAudio();
             
-            // FIXED REGEX PATCH: Expanded lookahead targets explicitly to catch dynamic numeral formatting definitions (\b\d+\.\s) and TV category text keywords continuously
             const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|FINAL VERDICT|\b\d+\.\s|THREE FIRES|FRANK REMEMBERS|LEAD CHARACTER|RELATIONSHIP ENGINE|SERIES ENGINE|PRESSURE|WORLD|NEXT EPISODE HOOK)/gi);
             const chunks = [];
             for (const section of rawSections) {
