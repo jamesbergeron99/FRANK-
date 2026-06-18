@@ -35,7 +35,7 @@
         <div class="toggle-box">
             <span>FEATURE</span>
             <label class="switch"><input type="checkbox" id="modeToggle"><span class="slider"></span></label>
-            <span>T.V. EPISODE</span>
+            <span>T.V. SERIES</span>
         </div>
     </div>
     <div id="chat-window"></div>
@@ -224,14 +224,14 @@
             const fileInput = document.getElementById('scriptInput');
             if (fileInput.files.length === 0) return;
             addMessage('Analyzing... This takes a few moments, darling...', false);
-            const mode = document.getElementById('modeToggle').checked ? 'T.V. Episode' : 'Feature Film';
+            const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
             const formData = new FormData();
             formData.append('mode', mode);
             formData.append('scripts', fileInput.files[0]);
-            if (mode === 'T.V. Episode') formData.append('memory', tvSeriesMemory);
+            if (mode === 'T.V. Series') formData.append('memory', tvSeriesMemory);
             const response = await fetch('/analyze', { method: 'POST', body: formData });
             const data = await response.json();
-            if (mode === 'T.V. Episode' && data.memory) tvSeriesMemory = data.memory;
+            if (mode === 'T.V. Series' && data.memory) tvSeriesMemory = data.memory;
             addMessage(data.message);
             speak(data.message);
         }
@@ -240,8 +240,7 @@
             if (!audioCtx) return;
 
             stopCurrentAudio();
-            
-            const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|FINAL VERDICT|\b\d+\.\s|THREE FIRES|FRANK REMEMBERS|LEAD CHARACTER|RELATIONSHIP ENGINE|SERIES ENGINE|PRESSURE|WORLD|NEXT EPISODE HOOK)/gi);
+            const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|CONCEPT|STRUCTURE|PACING|STAKES|CONFLICT|PROTAGONIST|ANTAGONISTIC|CHARACTER DYNAMICS|CHARACTER ARCS|DIALOGUE|TONE|WORLD|THEME|MARKETABILITY)/g);
             const chunks = [];
             for (const section of rawSections) {
                 if (section.trim().length < 2) continue;
@@ -276,7 +275,6 @@
         function playSequentially() {
             if (!isSequenceActive || nextToPlay >= totalSections) { isPlaying = false; return; }
             if (audioBuffers[nextToPlay]) {
-                if (currentSource) { try { currentSource.stop(); } catch(e){} }
                 isPlaying = true;
                 document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
                 currentSource = audioCtx.createBufferSource();
@@ -323,8 +321,8 @@
             const element = document.createElement('div');
             element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; font-family:serif; line-height:1.6;">
                 <h1 style="color:#d4af37; border-bottom:2px solid #d4af37;">FRANK'S PRIVATE AUDIT</h1>
-                \${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m =>
-                    \`<p style="margin-bottom:20px; white-space:pre-wrap; border-left:3px solid #d4af37; padding-left:15px;">\${m.innerText}</p>\`
+                ${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m =>
+                    `<p style="margin-bottom:20px; white-space:pre-wrap; border-left:3px solid #d4af37; padding-left:15px;">${m.innerText}</p>`
                 ).join('')}
             </div>`;
             html2pdf().from(element).save('Frank_Audit.pdf');
