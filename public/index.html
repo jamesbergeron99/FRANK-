@@ -323,8 +323,8 @@
             const element = document.createElement('div');
             element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; font-family:serif; line-height:1.6;">
                 <h1 style="color:#d4af37; border-bottom:2px solid #d4af37;">FRANK'S PRIVATE AUDIT</h1>
-                ${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m =>
-                    `p style="margin-bottom:20px; white-space:pre-wrap; border-left:3px solid #d4af37; padding-left:15px;">\${m.innerText}</p>`
+                \${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m =>
+                    \`<p style="margin-bottom:20px; white-space:pre-wrap; border-left:3px solid #d4af37; padding-left:15px;">\${m.innerText}</p>\`
                 ).join('')}
             </div>`;
             html2pdf().from(element).save('Frank_Audit.pdf');
