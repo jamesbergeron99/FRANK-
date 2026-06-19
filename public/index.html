@@ -241,7 +241,7 @@
 
             stopCurrentAudio();
             
-            const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|FINAL VERDICT|\b\d+\.\s|THREE FIRES|FRANK REMEMBERS|LEAD CHARACTER|RELATIONSHIP ENGINE|SERIES ENGINE|PRESSURE|WORLD|NEXT EPISODE HOOK)/gi);
+            const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|FINAL VERDICT|\b\d+\s*\.\s*|THREE FIRES|FRANK REMEMBERS)/gi);
             const chunks = [];
             for (const section of rawSections) {
                 if (section.trim().length < 2) continue;
