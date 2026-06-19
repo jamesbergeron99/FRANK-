@@ -102,7 +102,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 });
 
 app.post('/tv-greeting', (req, res) => {
-    res.json({ message: "Oh, a TV pilot? Brilliant. Let's see if your story engine can actually hold my attention past act one, or if the whole thing stalls out before we even hit a commercial break." });
+    res.json({ message: "Oh, a TV pilot development? Brilliant. Let's see if your story engine can hold my attention as a collaborative assistant, or if it stalls out completely before act two." });
 });
 
 app.post('/chat', async (req, res) => {
