@@ -241,7 +241,7 @@
 
             stopCurrentAudio();
             
-            const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|FINAL VERDICT|\b\d+\s*\.\s*|THREE FIRES|FRANK REMEMBERS)/gi);
+            const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|FINAL VERDICT|\b\d+\b|THREE FIRES|FRANK REMEMBERS)/gi);
             const chunks = [];
             for (const section of rawSections) {
                 if (section.trim().length < 2) continue;
