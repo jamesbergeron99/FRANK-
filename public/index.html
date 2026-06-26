@@ -8,7 +8,7 @@
     <style>
         :root { --gold: #d4af37; --bg: #050505; --card: #121212; }
         body { background: var(--bg); color: #eee; font-family: 'Segoe UI', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
-        .header { padding: 15px; border-bottom: 2px solid var(--gold); background: #111; text-align: center; }
+        .header { padding: 15px; border-bottom: 2px solid var(--gold); background: #111; text-align: center; position: relative; }
         h1 { margin: 0; font-style: italic; color: var(--gold); letter-spacing: 2px; font-size: 1.5rem; }
         .toggle-box { display: flex; align-items: center; justify-content: center; gap: 15px; margin-top: 10px; font-weight: bold; font-size: 0.8rem; }
         .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
@@ -27,6 +27,8 @@
         .icon-btn { background: none; border: none; color: var(--gold); cursor: pointer; font-size: 1.4rem; }
         #micBtn.recording { color: #ff4444; }
         #micBtn.unavailable { color: #555; cursor: not-allowed; }
+        .clear-btn { position: absolute; right: 20px; top: 25px; background: none; border: 1px solid #ff4444; color: #ff4444; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.75rem; transition: 0.2s; }
+        .clear-btn:hover { background: #ff4444; color: #fff; }
     </style>
 </head>
 <body onclick="initAudio()">
@@ -37,6 +39,7 @@
             <label class="switch"><input type="checkbox" id="modeToggle"><span class="slider"></span></label>
             <span>T.V. SERIES</span>
         </div>
+        <button class="clear-btn" onclick="wipeMemory()"><i class="fas fa-trash-alt"></i> WIPEMEMORY</button>
     </div>
     <div id="chat-window"></div>
     <div class="media-bar"><button class="media-btn" id="playPauseBtn" onclick="togglePlayback()"><i class="fas fa-pause"></i></button></div>
@@ -240,11 +243,12 @@
             if (!audioCtx) return;
 
             stopCurrentAudio();
-            const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|CONCEPT|STRUCTURE|PACING|STAKES|CONFLICT|PROTAGONIST|ANTAGONISTIC|CHARACTER DYNAMICS|CHARACTER ARCS|DIALOGUE|TONE|WORLD|THEME|MARKETABILITY)/g);
+            // RELIABILITY REWRITE: Slices text lines safely at sequence loops, layout points, double line-breaks, or numeric markers avoiding formatting drops completely
+            const rawSections = fullText.split(/(?=\n\n|\r\n\r\n|SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|THREE FIRES|FRANK REMEMBERS|\b\d{1,2}\s*[\.\-—:]\s*)/gi);
             const chunks = [];
             for (const section of rawSections) {
                 if (section.trim().length < 2) continue;
-                if (section.length > 500) {
+                if (section.length > 450) {
                     chunks.push(...splitIntoChunks(section));
                 } else {
                     chunks.push(section.trim());
@@ -296,6 +300,21 @@
         function togglePlayback() {
             if (isPlaying) stopCurrentAudio();
             else { isSequenceActive = true; playSequentially(); }
+        }
+
+        async function wipeMemory() {
+            stopCurrentAudio();
+            tvSeriesMemory = "";
+            tvGreetingBuffers = null;
+            tvGreetingText = null;
+            try {
+                const response = await fetch('/clear-memory', { method: 'POST' });
+                const data = await response.json();
+                addMessage("Memory purged, darling. Complete blank slate. Let's see if your next draft can actually give me something new to think about.", false);
+                prefetchTVGreeting();
+            } catch (e) {
+                addMessage("Memory wiped locally.", false);
+            }
         }
 
         function sendBanter() {
