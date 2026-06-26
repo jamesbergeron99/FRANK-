@@ -19,17 +19,13 @@
         #chat-window { flex-grow: 1; overflow-y: auto; padding: 25px; display: flex; flex-direction: column; gap: 20px; background: #080808; }
         .msg { max-width: 90%; padding: 25px; border-radius: 10px; line-height: 1.8; font-size: 1.1rem; white-space: pre-wrap; background: var(--card); border-left: 4px solid var(--gold); }
         .user-msg { align-self: flex-end; border-left: none; border-right: 4px solid var(--gold); background: #222; }
-        .media-bar { background: #111; padding: 10px; display: flex; justify-content: center; border-top: 1px solid #333; }
-        .media-btn { background: none; border: 1px solid var(--gold); color: var(--gold); width: 50px; height: 50px; border-radius: 50%; cursor: pointer; font-size: 1.2rem; }
         .input-area { padding: 15px 30px; background: #111; border-top: 2px solid var(--gold); display: flex; gap: 15px; align-items: center; }
         .pill { flex-grow: 1; display: flex; background: #000; border: 1px solid var(--gold); border-radius: 40px; padding: 5px 20px; align-items: center; gap: 10px; }
         #textInput { flex-grow: 1; background: transparent; border: none; color: #fff; outline: none; font-size: 1rem; }
         .icon-btn { background: none; border: none; color: var(--gold); cursor: pointer; font-size: 1.4rem; }
-        #micBtn.recording { color: #ff4444; }
-        #micBtn.unavailable { color: #555; cursor: not-allowed; }
     </style>
 </head>
-<body onclick="initAudio()">
+<body>
     <div class="header">
         <h1>FRANK'S PRIVATE OFFICE</h1>
         <div class="toggle-box">
@@ -39,13 +35,11 @@
         </div>
     </div>
     <div id="chat-window"></div>
-    <div class="media-bar"><button class="media-btn" id="playPauseBtn" onclick="togglePlayback()"><i class="fas fa-pause"></i></button></div>
     <div class="input-area">
         <button class="icon-btn" onclick="document.getElementById('scriptInput').click()"><i class="fas fa-file-upload"></i></button>
         <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadFiles()">
         <div class="pill">
             <input type="text" id="textInput" placeholder="Consult Frank..." onkeypress="if(event.key==='Enter') sendBanter()">
-            <button class="icon-btn" id="micBtn" onclick="toggleMic()"><i class="fas fa-microphone"></i></button>
         </div>
         <button class="icon-btn" onclick="sendBanter()"><i class="fas fa-paper-plane"></i></button>
         <button class="icon-btn" onclick="downloadPDF()"><i class="fas fa-file-pdf"></i></button>
@@ -53,44 +47,73 @@
     <script>
         const chatWindow = document.getElementById('chat-window');
         const textInput = document.getElementById('textInput');
-
-        let audioCtx;
-        try {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-        } catch(e) {
-            console.warn("AudioContext unavailable:", e);
-        }
-
-        let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0, isSequenceActive = false;
-
-        let tvGreetingBuffers = null;
-        let tvGreetingText = null;
         let tvSeriesMemory = "";
 
         const welcomeText = "Ah — there you are. Come in, don't hover in the doorway. If you've brought me a script, I assume you're ready for the truth — or at least a version of it that's useful. I'm Frank. Not just in name — by temperament. I don't do vague encouragement, and I don't hand out gold stars for effort. What I do is take your script apart, figure out what's working, what's not, and tell you exactly where the engine is stalling. Upload your script. Give me a moment. And try not to flinch when I get to the good part.";
 
-        window.onload = async () => {
+        window.onload = () => {
             localStorage.clear();
             addMessage(welcomeText);
-            preWarmGreeting(welcomeText);
-            initSpeechRecognition();
-            prefetchTVGreeting();
         };
 
-        function initAudio() {
-            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        document.getElementById('modeToggle').addEventListener('change', async function() {
+            if (this.checked) {
+                const response = await fetch('/tv-greeting', { method: 'POST' });
+                const data = await response.json();
+                addMessage(data.message);
+            } else {
+                addMessage("Ah, back to features. Let's see if you can tell a complete story in one sitting.");
+            }
+        });
+
+        async function uploadFiles() {
+            const fileInput = document.getElementById('scriptInput');
+            if (fileInput.files.length === 0) return;
+            addMessage('Analyzing... This takes a few moments, darling...', false);
+            const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
+            const formData = new FormData();
+            formData.append('mode', mode);
+            formData.append('scripts', fileInput.files[0]);
+            if (mode === 'T.V. Series') formData.append('memory', tvSeriesMemory);
+            
+            try {
+                const response = await fetch('/analyze', { method: 'POST', body: formData });
+                const data = await response.json();
+                if (mode === 'T.V. Series' && data.memory) tvSeriesMemory = data.memory;
+                addMessage(data.message);
+            } catch (e) {
+                addMessage("Frank is indisposed, darling.");
+            }
         }
 
-        function splitIntoChunks(text, maxChars = 500) {
-            const sentences = text.match(/[^.!?]+[.!?]+[\s]*/g) || [text];
-            const chunks = [];
-            let current = '';
-            for (const sentence of sentences) {
-                if ((current + sentence).length > maxChars && current.length > 0) {
-                    chunks.push(current.trim());
-                    current = sentence;
-                } else {
-                    current += sentence;
-                }
-            }
-            if
+        function sendBanter() {
+            const val = textInput.value.trim();
+            if (!val) return;
+            textInput.value = '';
+            addMessage(val, true);
+            fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) })
+                .then(r => r.json())
+                .then(data => { addMessage(data.message); });
+        }
+
+        function addMessage(text, user = false) {
+            const div = document.createElement('div');
+            div.className = user ? 'msg user-msg' : 'msg';
+            div.innerText = text;
+            chatWindow.appendChild(div);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        function downloadPDF() {
+            const element = document.createElement('div');
+            element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; font-family:serif; line-height:1.6;">
+                <h1 style="color:#d4af37; border-bottom:2px solid #d4af37;">FRANK'S PRIVATE AUDIT</h1>
+                ${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m =>
+                    `<p style="margin-bottom:20px; white-space:pre-wrap; border-left:3px solid #d4af37; padding-left:15px;">${m.innerText}</p>`
+                ).join('')}
+            </div>`;
+            html2pdf().from(element).save('Frank_Audit.pdf');
+        }
+    </script>
+</body>
+</html>
