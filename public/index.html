@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -241,7 +240,8 @@
             if (!audioCtx) return;
 
             stopCurrentAudio();
-            const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|CONCEPT|STRUCTURE|PACING|STAKES|CONFLICT|PROTAGONIST|ANTAGONISTIC|CHARACTER DYNAMICS|CHARACTER ARCS|DIALOGUE|TONE|WORLD|THEME|MARKETABILITY|\b\d+\s*\.\s*)/gi);
+            // FIXED REGEX: Stripped strict alphabetical lookaheads and replaced with a universal numeric block engine (\b\d+\s*\.\s*) to ensure it slices cleanly at every section number boundary regardless of text characters, hyphens, or symbols.
+            const rawSections = fullText.split(/(?=SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|WHAT'S WORKING|FINAL VERDICT|\b\d+\s*\.\s*|THREE FIRES|FRANK REMEMBERS)/gi);
             const chunks = [];
             for (const section of rawSections) {
                 if (section.trim().length < 2) continue;
@@ -331,5 +331,3 @@
     </script>
 </body>
 </html>
-
-```
