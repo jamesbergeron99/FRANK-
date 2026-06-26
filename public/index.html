@@ -37,7 +37,7 @@
         <div class="toggle-box">
             <span>FEATURE</span>
             <label class="switch"><input type="checkbox" id="modeToggle"><span class="slider"></span></label>
-            <span>T.V. SERIES</span>
+            <span>T.V. PILOT</span>
         </div>
         <button class="clear-btn" onclick="wipeMemory()"><i class="fas fa-trash-alt"></i> WIPEMEMORY</button>
     </div>
@@ -243,8 +243,8 @@
             if (!audioCtx) return;
 
             stopCurrentAudio();
-            // RELIABILITY REWRITE: Slices text lines safely at sequence loops, layout points, double line-breaks, or numeric markers avoiding formatting drops completely
-            const rawSections = fullText.split(/(?=\n\n|\r\n\r\n|SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|THREE FIRES|FRANK REMEMBERS|\b\d{1,2}\s*[\.\-—:]\s*)/gi);
+            // EXPLICIT FIXED PATTERN BREAKUP: Slices payload strings safely on explicit newlines or category heading names, ensuring block chunks stay under the 450 limit without depending on loose numeral boundaries.
+            const rawSections = fullText.split(/(?=\n\n|\r\n\r\n|SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|THREE FIRES|FRANK REMEMBERS|1\.\s*THE\s*HOOK|2\.\s*THE\s*OPENING|3\.\s*THE\s*LEAD|4\.\s*THE\s*RELATIONSHIP|5\.\s*THE\s*SERIES|6\.\s*THE\s*ANTAGONIST|7\.\s*THE\s*STAKES|8\.\s*THE\s*WORLD|9\.\s*THE\s*NEXT|10\.\s*FINAL)/gi);
             const chunks = [];
             for (const section of rawSections) {
                 if (section.trim().length < 2) continue;
