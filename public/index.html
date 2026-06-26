@@ -37,7 +37,7 @@
         <div class="toggle-box">
             <span>FEATURE</span>
             <label class="switch"><input type="checkbox" id="modeToggle"><span class="slider"></span></label>
-            <span>T.V. PILOT</span>
+            <span>T.V. SERIES</span>
         </div>
         <button class="clear-btn" onclick="wipeMemory()"><i class="fas fa-trash-alt"></i> WIPEMEMORY</button>
     </div>
@@ -84,7 +84,7 @@
             if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
         }
 
-        function splitIntoChunks(text, maxChars = 500) {
+        function splitIntoChunks(text, maxChars = 400) {
             const sentences = text.match(/[^.!?]+[.!?]+[\s]*/g) || [text];
             const chunks = [];
             let current = '';
@@ -243,12 +243,13 @@
             if (!audioCtx) return;
 
             stopCurrentAudio();
-            // EXPLICIT FIXED PATTERN BREAKUP: Slices payload strings safely on explicit newlines or category heading names, ensuring block chunks stay under the 450 limit without depending on loose numeral boundaries.
-            const rawSections = fullText.split(/(?=\n\n|\r\n\r\n|SECTION \d|THE REACTION|FORENSIC|LOG LINE|SYNOPSIS|THREE FIRES|FRANK REMEMBERS|1\.\s*THE\s*HOOK|2\.\s*THE\s*OPENING|3\.\s*THE\s*LEAD|4\.\s*THE\s*RELATIONSHIP|5\.\s*THE\s*SERIES|6\.\s*THE\s*ANTAGONIST|7\.\s*THE\s*STAKES|8\.\s*THE\s*WORLD|9\.\s*THE\s*NEXT|10\.\s*FINAL)/gi);
+            
+            // CLEAN LINE CHUNK SPLITTER: Splits cleanly by text sentences or paragraph blocks to guarantee small chunks pass under the voice API threshold every single time.
+            const rawSections = fullText.split(/(?<=\. |\n)/g);
             const chunks = [];
             for (const section of rawSections) {
                 if (section.trim().length < 2) continue;
-                if (section.length > 450) {
+                if (section.length > 400) {
                     chunks.push(...splitIntoChunks(section));
                 } else {
                     chunks.push(section.trim());
@@ -305,15 +306,18 @@
         async function wipeMemory() {
             stopCurrentAudio();
             tvSeriesMemory = "";
-            tvGreetingBuffers = null;
-            tvGreetingText = null;
+            audioBuffers = {};
+            nextToPlay = 0;
+            totalSections = 0;
             try {
                 const response = await fetch('/clear-memory', { method: 'POST' });
                 const data = await response.json();
-                addMessage("Memory purged, darling. Complete blank slate. Let's see if your next draft can actually give me something new to think about.", false);
-                prefetchTVGreeting();
+                addMessage(data.message, false);
+                speak(data.message);
             } catch (e) {
-                addMessage("Memory wiped locally.", false);
+                const fallbackMsg = "Memory wiped, darling.";
+                addMessage(fallbackMsg, false);
+                speak(fallbackMsg);
             }
         }
 
