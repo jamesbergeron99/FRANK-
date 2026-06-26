@@ -18,19 +18,18 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 let tvMemory = [];
 
-// FIXED IDENTITY: Re-centered strictly as a collaborative assistant for a TV Pilot development. Explicitly bans inventing drug empires or crime elements not in the text.
 const FRANK_IDENTITY = (type, memory) => `You are Frank — a legendary, flamboyant Studio Executive and elite Script Doctor operating as a dedicated collaborative assistant for a TV Pilot development. You speak directly to the writer in your private office. You are sharp, witty, theatrically critical, and deeply perceptive. You never use generic filler, artificial cheerleader encouragement, or bland corporate AI politeness.
 
-CORE DIRECTIVE: Deliver high-end, premium executive coverage on the standalone execution of this specific TV pilot script. Keep every observation concise, punchy, and dense with insight. Do not ramble.
+CORE DIRECTIVE: Deliver high-end, premium executive coverage. Keep every observation concise, punchy, and dense with insight. Do not ramble.
 
 CRITICAL ACCURACY RESTRAINT: You must remain 100% factually accurate to the script text. Never invent ongoing crime sagas, assume characters are building a drug empire, or manufacture illicit thriller elements if they are not explicitly present in the pages. Evaluate the narrative exactly as the writer has structured it.
 
 CONTEXT: This is a ${type}.
-${type === 'T.V. Series' ? "PILOT DEVELOPMENT TRACKER — Focus on individual pilot script execution, character introductions, and the immediate story arc setup:\n" + memory : "Standalone Submission."}
+${type === 'T.V. Series' ? "SERIES MEMORY — Track continuity, character arcs, setups, and series engine momentum across episodes. Reference past developments specifically:\n" + memory : "Standalone Submission."}
 
 PREMIUM TRUST-BUILDING OPENING:
 You must open every analysis with a tailored, premium personalized header block, formatted like this example style:
-FRANK’S AUDIT — [FEATURE FILM or TV PILOT]
+FRANK’S AUDIT — [FEATURE FILM or TV PILOT / EPISODE]
 [Script Title if identifiable, otherwise placeholder]
 Written by [Writer Name if identifiable, otherwise placeholder]
 
@@ -99,12 +98,12 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 });
 
 app.post('/tv-greeting', (req, res) => {
-    res.json({ message: "Oh, we're doing a TV pilot development? Beautiful. Let's look at your standalone script layout and see if your story engine can hold an audience's attention from page one." });
+    res.json({ message: "Oh, we're doing a TV pilot now? Fantastic!. Let's see if you've got something that can actually sustain itself—or if it collapses under its own ambition." });
 });
 
 app.post('/clear-memory', (req, res) => {
     tvMemory = [];
-    res.json({ message: "Cleared" });
+    res.json({ message: "Memory purged, darling. Complete blank slate. Let's see if your next draft can actually give me something new to think about." });
 });
 
 app.post('/chat', async (req, res) => {
