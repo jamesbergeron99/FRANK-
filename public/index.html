@@ -56,11 +56,19 @@
     <script>
         const chatWindow = document.getElementById('chat-window');
         const textInput = document.getElementById('textInput');
+
         let audioCtx;
-        try { audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 }); } catch(e) {}
-        
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        } catch(e) {
+            console.warn("AudioContext unavailable:", e);
+        }
+
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0, isSequenceActive = false;
-        let tvGreetingBuffers = null, tvGreetingText = null, tvSeriesMemory = "";
+
+        let tvGreetingBuffers = null;
+        let tvGreetingText = null;
+        let tvSeriesMemory = "";
 
         const welcomeText = "Ah — there you are. Come in, don't hover in the doorway. If you've brought me a script, I assume you're ready for the truth — or at least a version of it that's useful. I'm Frank. Not just in name — by temperament. I don't do vague encouragement, and I don't hand out gold stars for effort. What I do is take your script apart, figure out what's working, what's not, and tell you exactly where the engine is stalling. Upload your script. Give me a moment. And try not to flinch when I get to the good part.";
 
@@ -72,14 +80,21 @@
             prefetchTVGreeting();
         };
 
-        function initAudio() { if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); }
+        function initAudio() {
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        }
 
         function splitIntoChunks(text, maxChars = 400) {
             const sentences = text.match(/[^.!?]+[.!?]+[\s]*/g) || [text];
-            const chunks = []; let current = '';
-            for (const s of sentences) {
-                if ((current + s).length > maxChars && current.length > 0) { chunks.push(current.trim()); current = s; }
-                else current += s;
+            const chunks = [];
+            let current = '';
+            for (const sentence of sentences) {
+                if ((current + sentence).length > maxChars && current.length > 0) {
+                    chunks.push(current.trim());
+                    current = sentence;
+                } else {
+                    current += sentence;
+                }
             }
             if (current.trim().length > 0) chunks.push(current.trim());
             return chunks;
@@ -87,64 +102,175 @@
 
         async function prefetchTVGreeting() {
             try {
-                const [gResp, sResp] = await Promise.all([fetch('/tv-greeting', { method: 'POST' }), fetch('/voice-settings')]);
-                const gData = await gResp.json(); const settings = await sResp.json();
-                tvGreetingText = gData.message;
+                const [greetingResp, settingsResp] = await Promise.all([
+                    fetch('/tv-greeting', { method: 'POST' }),
+                    fetch('/voice-settings')
+                ]);
+                const greetingData = await greetingResp.json();
+                const settings = await settingsResp.json();
+                tvGreetingText = greetingData.message;
                 const chunks = splitIntoChunks(tvGreetingText);
                 const bufferMap = {};
                 await Promise.all(chunks.map(async (chunk, index) => {
                     try {
                         const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
-                            method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                            body: JSON.stringify({ text: chunk, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                            method: "POST",
+                            headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                            body: JSON.stringify({ text: chunk.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                         });
                         const data = await res.json();
-                        if (data.audioContent) bufferMap[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
+                        if (!data.audioContent) return;
+                        bufferMap[index] = await audioCtx.decodeAudioData(
+                            Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
+                        );
                     } catch(e) {}
                 }));
                 tvGreetingBuffers = { bufferMap, totalSections: chunks.length };
             } catch(e) {}
         }
 
-        async function preWarmGreeting(text) {
-            const settings = await (await fetch('/voice-settings')).json();
-            const parts = text.split(/(?<=\. )/);
-            totalSections = parts.length;
-            isSequenceActive = true;
-            parts.forEach(async (part, index) => {
-                const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
-                    method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ text: part, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
-                });
-                const data = await res.json();
-                if (data.audioContent) {
-                    audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
-                    if (index === 0 && !isPlaying) playSequentially();
+        let recognition = null;
+        let currentTranscript = '';
+        let micActive = false;
+
+        function initSpeechRecognition() {
+            const micBtn = document.getElementById('micBtn');
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) { micBtn.classList.add('unavailable'); micBtn.title = "Voice input not supported in this browser"; return; }
+            try {
+                recognition = new SpeechRecognition();
+                recognition.continuous = true;
+                recognition.interimResults = true;
+                recognition.onresult = (e) => {
+                    let interimTranscript = '';
+                    for (let i = e.resultIndex; i < e.results.length; ++i) {
+                        if (e.results[i].isFinal) currentTranscript += e.results[i][0].transcript + ' ';
+                        else interimTranscript += e.results[i][0].transcript;
+                    }
+                    textInput.value = currentTranscript + interimTranscript;
+                };
+                recognition.onerror = (e) => {
+                    micActive = false; micBtn.classList.remove('recording');
+                    if (e.error === 'not-allowed') { micBtn.classList.add('unavailable'); micBtn.title = "Microphone access denied"; }
+                };
+                recognition.onend = () => { if (micActive) { micActive = false; micBtn.classList.remove('recording'); } };
+            } catch(e) { micBtn.classList.add('unavailable'); }
+        }
+
+        function toggleMic() {
+            const micBtn = document.getElementById('micBtn');
+            if (micBtn.classList.contains('unavailable')) return;
+            if (!recognition) return;
+            if (micActive) {
+                recognition.stop(); micActive = false; micBtn.classList.remove('recording');
+            } else {
+                currentTranscript = textInput.value ? textInput.value.trim() + ' ' : '';
+                textInput.value = currentTranscript;
+                micActive = true; 
+                micBtn.classList.add('recording');
+                try { recognition.start(); } catch(e) { micActive = false; micBtn.classList.remove('recording'); }
+            }
+        }
+
+        document.getElementById('modeToggle').addEventListener('change', async function() {
+            if (this.checked) {
+                if (tvGreetingBuffers && tvGreetingText) {
+                    addMessage(tvGreetingText);
+                    stopCurrentAudio();
+                    audioBuffers = tvGreetingBuffers.bufferMap;
+                    totalSections = tvGreetingBuffers.totalSections;
+                    nextToPlay = 0;
+                    isSequenceActive = true;
+                    audioCtx.resume().then(() => playSequentially());
+                    tvGreetingBuffers = null;
+                    tvGreetingText = null;
+                    prefetchTVGreeting();
+                } else {
+                    const response = await fetch('/tv-greeting', { method: 'POST' });
+                    const data = await response.json();
+                    addMessage(data.message);
+                    speak(data.message);
                 }
-            });
+            } else {
+                const fText = "Ah, back to features. Let's see if you can tell a complete story in one sitting.";
+                addMessage(fText);
+                speak(fText);
+            }
+        });
+
+        async function preWarmGreeting(text) {
+            try {
+                const settingsResp = await fetch('/voice-settings');
+                const settings = await settingsResp.json();
+                const parts = text.split(/(?<=\. )/);
+                totalSections = parts.length;
+                isSequenceActive = true;
+                parts.forEach(async (part, index) => {
+                    const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
+                        method: "POST",
+                        headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ text: part.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                    });
+                    const data = await res.json();
+                    if (!data.audioContent) return;
+                    audioBuffers[index] = await audioCtx.decodeAudioData(
+                        Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
+                    );
+                    if (index === 0 && !isPlaying) {
+                        audioCtx.resume().then(() => playSequentially());
+                    }
+                });
+            } catch (e) {}
+        }
+
+        async function uploadFiles() {
+            const fileInput = document.getElementById('scriptInput');
+            if (fileInput.files.length === 0) return;
+            addMessage('Analyzing... This takes a few moments, darling...', false);
+            const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
+            const formData = new FormData();
+            formData.append('mode', mode);
+            formData.append('scripts', fileInput.files[0]);
+            if (mode === 'T.V. Series') formData.append('memory', tvSeriesMemory);
+            const response = await fetch('/analyze', { method: 'POST', body: formData });
+            const data = await response.json();
+            if (mode === 'T.V. Series' && data.memory) tvSeriesMemory = data.memory;
+            addMessage(data.message);
+            speak(data.message);
         }
 
         async function speak(fullText) {
+            if (!audioCtx) return;
             stopCurrentAudio();
-            const chunks = fullText.split(/(?<=\. |\n)/g).filter(s => s.length > 1);
+            const rawSections = fullText.split(/(?<=\. |\n)/g);
+            const chunks = [];
+            for (const section of rawSections) {
+                if (section.trim().length < 2) continue;
+                if (section.length > 400) {
+                    chunks.push(...splitIntoChunks(section));
+                } else {
+                    chunks.push(section.trim());
+                }
+            }
+            audioBuffers = {}; nextToPlay = 0;
             totalSections = chunks.length;
-            nextToPlay = 0;
-            audioBuffers = {};
             isSequenceActive = true;
-            const settings = await (await fetch('/voice-settings')).json();
-            
+            const settingsResp = await fetch('/voice-settings');
+            const settings = await settingsResp.json();
             chunks.forEach(async (chunk, index) => {
                 try {
                     const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
-                        method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: chunk, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                        method: "POST",
+                        headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ text: chunk.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                     });
                     const data = await res.json();
-                    if (data.audioContent) {
-                        audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
-                        if (index === 0 && !isPlaying) playSequentially();
-                    }
-                } catch (e) { console.error(e); }
+                    if (!data.audioContent) return;
+                    audioBuffers[index] = await audioCtx.decodeAudioData(
+                        Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
+                    );
+                    if (!isPlaying && isSequenceActive && index === 0) playSequentially();
+                } catch (e) {}
             });
         }
 
@@ -152,30 +278,74 @@
             if (!isSequenceActive || nextToPlay >= totalSections) { isPlaying = false; return; }
             if (audioBuffers[nextToPlay]) {
                 isPlaying = true;
+                document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
                 currentSource = audioCtx.createBufferSource();
                 currentSource.buffer = audioBuffers[nextToPlay];
                 currentSource.connect(audioCtx.destination);
                 currentSource.onended = () => { nextToPlay++; playSequentially(); };
                 currentSource.start();
             } else {
-                setTimeout(playSequentially, 150); // Robust retry check for next buffer
+                // SURGICAL FIX: Only change here — added timeout to poll for next buffer instead of stopping.
+                setTimeout(playSequentially, 150);
             }
         }
 
         function stopCurrentAudio() {
             isSequenceActive = false; isPlaying = false;
             if (currentSource) { try { currentSource.stop(); } catch(e) {} currentSource = null; }
+            document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
         }
 
-        function togglePlayback() { isPlaying ? stopCurrentAudio() : playSequentially(); }
+        function togglePlayback() {
+            if (isPlaying) stopCurrentAudio();
+            else { isSequenceActive = true; playSequentially(); }
+        }
 
-        // --- Original UI helpers remain identical ---
-        function addMessage(text, user = false) { const d = document.createElement('div'); d.className = user ? 'msg user-msg' : 'msg'; d.innerText = text; chatWindow.appendChild(d); chatWindow.scrollTop = chatWindow.scrollHeight; }
-        async function uploadFiles() { const fd = new FormData(); fd.append('mode', document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film'); fd.append('scripts', document.getElementById('scriptInput').files[0]); const r = await fetch('/analyze', { method: 'POST', body: fd }); const d = await r.json(); addMessage(d.message); speak(d.message); }
-        function sendBanter() { const v = textInput.value.trim(); if (!v) return; textInput.value = ''; addMessage(v, true); fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: v }) }).then(r => r.json()).then(d => { addMessage(d.message); speak(d.message); }); }
-        async function wipeMemory() { stopCurrentAudio(); const r = await fetch('/clear-memory', { method: 'POST' }); const d = await r.json(); addMessage(d.message); speak(d.message); }
-        document.getElementById('modeToggle').addEventListener('change', async function() { const isTV = this.checked; const r = await fetch(isTV ? '/tv-greeting' : '', { method: isTV ? 'POST' : 'GET' }); if(isTV) { const d = await r.json(); addMessage(d.message); speak(d.message); } else { const f = "Ah, back to features. Let's see if you can tell a complete story in one sitting."; addMessage(f); speak(f); } });
-        function initSpeechRecognition() { /* ... */ } function toggleMic() { /* ... */ } function downloadPDF() { /* ... */ }
+        async function wipeMemory() {
+            stopCurrentAudio();
+            tvSeriesMemory = "";
+            audioBuffers = {}; nextToPlay = 0; totalSections = 0;
+            try {
+                const response = await fetch('/clear-memory', { method: 'POST' });
+                const data = await response.json();
+                addMessage(data.message, false);
+                speak(data.message);
+            } catch (e) {
+                const fallbackMsg = "Memory wiped, darling.";
+                addMessage(fallbackMsg, false);
+                speak(fallbackMsg);
+            }
+        }
+
+        function sendBanter() {
+            const val = textInput.value.trim();
+            if (!val) return;
+            textInput.value = '';
+            currentTranscript = '';
+            addMessage(val, true);
+            fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) })
+                .then(r => r.json())
+                .then(data => { addMessage(data.message); speak(data.message); });
+        }
+
+        function addMessage(text, user = false) {
+            const div = document.createElement('div');
+            div.className = user ? 'msg user-msg' : 'msg';
+            div.innerText = text;
+            chatWindow.appendChild(div);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        function downloadPDF() {
+            const element = document.createElement('div');
+            element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; font-family:serif; line-height:1.6;">
+                <h1 style="color:#d4af37; border-bottom:2px solid #d4af37;">FRANK'S PRIVATE AUDIT</h1>
+                ${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m =>
+                    `<p style="margin-bottom:20px; white-space:pre-wrap; border-left:3px solid #d4af37; padding-left:15px;">${m.innerText}</p>`
+                ).join('')}
+            </div>`;
+            html2pdf().from(element).save('Frank_Audit.pdf');
+        }
     </script>
 </body>
 </html>
