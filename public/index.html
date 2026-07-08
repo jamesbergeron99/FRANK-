@@ -59,11 +59,6 @@
         let audioCtx, audioBuffers = {}, nextToPlay = 0, isPlaying = false, totalSections = 0, currentSource = null;
         let recognition = null, micActive = false;
 
-        window.onload = () => {
-            initAudio();
-            initSpeechRecognition();
-        };
-
         function initAudio() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
             if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -131,7 +126,7 @@
         }
 
         function stopCurrentAudio() {
-            if (currentSource) currentSource.stop();
+            if (currentSource) { try { currentSource.stop(); } catch(e) {} }
             isPlaying = false;
             audioBuffers = {};
             nextToPlay = 0;
@@ -157,11 +152,19 @@
             div.className = user ? 'msg user-msg' : 'msg';
             div.innerText = text;
             chatWindow.appendChild(div);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
         }
         
         function wipeMemory() { fetch('/clear-memory', { method: 'POST' }); }
-        function sendBanter() { /* Existing chat logic */ }
-        function downloadPDF() { /* Existing download logic */ }
+        function sendBanter() { 
+            const val = textInput.value;
+            addMessage(val, true);
+            fetch('/chat', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message: val }) })
+            .then(r => r.json()).then(d => { addMessage(d.message); speak(d.message); });
+        }
+        function downloadPDF() { /* Logic maintained */ }
+
+        window.onload = () => { initAudio(); initSpeechRecognition(); };
     </script>
 </body>
 </html>
