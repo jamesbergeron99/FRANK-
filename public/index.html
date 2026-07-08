@@ -60,8 +60,7 @@
         try { audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 }); } catch(e) {}
         
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0, isSequenceActive = false;
-        let tvGreetingBuffers = null, tvGreetingText = null, tvSeriesMemory = "";
-        let recognition = null;
+        let tvGreetingBuffers = null, tvGreetingText = null, tvSeriesMemory = "", recognition = null;
         const welcomeText = "Ah — there you are. Come in, don't hover in the doorway. If you've brought me a script, I assume you're ready for the truth — or at least a version of it that's useful. I'm Frank. Not just in name — by temperament. I don't do vague encouragement, and I don't hand out gold stars for effort. What I do is take your script apart, figure out what's working, what's not, and tell you exactly where the engine is stalling. Upload your script. Give me a moment. And try not to flinch when I get to the good part.";
         
         window.onload = async () => {
@@ -130,31 +129,22 @@
             document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
         }
         function togglePlayback() { 
-            if (isPlaying) {
-                stopCurrentAudio();
-            } else {
-                isSequenceActive = true;
-                playSequentially();
-            }
+            if (isPlaying) { stopCurrentAudio(); } 
+            else { isSequenceActive = true; playSequentially(); }
         }
-        
-        async function uploadFiles() { const fileInput = document.getElementById('scriptInput'); addMessage('Analyzing... This takes a few moments, darling...', false); const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film'; const formData = new FormData(); formData.append('mode', mode); formData.append('scripts', fileInput.files[0]); const response = await fetch('/analyze', { method: 'POST', body: formData }); const data = await response.json(); addMessage(data.message); speak(data.message); }
+        async function uploadFiles() { const fileInput = document.getElementById('scriptInput'); addMessage('Analyzing...', false); const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film'; const formData = new FormData(); formData.append('mode', mode); formData.append('scripts', fileInput.files[0]); const response = await fetch('/analyze', { method: 'POST', body: formData }); const data = await response.json(); addMessage(data.message); speak(data.message); }
         function sendBanter() { const val = textInput.value.trim(); if (!val) return; textInput.value = ''; addMessage(val, true); fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) }).then(r => r.json()).then(data => { addMessage(data.message); speak(data.message); }); }
         async function wipeMemory() { stopCurrentAudio(); const response = await fetch('/clear-memory', { method: 'POST' }); const data = await response.json(); addMessage(data.message); speak(data.message); }
-        document.getElementById('modeToggle').addEventListener('change', async function() { if (this.checked) { const r = await fetch('/tv-greeting', { method: 'POST' }); const d = await r.json(); addMessage(d.message); speak(d.message); } else { const f = "Ah, back to features. Let's see if you can tell a complete story in one sitting."; addMessage(f); speak(f); } });
+        document.getElementById('modeToggle').addEventListener('change', async function() { if (this.checked) { const r = await fetch('/tv-greeting', { method: 'POST' }); const d = await r.json(); addMessage(d.message); speak(d.message); } else { const f = "Ah, back to features."; addMessage(f); speak(f); } });
         function addMessage(text, user = false) { const div = document.createElement('div'); div.className = user ? 'msg user-msg' : 'msg'; div.innerText = text; chatWindow.appendChild(div); chatWindow.scrollTop = chatWindow.scrollHeight; }
-        
         function initSpeechRecognition() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (SpeechRecognition) {
                 recognition = new SpeechRecognition();
-                recognition.continuous = false;
-                recognition.interimResults = false;
+                recognition.continuous = false; recognition.interimResults = false;
                 recognition.onresult = (event) => { textInput.value = event.results[0][0].transcript; };
                 recognition.onend = () => { document.getElementById('micBtn').classList.remove('recording'); };
-            } else {
-                document.getElementById('micBtn').classList.add('unavailable');
-            }
+            } else { document.getElementById('micBtn').classList.add('unavailable'); }
         }
         function toggleMic() {
             if (!recognition) return;
