@@ -2,169 +2,76 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Frank's Forensic Office</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <title>Drag & Drop PDF Merger</title>
+    <!-- Load PDF-lib and SortableJS from CDN -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <style>
-        :root { --gold: #d4af37; --bg: #050505; --card: #121212; }
-        body { background: var(--bg); color: #eee; font-family: 'Segoe UI', serif; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
-        .header { padding: 15px; border-bottom: 2px solid var(--gold); background: #111; text-align: center; position: relative; }
-        h1 { margin: 0; font-style: italic; color: var(--gold); letter-spacing: 2px; font-size: 1.5rem; }
-        .toggle-box { display: flex; align-items: center; justify-content: center; gap: 15px; margin-top: 10px; font-weight: bold; font-size: 0.8rem; }
-        .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
-        .switch input { opacity: 0; width: 0; height: 0; }
-        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 20px; border: 1px solid var(--gold); }
-        .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 2px; background-color: var(--gold); transition: .4s; border-radius: 50%; }
-        input:checked + .slider:before { transform: translateX(24px); }
-        #chat-window { flex-grow: 1; overflow-y: auto; padding: 25px; display: flex; flex-direction: column; gap: 20px; background: #080808; }
-        .msg { max-width: 90%; padding: 25px; border-radius: 10px; line-height: 1.8; font-size: 1.1rem; white-space: pre-wrap; background: var(--card); border-left: 4px solid var(--gold); }
-        .user-msg { align-self: flex-end; border-left: none; border-right: 4px solid var(--gold); background: #222; }
-        .media-bar { background: #111; padding: 10px; display: flex; justify-content: center; border-top: 1px solid #333; }
-        .media-btn { background: none; border: 1px solid var(--gold); color: var(--gold); width: 50px; height: 50px; border-radius: 50%; cursor: pointer; font-size: 1.2rem; }
-        .input-area { padding: 15px 30px; background: #111; border-top: 2px solid var(--gold); display: flex; gap: 15px; align-items: center; }
-        .pill { flex-grow: 1; display: flex; background: #000; border: 1px solid var(--gold); border-radius: 40px; padding: 5px 20px; align-items: center; gap: 10px; }
-        #textInput { flex-grow: 1; background: transparent; border: none; color: #fff; outline: none; font-size: 1rem; }
-        .icon-btn { background: none; border: none; color: var(--gold); cursor: pointer; font-size: 1.4rem; }
-        #micBtn.recording { color: #ff4444; }
-        #micBtn.unavailable { color: #555; cursor: not-allowed; }
-        .clear-btn { position: absolute; right: 20px; top: 25px; background: none; border: 1px solid #ff4444; color: #ff4444; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.75rem; transition: 0.2s; }
-        .clear-btn:hover { background: #ff4444; color: #fff; }
+        body { font-family: sans-serif; max-width: 600px; margin: 2rem auto; padding: 0 1rem; }
+        #fileList { margin: 1rem 0; padding: 1rem; border: 2px dashed #ccc; min-height: 50px; cursor: move; }
+        .file-item { padding: 10px; margin: 5px 0; background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; display: flex; align-items: center; }
+        button { padding: 10px 20px; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 4px; }
     </style>
 </head>
-<body onclick="initAudio()">
-    <div class="header">
-        <h1>FRANK'S PRIVATE OFFICE</h1>
-        <div class="toggle-box">
-            <span>FEATURE</span>
-            <label class="switch"><input type="checkbox" id="modeToggle"><span class="slider"></span></label>
-            <span>T.V. SERIES</span>
-        </div>
-        <button class="clear-btn" onclick="wipeMemory()"><i class="fas fa-trash-alt"></i> WIPEMEMORY</button>
-    </div>
-    <div id="chat-window"></div>
-    <div class="media-bar"><button class="media-btn" id="playPauseBtn" onclick="togglePlayback()"><i class="fas fa-pause"></i></button></div>
-    <div class="input-area">
-        <button class="icon-btn" onclick="document.getElementById('scriptInput').click()"><i class="fas fa-file-upload"></i></button>
-        <input type="file" id="scriptInput" accept=".pdf" style="display:none;" onchange="uploadFiles()">
-        <div class="pill">
-            <input type="text" id="textInput" placeholder="Consult Frank..." onkeypress="if(event.key==='Enter') sendBanter()">
-            <button class="icon-btn" id="micBtn" onclick="toggleMic()"><i class="fas fa-microphone"></i></button>
-        </div>
-        <button class="icon-btn" onclick="sendBanter()"><i class="fas fa-paper-plane"></i></button>
-        <button class="icon-btn" onclick="downloadPDF()"><i class="fas fa-file-pdf"></i></button>
-    </div>
+<body>
+
+    <h1>PDF Merger</h1>
+    <p>Select files, then <b>drag and drop</b> to reorder:</p>
+    <input type="file" id="filePicker" multiple accept="application/pdf">
+    
+    <div id="fileList"></div>
+    <button id="mergeBtn" style="display:none;">Merge & Download</button>
+
     <script>
-        const chatWindow = document.getElementById('chat-window');
-        const textInput = document.getElementById('textInput');
-        let audioCtx, audioBuffers = {}, nextToPlay = 0, isPlaying = false, totalSections = 0, currentSource = null;
-        let recognition = null, micActive = false;
-
-        function initAudio() {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-        }
-
-        function initSpeechRecognition() {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SpeechRecognition) { document.getElementById('micBtn').classList.add('unavailable'); return; }
-            recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.onresult = (e) => {
-                let transcript = '';
-                for (let i = e.resultIndex; i < e.results.length; ++i) transcript += e.results[i][0].transcript;
-                textInput.value = transcript;
-            };
-        }
-
-        function toggleMic() {
-            const micBtn = document.getElementById('micBtn');
-            if (micActive) {
-                recognition.stop();
-                micActive = false;
-                micBtn.classList.remove('recording');
-            } else {
-                recognition.start();
-                micActive = true;
-                micBtn.classList.add('recording');
-            }
-        }
-
-        async function speak(text) {
-            stopCurrentAudio();
-            const segments = text.split(/(?<=[.!?])\s+/);
-            totalSections = segments.length;
-            const settings = await (await fetch('/voice-settings')).json();
-            
-            for(let i=0; i<segments.length; i++) {
-                fetch("https://api.inworld.ai/tts/v1/voice", {
-                    method: "POST",
-                    headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ text: segments[i], voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
-                })
-                .then(r => r.json())
-                .then(d => {
-                    if (d.audioContent) {
-                        audioCtx.decodeAudioData(Uint8Array.from(atob(d.audioContent), c => c.charCodeAt(0)).buffer)
-                        .then(buf => {
-                            audioBuffers[i] = buf;
-                            if (!isPlaying && i === nextToPlay) playNext();
-                        });
-                    }
-                });
-            }
-        }
-
-        function playNext() {
-            if (nextToPlay >= totalSections || !audioBuffers[nextToPlay]) return;
-            isPlaying = true;
-            currentSource = audioCtx.createBufferSource();
-            currentSource.buffer = audioBuffers[nextToPlay];
-            currentSource.connect(audioCtx.destination);
-            currentSource.onended = () => { nextToPlay++; playNext(); };
-            currentSource.start();
-        }
-
-        function stopCurrentAudio() {
-            if (currentSource) { try { currentSource.stop(); } catch(e) {} }
-            isPlaying = false;
-            audioBuffers = {};
-            nextToPlay = 0;
-        }
-
-        function togglePlayback() {
-            isPlaying ? stopCurrentAudio() : playNext();
-        }
-
-        async function uploadFiles() {
-            const file = document.getElementById('scriptInput').files[0];
-            if (!file) return;
-            const formData = new FormData();
-            formData.append('scripts', file);
-            formData.append('mode', document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film');
-            const res = await (await fetch('/analyze', { method: 'POST', body: formData })).json();
-            addMessage(res.message);
-            speak(res.message);
-        }
-
-        function addMessage(text, user=false) {
-            const div = document.createElement('div');
-            div.className = user ? 'msg user-msg' : 'msg';
-            div.innerText = text;
-            chatWindow.appendChild(div);
-            chatWindow.scrollTop = chatWindow.scrollHeight;
-        }
+        const { PDFDocument } = PDFLib;
+        const filePicker = document.getElementById('filePicker');
+        const fileListDiv = document.getElementById('fileList');
+        const mergeBtn = document.getElementById('mergeBtn');
         
-        function wipeMemory() { fetch('/clear-memory', { method: 'POST' }); }
-        function sendBanter() { 
-            const val = textInput.value;
-            addMessage(val, true);
-            fetch('/chat', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message: val }) })
-            .then(r => r.json()).then(d => { addMessage(d.message); speak(d.message); });
-        }
-        function downloadPDF() { /* Logic maintained */ }
+        // Store files in a Map so we can keep track of them by their ID/Name
+        let fileMap = new Map();
 
-        window.onload = () => { initAudio(); initSpeechRecognition(); };
+        // Initialize SortableJS
+        new Sortable(fileListDiv, { animation: 150 });
+
+        filePicker.addEventListener('change', (e) => {
+            fileListDiv.innerHTML = '';
+            fileMap.clear();
+
+            Array.from(e.target.files).forEach((file, index) => {
+                const id = 'file-' + index;
+                fileMap.set(id, file);
+
+                const div = document.createElement('div');
+                div.className = 'file-item';
+                div.id = id;
+                div.textContent = file.name;
+                fileListDiv.appendChild(div);
+            });
+            mergeBtn.style.display = 'block';
+        });
+
+        mergeBtn.addEventListener('click', async () => {
+            const mergedPdf = await PDFDocument.create();
+            
+            // Get the order from the DOM after user dragging
+            const currentOrder = Array.from(fileListDiv.children).map(el => el.id);
+
+            for (const id of currentOrder) {
+                const file = fileMap.get(id);
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await PDFDocument.load(arrayBuffer);
+                const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+                pages.forEach(p => mergedPdf.addPage(p));
+            }
+
+            const pdfBytes = await mergedPdf.save();
+            const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'merged.pdf';
+            link.click();
+        });
     </script>
 </body>
 </html>
