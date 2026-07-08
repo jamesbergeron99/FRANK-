@@ -112,10 +112,9 @@
             }
         }
         function playSequentially() {
-            if (!isSequenceActive || nextToPlay >= totalSections) { isPlaying = false; document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>'; return; }
+            if (!isSequenceActive || nextToPlay >= totalSections) { isPlaying = false; document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>'; return; }
             if (audioBuffers[nextToPlay]) {
                 isPlaying = true;
-                document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
                 currentSource = audioCtx.createBufferSource();
                 currentSource.buffer = audioBuffers[nextToPlay];
                 currentSource.connect(audioCtx.destination);
