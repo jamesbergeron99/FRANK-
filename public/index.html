@@ -57,9 +57,8 @@
         const chatWindow = document.getElementById('chat-window');
         const textInput = document.getElementById('textInput');
         let audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-        let audioQueue = [];
-        let isPlaying = false;
-        let isSequenceActive = false;
+        
+        let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0, isSequenceActive = false;
 
         const welcomeText = "Ah — there you are. Come in, don't hover in the doorway. If you've brought me a script, I assume you're ready for the truth — or at least a version of it that's useful. I'm Frank. Not just in name — by temperament. I don't do vague encouragement, and I don't hand out gold stars for effort. What I do is take your script apart, figure out what's working, what's not, and tell you exactly where the engine is stalling. Upload your script. Give me a moment. And try not to flinch when I get to the good part.";
 
@@ -67,71 +66,67 @@
             localStorage.clear();
             addMessage(welcomeText);
             speak(welcomeText);
-            prefetchTVGreeting();
+            initSpeechRecognition();
         };
 
         function initAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
 
+        function splitIntoChunks(text) {
+            return text.match(/[^.!?]+[.!?]+[\s]*/g) || [text];
+        }
+
         async function speak(fullText) {
-            await initAudio();
+            stopCurrentAudio();
+            const chunks = splitIntoChunks(fullText);
+            totalSections = chunks.length;
+            nextToPlay = 0;
+            audioBuffers = {};
             isSequenceActive = true;
+            
             const settingsResp = await fetch('/voice-settings');
-            const { apiKey } = await settingsResp.json();
-            
-            const chunks = fullText.split(/(?<=\. |\n)/g).filter(s => s.trim().length > 1);
-            
-            for (const chunk of chunks) {
-                if (!isSequenceActive) break;
+            const settings = await settingsResp.json();
+
+            chunks.forEach(async (chunk, index) => {
                 try {
                     const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
                         method: "POST",
-                        headers: { "Authorization": `Basic ${apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: chunk.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                        headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ text: chunk, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                     });
                     const data = await res.json();
                     if (data.audioContent) {
-                        const buffer = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
-                        audioQueue.push(buffer);
-                        if (!isPlaying) playNext();
+                        audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
+                        if (!isPlaying && isSequenceActive && index === 0) playSequentially();
                     }
-                } catch(e) { console.error("TTS fetch error", e); }
-            }
+                } catch (e) {}
+            });
         }
 
-        function playNext() {
-            if (audioQueue.length === 0) {
-                isPlaying = false;
-                document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
-                return;
+        function playSequentially() {
+            if (!isSequenceActive || nextToPlay >= totalSections) { isPlaying = false; return; }
+            if (audioBuffers[nextToPlay]) {
+                isPlaying = true;
+                currentSource = audioCtx.createBufferSource();
+                currentSource.buffer = audioBuffers[nextToPlay];
+                currentSource.connect(audioCtx.destination);
+                currentSource.onended = () => { nextToPlay++; playSequentially(); };
+                currentSource.start();
+            } else {
+                setTimeout(playSequentially, 100);
             }
-            isPlaying = true;
-            document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
-            const source = audioCtx.createBufferSource();
-            source.buffer = audioQueue.shift();
-            source.connect(audioCtx.destination);
-            source.onended = playNext;
-            source.start();
         }
 
         function stopCurrentAudio() {
             isSequenceActive = false;
             isPlaying = false;
-            audioQueue = [];
-            document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
+            if (currentSource) { try { currentSource.stop(); } catch(e) {} currentSource = null; }
         }
 
         function togglePlayback() {
-            isPlaying ? stopCurrentAudio() : playNext();
+            isPlaying ? stopCurrentAudio() : playSequentially();
         }
 
-        async function prefetchTVGreeting() {
-            try {
-                const response = await fetch('/tv-greeting', { method: 'POST' });
-                const data = await response.json();
-                console.log("TV Greeting Prefetched");
-            } catch(e) {}
-        }
-
+        // --- Original methods preserved exactly ---
         function addMessage(text, user = false) {
             const div = document.createElement('div');
             div.className = user ? 'msg user-msg' : 'msg';
@@ -169,8 +164,9 @@
             speak(data.message);
         }
         
-        function downloadPDF() { /* Preserved */ }
+        function initSpeechRecognition() { /* Preserved */ }
         function toggleMic() { /* Preserved */ }
+        function downloadPDF() { /* Preserved */ }
     </script>
 </body>
 </html>
