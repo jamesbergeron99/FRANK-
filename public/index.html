@@ -65,14 +65,14 @@
         window.onload = async () => {
             localStorage.clear();
             addMessage(welcomeText);
-            speak(welcomeText);
+            preWarmGreeting(welcomeText);
             initSpeechRecognition();
             prefetchTVGreeting();
         };
 
         function initAudio() { if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); }
 
-        // --- Audio Logic (Preserving your working sequential playback) ---
+        // --- Audio Playback (DO NOT MODIFY) ---
         async function speak(fullText) {
             stopCurrentAudio();
             const rawSections = fullText.split(/(?<=\. |\n)/g);
@@ -87,7 +87,7 @@
                         audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
                         if (index === 0 && !isPlaying) playSequentially();
                     }
-                } catch (e) {}
+                } catch (e) { console.error(e); }
             });
         }
 
@@ -100,11 +100,10 @@
             } else { setTimeout(playSequentially, 150); }
         }
 
-        function stopCurrentAudio() { isSequenceActive = false; isPlaying = false; if (currentSource) { try { currentSource.stop(); } catch(e) {} currentSource = null; } document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>'; }
+        function stopCurrentAudio() { isSequenceActive = false; isPlaying = false; if (currentSource) { try { currentSource.stop(); } catch(e) {} currentSource = null; } document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>'; }
         function togglePlayback() { isPlaying ? stopCurrentAudio() : playSequentially(); }
 
-        // --- Dictation & Greeting Logic Restored ---
-        let recognition = null, currentTranscript = '', micActive = false;
+        // --- Restored Functionality ---
         function initSpeechRecognition() {
             const micBtn = document.getElementById('micBtn');
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -122,10 +121,25 @@
             recognition.onerror = () => { micActive = false; micBtn.classList.remove('recording'); };
         }
 
+        let recognition = null, currentTranscript = '', micActive = false;
         function toggleMic() {
             const micBtn = document.getElementById('micBtn');
             if (micActive) { recognition.stop(); micActive = false; micBtn.classList.remove('recording'); }
             else { currentTranscript = textInput.value ? textInput.value.trim() + ' ' : ''; micActive = true; micBtn.classList.add('recording'); try { recognition.start(); } catch(e) {} }
+        }
+
+        async function preWarmGreeting(text) {
+            const settings = await (await fetch('/voice-settings')).json();
+            const parts = text.split(/(?<=\. )/);
+            totalSections = parts.length; isSequenceActive = true;
+            parts.forEach(async (part, index) => {
+                const res = await fetch("https://api.inworld.ai/tts/v1/voice", { method: "POST", headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ text: part, voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" }) });
+                const data = await res.json();
+                if (data.audioContent) {
+                    audioBuffers[index] = await audioCtx.decodeAudioData(Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer);
+                    if (index === 0 && !isPlaying) playSequentially();
+                }
+            });
         }
 
         async function prefetchTVGreeting() {
@@ -144,7 +158,6 @@
             } catch(e) {}
         }
 
-        // --- Standard UI Helpers ---
         async function uploadFiles() { const fileInput = document.getElementById('scriptInput'); addMessage('Analyzing... This takes a few moments, darling...', false); const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film'; const formData = new FormData(); formData.append('mode', mode); formData.append('scripts', fileInput.files[0]); const response = await fetch('/analyze', { method: 'POST', body: formData }); const data = await response.json(); addMessage(data.message); speak(data.message); }
         function sendBanter() { const val = textInput.value.trim(); if (!val) return; textInput.value = ''; addMessage(val, true); fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) }).then(r => r.json()).then(d => { addMessage(d.message); speak(d.message); }); }
         async function wipeMemory() { stopCurrentAudio(); const r = await fetch('/clear-memory', { method: 'POST' }); const d = await r.json(); addMessage(d.message); speak(d.message); }
