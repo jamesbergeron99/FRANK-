@@ -65,6 +65,8 @@
         }
 
         let audioBuffers = {}, nextToPlay = 0, isPlaying = false, currentSource = null, totalSections = 0, isSequenceActive = false;
+        let waitStartTime = null; // tracks how long we've been stalled waiting on the current chunk
+        const CHUNK_STALL_TIMEOUT_MS = 12000; // give up waiting on a single chunk after this long
 
         let tvGreetingBuffers = null;
         let tvGreetingText = null;
@@ -100,6 +102,31 @@
             return chunks;
         }
 
+        // --- Robust TTS fetch: retries a couple times, then returns the 'FAILED' sentinel
+        // instead of leaving the slot empty forever. This is what stops playback from
+        // hanging silently partway through.
+        async function fetchTTSAudio(text, settings, attempt = 0) {
+            try {
+                const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
+                    method: "POST",
+                    headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ text: text.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                });
+                const data = await res.json();
+                if (!data.audioContent) throw new Error('No audioContent in TTS response');
+                return await audioCtx.decodeAudioData(
+                    Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
+                );
+            } catch (e) {
+                if (attempt < 2) {
+                    await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
+                    return fetchTTSAudio(text, settings, attempt + 1);
+                }
+                console.warn('TTS chunk failed after retries, skipping it:', e);
+                return 'FAILED';
+            }
+        }
+
         async function prefetchTVGreeting() {
             try {
                 const [greetingResp, settingsResp] = await Promise.all([
@@ -112,18 +139,7 @@
                 const chunks = splitIntoChunks(tvGreetingText);
                 const bufferMap = {};
                 await Promise.all(chunks.map(async (chunk, index) => {
-                    try {
-                        const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
-                            method: "POST",
-                            headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                            body: JSON.stringify({ text: chunk.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
-                        });
-                        const data = await res.json();
-                        if (!data.audioContent) return;
-                        bufferMap[index] = await audioCtx.decodeAudioData(
-                            Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
-                        );
-                    } catch(e) {}
+                    bufferMap[index] = await fetchTTSAudio(chunk, settings);
                 }));
                 tvGreetingBuffers = { bufferMap, totalSections: chunks.length };
             } catch(e) {}
@@ -180,6 +196,7 @@
                     audioBuffers = tvGreetingBuffers.bufferMap;
                     totalSections = tvGreetingBuffers.totalSections;
                     nextToPlay = 0;
+                    waitStartTime = null;
                     isSequenceActive = true;
                     audioCtx.resume().then(() => playSequentially());
                     tvGreetingBuffers = null;
@@ -202,20 +219,13 @@
             try {
                 const settingsResp = await fetch('/voice-settings');
                 const settings = await settingsResp.json();
-                const parts = text.split(/(?<=\. )/);
+                const parts = splitIntoChunks(text);
                 totalSections = parts.length;
+                nextToPlay = 0;
+                waitStartTime = null;
                 isSequenceActive = true;
                 parts.forEach(async (part, index) => {
-                    const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
-                        method: "POST",
-                        headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: part.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
-                    });
-                    const data = await res.json();
-                    if (!data.audioContent) return;
-                    audioBuffers[index] = await audioCtx.decodeAudioData(
-                        Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
-                    );
+                    audioBuffers[index] = await fetchTTSAudio(part, settings);
                     if (index === 0 && !isPlaying) {
                         audioCtx.resume().then(() => playSequentially());
                     }
@@ -243,7 +253,7 @@
             if (!audioCtx) return;
 
             stopCurrentAudio();
-            
+
             const rawSections = fullText.split(/(?<=\. |\n)/g);
             const chunks = [];
             for (const section of rawSections) {
@@ -254,45 +264,56 @@
                     chunks.push(section.trim());
                 }
             }
-            audioBuffers = {}; nextToPlay = 0;
+            audioBuffers = {}; nextToPlay = 0; waitStartTime = null;
             totalSections = chunks.length;
             isSequenceActive = true;
             const settingsResp = await fetch('/voice-settings');
             const settings = await settingsResp.json();
             chunks.forEach(async (chunk, index) => {
-                try {
-                    const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
-                        method: "POST",
-                        headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: chunk.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
-                    });
-                    const data = await res.json();
-                    if (!data.audioContent) return;
-                    audioBuffers[index] = await audioCtx.decodeAudioData(
-                        Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
-                    );
-                    if (!isPlaying && isSequenceActive && index === 0) playSequentially();
-                } catch (e) {}
+                audioBuffers[index] = await fetchTTSAudio(chunk, settings);
+                if (!isPlaying && isSequenceActive && index === 0) playSequentially();
             });
         }
 
         function playSequentially() {
             if (!isSequenceActive || nextToPlay >= totalSections) { isPlaying = false; return; }
-            if (audioBuffers[nextToPlay]) {
+
+            const buf = audioBuffers[nextToPlay];
+
+            // Chunk permanently failed after retries — skip it immediately, don't stall.
+            if (buf === 'FAILED') {
+                nextToPlay++;
+                waitStartTime = null;
+                playSequentially();
+                return;
+            }
+
+            if (buf) {
+                waitStartTime = null;
                 isPlaying = true;
                 document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
                 currentSource = audioCtx.createBufferSource();
-                currentSource.buffer = audioBuffers[nextToPlay];
+                currentSource.buffer = buf;
                 currentSource.connect(audioCtx.destination);
                 currentSource.onended = () => { if (isSequenceActive) { nextToPlay++; playSequentially(); } };
                 currentSource.start();
-            } else {
-                if (isSequenceActive) setTimeout(playSequentially, 50);
+                return;
+            }
+
+            // Buffer not ready yet — keep polling, but don't wait forever.
+            if (waitStartTime === null) waitStartTime = Date.now();
+            if (Date.now() - waitStartTime > CHUNK_STALL_TIMEOUT_MS) {
+                console.warn('Timed out waiting for audio chunk ' + nextToPlay + ', skipping it.');
+                nextToPlay++;
+                waitStartTime = null;
+                playSequentially();
+            } else if (isSequenceActive) {
+                setTimeout(playSequentially, 50);
             }
         }
 
         function stopCurrentAudio() {
-            isSequenceActive = false; isPlaying = false;
+            isSequenceActive = false; isPlaying = false; waitStartTime = null;
             if (currentSource) { try { currentSource.stop(); } catch(e) {} currentSource = null; }
             document.getElementById('playPauseBtn').innerHTML = '<i class="fas fa-play"></i>';
         }
