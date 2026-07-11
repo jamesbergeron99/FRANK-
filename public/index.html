@@ -102,7 +102,7 @@
             return chunks;
         }
 
-        // --- Robust TTS fetch: retries a couple times, then returns the 'FAILED' sentinel
+        // --- Robust TTS fetch: retries with backoff, then returns the 'FAILED' sentinel
         // instead of leaving the slot empty forever. This is what stops playback from
         // hanging silently partway through.
         async function fetchTTSAudio(text, settings, attempt = 0) {
@@ -118,13 +118,35 @@
                     Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
                 );
             } catch (e) {
-                if (attempt < 2) {
-                    await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
+                if (attempt < 3) {
+                    await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
                     return fetchTTSAudio(text, settings, attempt + 1);
                 }
                 console.warn('TTS chunk failed after retries, skipping it:', e);
                 return 'FAILED';
             }
+        }
+
+        // --- Concurrency-limited chunk loader. Firing every chunk of a long document at
+        // the TTS API simultaneously trips its rate limiting, which silently fails a batch
+        // of chunks at once (that's what caused big chunks of the middle to get skipped).
+        // Only a few requests are in flight at a time here, and playback starts as soon as
+        // chunk 0 is ready — same as before, just paced.
+        async function loadAudioChunks(chunks, settings, targetBuffers, onFirstReady, concurrency = 3) {
+            let cursor = 0;
+            let firstReadyFired = false;
+            async function worker() {
+                while (cursor < chunks.length) {
+                    const index = cursor++;
+                    targetBuffers[index] = await fetchTTSAudio(chunks[index], settings);
+                    if (index === 0 && !firstReadyFired) {
+                        firstReadyFired = true;
+                        if (onFirstReady) onFirstReady();
+                    }
+                }
+            }
+            const workerCount = Math.min(concurrency, chunks.length) || 1;
+            await Promise.all(Array.from({ length: workerCount }, () => worker()));
         }
 
         async function prefetchTVGreeting() {
@@ -138,9 +160,7 @@
                 tvGreetingText = greetingData.message;
                 const chunks = splitIntoChunks(tvGreetingText);
                 const bufferMap = {};
-                await Promise.all(chunks.map(async (chunk, index) => {
-                    bufferMap[index] = await fetchTTSAudio(chunk, settings);
-                }));
+                await loadAudioChunks(chunks, settings, bufferMap, null);
                 tvGreetingBuffers = { bufferMap, totalSections: chunks.length };
             } catch(e) {}
         }
@@ -224,11 +244,8 @@
                 nextToPlay = 0;
                 waitStartTime = null;
                 isSequenceActive = true;
-                parts.forEach(async (part, index) => {
-                    audioBuffers[index] = await fetchTTSAudio(part, settings);
-                    if (index === 0 && !isPlaying) {
-                        audioCtx.resume().then(() => playSequentially());
-                    }
+                loadAudioChunks(parts, settings, audioBuffers, () => {
+                    if (!isPlaying) audioCtx.resume().then(() => playSequentially());
                 });
             } catch (e) {}
         }
@@ -269,9 +286,8 @@
             isSequenceActive = true;
             const settingsResp = await fetch('/voice-settings');
             const settings = await settingsResp.json();
-            chunks.forEach(async (chunk, index) => {
-                audioBuffers[index] = await fetchTTSAudio(chunk, settings);
-                if (!isPlaying && isSequenceActive && index === 0) playSequentially();
+            loadAudioChunks(chunks, settings, audioBuffers, () => {
+                if (!isPlaying && isSequenceActive) playSequentially();
             });
         }
 
