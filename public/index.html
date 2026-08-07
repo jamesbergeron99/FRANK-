@@ -97,7 +97,13 @@
                 const r = await fetch('/greeting', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sessionId: SESSION_ID, mode, context, hour: new Date().getHours() })
+                    body: JSON.stringify({
+                        sessionId: SESSION_ID,
+                        mode,
+                        context,
+                        hour: new Date().getHours(),
+                        minute: new Date().getMinutes()
+                    })
                 });
                 const d = await r.json();
                 return (d && d.message) ? d.message : LAST_RESORT_GREETING;
@@ -158,7 +164,35 @@
             return chunks;
         }
 
-        // --- Robust TTS fetch: retries with backoff, then returns the 'FAILED' sentinel
+        // --- SPEECH NORMALIZATION --------------------------------------------
+        // The voice engine treats an all-capitals word as an initialism, which is
+        // why FRANK'S AUDIT - TV PILOT comes out mangled while the same words read
+        // correctly further down in ordinary prose. Headings are lowered to normal
+        // case for the voice only; what you see on screen is untouched.
+        const SPOKEN_ACRONYMS = new Set([
+            'TV','DJ','ID','ICU','ER','MDMA','GHB','LSD','DNA','CEO','HBO','AMC','FX',
+            'UK','US','USA','LA','NYC','PA','VHS','CD','MC','AA','NA','OK','PG','DVD','MTV','BBC'
+        ]);
+
+        function textForSpeech(text) {
+            return text
+                .replace(/Logline/gi, 'Log line')
+                .replace(/\s*[—–]\s*/g, ', ')          // em dashes read as an abrupt stop
+                .replace(/\s+\/\s+/g, ' or ')          // "TV PILOT / EPISODE"
+                .replace(/\b[A-Z][A-Z'’]*[A-Z]\b/g, w => {
+                    const bare = w.replace(/[^A-Z]/g, '');
+                    return SPOKEN_ACRONYMS.has(bare) ? w : w.charAt(0) + w.slice(1).toLowerCase();
+                });
+        }
+
+        // Fetched once and shared, so the greeting isn't waiting on a round trip.
+        let voiceSettingsPromise = null;
+        function getVoiceSettings() {
+            if (!voiceSettingsPromise) {
+                voiceSettingsPromise = fetch('/voice-settings').then(r => r.json());
+            }
+            return voiceSettingsPromise;
+        }
         // instead of leaving the slot empty forever. This is what stops playback from
         // hanging silently partway through.
         async function fetchTTSAudio(text, settings, attempt = 0) {
@@ -166,7 +200,7 @@
                 const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
                     method: "POST",
                     headers: { "Authorization": `Basic ${settings.apiKey}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ text: text.replace(/Logline/gi, 'Log line'), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
+                    body: JSON.stringify({ text: textForSpeech(text), voiceId: "default-oglabcjnetcklcq7rghmbw__frank", modelId: "inworld-tts-1.5-max" })
                 });
                 const data = await res.json();
                 if (!data.audioContent) throw new Error('No audioContent in TTS response');
@@ -210,7 +244,7 @@
             try {
                 const [text, settings] = await Promise.all([
                     fetchGreeting(mode, 'switch'),
-                    fetch('/voice-settings').then(r => r.json())
+                    getVoiceSettings()
                 ]);
                 const chunks = splitIntoChunks(text);
                 const bufferMap = {};
@@ -291,8 +325,7 @@
 
         async function preWarmGreeting(text) {
             try {
-                const settingsResp = await fetch('/voice-settings');
-                const settings = await settingsResp.json();
+                const settings = await getVoiceSettings();
                 const parts = splitIntoChunks(text);
                 totalSections = parts.length;
                 nextToPlay = 0;
@@ -339,8 +372,7 @@
             audioBuffers = {}; nextToPlay = 0; waitStartTime = null;
             totalSections = chunks.length;
             isSequenceActive = true;
-            const settingsResp = await fetch('/voice-settings');
-            const settings = await settingsResp.json();
+            const settings = await getVoiceSettings();
             loadAudioChunks(chunks, settings, audioBuffers, () => {
                 if (!isPlaying && isSequenceActive) playSequentially();
             });
