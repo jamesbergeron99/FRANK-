@@ -16,6 +16,8 @@
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 20px; border: 1px solid var(--gold); }
         .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 2px; background-color: var(--gold); transition: .4s; border-radius: 50%; }
         input:checked + .slider:before { transform: translateX(24px); }
+        #memoryStatus { margin-top: 8px; font-size: 0.7rem; letter-spacing: 1.5px; color: #8a7327; text-transform: uppercase; }
+        #memoryStatus.loaded { color: var(--gold); }
         #chat-window { flex-grow: 1; overflow-y: auto; padding: 25px; display: flex; flex-direction: column; gap: 20px; background: #080808; }
         .msg { max-width: 90%; padding: 25px; border-radius: 10px; line-height: 1.8; font-size: 1.1rem; white-space: pre-wrap; background: var(--card); border-left: 4px solid var(--gold); }
         .user-msg { align-self: flex-end; border-left: none; border-right: 4px solid var(--gold); background: #222; }
@@ -39,6 +41,7 @@
             <label class="switch"><input type="checkbox" id="modeToggle"><span class="slider"></span></label>
             <span>T.V. SERIES</span>
         </div>
+        <div id="memoryStatus">Checking the filing cabinet...</div>
         <button class="clear-btn" onclick="wipeMemory()"><i class="fas fa-trash-alt"></i> WIPEMEMORY</button>
     </div>
     <div id="chat-window"></div>
@@ -57,6 +60,21 @@
         const chatWindow = document.getElementById('chat-window');
         const textInput = document.getElementById('textInput');
 
+        // --- SESSION IDENTITY -------------------------------------------------
+        // One stable id per browser, kept forever. This is what lets the server
+        // hand the same script and the same coverage history back on a return
+        // visit. Do NOT clear localStorage on load — that was wiping the key.
+        function getSessionId() {
+            let id = null;
+            try { id = localStorage.getItem('frankSessionId'); } catch (e) {}
+            if (!id) {
+                id = 'frank-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+                try { localStorage.setItem('frankSessionId', id); } catch (e) {}
+            }
+            return id;
+        }
+        const SESSION_ID = getSessionId();
+
         let audioCtx;
         try {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
@@ -70,17 +88,45 @@
 
         let tvGreetingBuffers = null;
         let tvGreetingText = null;
-        let tvSeriesMemory = "";
 
         const welcomeText = "Ah — there you are. Come in, don't hover in the doorway. If you've brought me a script, I assume you're ready for the truth — or at least a version of it that's useful. I'm Frank. Not just in name — by temperament. I don't do vague encouragement, and I don't hand out gold stars for effort. What I do is take your script apart, figure out what's working, what's not, and tell you exactly where the engine is stalling. Upload your script. Give me a moment. And try not to flinch when I get to the good part.";
 
+        const returningText = (title, draft) => `Back again. I still have ${title ? title : 'your pages'} on the desk — draft ${draft}, and my notes on it. Ask me anything about what's in there, or hand me the new version and I'll tell you what you actually fixed.`;
+
         window.onload = async () => {
-            localStorage.clear();
-            addMessage(welcomeText);
-            preWarmGreeting(welcomeText);
+            const status = await refreshStatus();
+            if (status && status.hasScript) {
+                const text = returningText(status.title, status.drafts);
+                addMessage(text);
+                preWarmGreeting(text);
+            } else {
+                addMessage(welcomeText);
+                preWarmGreeting(welcomeText);
+            }
             initSpeechRecognition();
             prefetchTVGreeting();
         };
+
+        async function refreshStatus() {
+            const el = document.getElementById('memoryStatus');
+            try {
+                const r = await fetch('/session?sessionId=' + encodeURIComponent(SESSION_ID));
+                const d = await r.json();
+                if (d.hasScript) {
+                    el.classList.add('loaded');
+                    el.textContent = 'ON FILE: ' + (d.title || 'UNTITLED') + ' — DRAFT ' + d.drafts +
+                        ' · ' + d.coverageCount + ' PASS' + (d.coverageCount === 1 ? '' : 'ES') + ' REMEMBERED';
+                } else {
+                    el.classList.remove('loaded');
+                    el.textContent = 'No script on file';
+                }
+                return d;
+            } catch (e) {
+                el.classList.remove('loaded');
+                el.textContent = 'Memory unavailable';
+                return null;
+            }
+        }
 
         function initAudio() {
             if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
@@ -257,13 +303,14 @@
             const mode = document.getElementById('modeToggle').checked ? 'T.V. Series' : 'Feature Film';
             const formData = new FormData();
             formData.append('mode', mode);
+            formData.append('sessionId', SESSION_ID);
             formData.append('scripts', fileInput.files[0]);
-            if (mode === 'T.V. Series') formData.append('memory', tvSeriesMemory);
             const response = await fetch('/analyze', { method: 'POST', body: formData });
             const data = await response.json();
-            if (mode === 'T.V. Series' && data.memory) tvSeriesMemory = data.memory;
             addMessage(data.message);
             speak(data.message);
+            refreshStatus();
+            fileInput.value = '';
         }
 
         async function speak(fullText) {
@@ -340,13 +387,17 @@
         }
 
         async function wipeMemory() {
+            if (!confirm("This clears the script, all coverage, and this conversation from Frank's files. Continue?")) return;
             stopCurrentAudio();
-            tvSeriesMemory = "";
             audioBuffers = {};
             nextToPlay = 0;
             totalSections = 0;
             try {
-                const response = await fetch('/clear-memory', { method: 'POST' });
+                const response = await fetch('/clear-memory', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId: SESSION_ID })
+                });
                 const data = await response.json();
                 addMessage(data.message, false);
                 speak(data.message);
@@ -355,6 +406,7 @@
                 addMessage(fallbackMsg, false);
                 speak(fallbackMsg);
             }
+            refreshStatus();
         }
 
         function sendBanter() {
@@ -363,7 +415,11 @@
             textInput.value = '';
             currentTranscript = '';
             addMessage(val, true);
-            fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: val }) })
+            fetch('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: val, sessionId: SESSION_ID })
+            })
                 .then(r => r.json())
                 .then(data => { addMessage(data.message); speak(data.message); });
         }
