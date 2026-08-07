@@ -86,25 +86,35 @@
         let waitStartTime = null; // tracks how long we've been stalled waiting on the current chunk
         const CHUNK_STALL_TIMEOUT_MS = 12000; // give up waiting on a single chunk after this long
 
-        let tvGreetingBuffers = null;
-        let tvGreetingText = null;
+        // Greeting for the mode you'd switch to, warmed up in advance so the
+        // toggle stays instant even though the line is written fresh each time.
+        const pendingGreetings = { feature: null, tv: null };
 
-        const welcomeText = "Ah — there you are. Come in, don't hover in the doorway. If you've brought me a script, I assume you're ready for the truth — or at least a version of it that's useful. I'm Frank. Not just in name — by temperament. I don't do vague encouragement, and I don't hand out gold stars for effort. What I do is take your script apart, figure out what's working, what's not, and tell you exactly where the engine is stalling. Upload your script. Give me a moment. And try not to flinch when I get to the good part.";
+        const LAST_RESORT_GREETING = "Come in, sit down. Set the switch up top for feature or series, then hand me your pages and we'll find out what you've got.";
 
-        const returningText = (title, draft) => `Back again. I still have ${title ? title : 'your pages'} on the desk — draft ${draft}, and my notes on it. Ask me anything about what's in there, or hand me the new version and I'll tell you what you actually fixed.`;
+        async function fetchGreeting(mode, context) {
+            try {
+                const r = await fetch('/greeting', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId: SESSION_ID, mode, context, hour: new Date().getHours() })
+                });
+                const d = await r.json();
+                return (d && d.message) ? d.message : LAST_RESORT_GREETING;
+            } catch (e) {
+                return LAST_RESORT_GREETING;
+            }
+        }
 
         window.onload = async () => {
-            const status = await refreshStatus();
-            if (status && status.hasScript) {
-                const text = returningText(status.title, status.drafts);
-                addMessage(text);
-                preWarmGreeting(text);
-            } else {
-                addMessage(welcomeText);
-                preWarmGreeting(welcomeText);
-            }
             initSpeechRecognition();
-            prefetchTVGreeting();
+            refreshStatus();
+            const holder = addMessage('Frank is looking up from his desk...');
+            const text = await fetchGreeting('feature', 'arrival');
+            holder.innerText = text;
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+            preWarmGreeting(text);
+            prefetchGreeting('tv');
         };
 
         async function refreshStatus() {
@@ -195,19 +205,17 @@
             await Promise.all(Array.from({ length: workerCount }, () => worker()));
         }
 
-        async function prefetchTVGreeting() {
+        async function prefetchGreeting(mode) {
+            pendingGreetings[mode] = null;
             try {
-                const [greetingResp, settingsResp] = await Promise.all([
-                    fetch('/tv-greeting', { method: 'POST' }),
-                    fetch('/voice-settings')
+                const [text, settings] = await Promise.all([
+                    fetchGreeting(mode, 'switch'),
+                    fetch('/voice-settings').then(r => r.json())
                 ]);
-                const greetingData = await greetingResp.json();
-                const settings = await settingsResp.json();
-                tvGreetingText = greetingData.message;
-                const chunks = splitIntoChunks(tvGreetingText);
+                const chunks = splitIntoChunks(text);
                 const bufferMap = {};
                 await loadAudioChunks(chunks, settings, bufferMap, null);
-                tvGreetingBuffers = { bufferMap, totalSections: chunks.length };
+                pendingGreetings[mode] = { text, bufferMap, totalSections: chunks.length };
             } catch(e) {}
         }
 
@@ -255,30 +263,30 @@
         }
 
         document.getElementById('modeToggle').addEventListener('change', async function() {
-            if (this.checked) {
-                if (tvGreetingBuffers && tvGreetingText) {
-                    addMessage(tvGreetingText);
-                    stopCurrentAudio();
-                    audioBuffers = tvGreetingBuffers.bufferMap;
-                    totalSections = tvGreetingBuffers.totalSections;
-                    nextToPlay = 0;
-                    waitStartTime = null;
-                    isSequenceActive = true;
-                    audioCtx.resume().then(() => playSequentially());
-                    tvGreetingBuffers = null;
-                    tvGreetingText = null;
-                    prefetchTVGreeting();
-                } else {
-                    const response = await fetch('/tv-greeting', { method: 'POST' });
-                    const data = await response.json();
-                    addMessage(data.message);
-                    speak(data.message);
-                }
+            const mode = this.checked ? 'tv' : 'feature';
+            const nextMode = this.checked ? 'feature' : 'tv';
+
+            const ready = pendingGreetings[mode];
+            pendingGreetings[mode] = null;
+
+            if (ready) {
+                addMessage(ready.text);
+                stopCurrentAudio();
+                audioBuffers = ready.bufferMap;
+                totalSections = ready.totalSections;
+                nextToPlay = 0;
+                waitStartTime = null;
+                isSequenceActive = true;
+                audioCtx.resume().then(() => playSequentially());
             } else {
-                const fText = "Ah, back to features. Let's see if you can tell a complete story in one sitting.";
-                addMessage(fText);
-                speak(fText);
+                const holder = addMessage('...');
+                const text = await fetchGreeting(mode, 'switch');
+                holder.innerText = text;
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+                speak(text);
             }
+
+            prefetchGreeting(nextMode);
         });
 
         async function preWarmGreeting(text) {
@@ -430,6 +438,7 @@
             div.innerText = text;
             chatWindow.appendChild(div);
             chatWindow.scrollTop = chatWindow.scrollHeight;
+            return div;
         }
 
         function downloadPDF() {
