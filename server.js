@@ -67,12 +67,13 @@ const COVERAGE_IN_PROMPT = 2;       // how many prior passes Frank re-reads on a
 const CHAT_TURNS_KEEP = 40;
 
 function blankSession() {
-    return { scriptText: '', scriptTitle: '', drafts: 0, mode: null, coverage: [], chat: [], recentGreetings: [], updatedAt: Date.now() };
+    return { scriptText: '', scriptTitle: '', drafts: 0, mode: null, coverage: [], chat: [], recentGreetings: [], nextGreeting: null, updatedAt: Date.now() };
 }
 function getSession(id) {
     const key = (id && String(id).slice(0, 64)) || 'default';
     if (!store[key]) store[key] = blankSession();
     if (!store[key].recentGreetings) store[key].recentGreetings = []; // migrate older records
+    if (store[key].nextGreeting === undefined) store[key].nextGreeting = null;
     return store[key];
 }
 function peekSession(id) {
@@ -239,7 +240,7 @@ const GREETING_ANGLES = [
     "you cannot find your reading glasses",
     "you read something dull earlier and their arrival is a marked improvement",
     "you are eating something you have been told not to eat",
-    "you remark on the hour and what it says about a writer's habits",
+    "you remark on the hour, using the TIME token, and what it says about a writer's habits",
     "you were not expecting anyone and you are pleased anyway",
     "a call with a network went badly and you are still recovering",
     "the office is quiet and you have been enjoying that",
@@ -254,7 +255,48 @@ const GREETING_ANGLES = [
 
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
-function greetingSystemPrompt(session, mode, context) {
+// --- THE CLOCK ------------------------------------------------------------
+// The model is never told the hour, because it will cheerfully invent one and
+// "three o'clock" is a phrase it reaches for whether or not it is three. It
+// writes the token {TIME} instead and the server fills in the real phrase at
+// the moment the greeting is served. That also means a greeting can be written
+// in advance and still be accurate about the time when it is finally spoken.
+const HOUR_WORDS = ['twelve', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven'];
+
+function dayPartName(hour) {
+    if (hour === null) return 'sometime';
+    if (hour < 5) return 'the small hours';
+    if (hour < 12) return 'the morning';
+    if (hour < 17) return 'the afternoon';
+    if (hour < 21) return 'the evening';
+    return 'late at night';
+}
+
+function dayPartSuffix(hour) {
+    if (hour < 5) return 'in the small hours';
+    if (hour < 12) return 'in the morning';
+    if (hour < 17) return 'in the afternoon';
+    if (hour < 21) return 'in the evening';
+    return 'at night';
+}
+
+function timePhrase(hour, minute) {
+    if (hour === null) return 'this hour';
+    const word = h => HOUR_WORDS[((h % 12) + 12) % 12];
+    const next = (hour + 1) % 24;
+    const m = minute || 0;
+    if (m < 8) return `just after ${word(hour)} ${dayPartSuffix(hour)}`;
+    if (m < 23) return `about a quarter past ${word(hour)} ${dayPartSuffix(hour)}`;
+    if (m < 38) return `about half past ${word(hour)} ${dayPartSuffix(hour)}`;
+    if (m < 53) return `coming up on ${word(next)} ${dayPartSuffix(next)}`;
+    return `nearly ${word(next)} ${dayPartSuffix(next)}`;
+}
+
+function fillTime(text, phrase) {
+    return text.replace(/\{\s*TIME\s*\}/gi, phrase).replace(/[{}]/g, '').trim();
+}
+
+function greetingSystemPrompt(session, mode, context, dayPart) {
     const firstTime = !session.scriptText;
     return `You are Frank — a legendary, flamboyant Studio Executive and elite Script Doctor. Sharp, witty, warm, theatrical, a little grand. A writer has just walked into your private office. Write what you say to them.
 
@@ -271,6 +313,8 @@ If a line could make someone standing at the door feel small, cut it and write a
 
 RULES OF THE GREETING:
 Two to four sentences. Sixty words at the outside. It is spoken aloud, so it must read as speech — no stage directions, no describing yourself in the third person, no asterisks, no markdown, no headings, no quotation marks wrapped around the whole thing.
+
+THE CLOCK — YOU DO NOT KNOW WHAT TIME IT IS. Never write a clock time, an hour, or a phrase such as "three o'clock", "past midnight", "this morning", or "so late". You would be guessing and you would be wrong, and there is nothing more hollow than a host who gets the hour wrong. If you want to remark on the time, write the literal token {TIME} and it will be replaced with the correct phrase before you speak. Examples of correct use: "It is {TIME}, which is precisely the wrong hour for optimism." Or: "Nothing decent has ever been written at {TIME}." The token supplies the whole phrase, so do not put an hour, a preposition of your own, or the words "o'clock" around it. It is broadly ${dayPart} where they are, so you may pitch the sentiment to that — but the hour itself belongs to the token. If you would rather not mention the time at all, don't; most greetings shouldn't.
 Finish your final sentence properly. Never trail off mid-thought.
 Never open with "Ah — there you are." That line is retired. Vary your opening word and your rhythm every single time.
 Do not describe the office as a set. Do not explain who you are at length; they know who you are.
@@ -287,10 +331,10 @@ ACCURACY: only reference details about their project that appear in the notes yo
 Plain text only. Write "Log line" as two words.`;
 }
 
-function greetingUserPrompt(session, mode, context, hour) {
+function greetingUserPrompt(session, mode, context, dayPart) {
     const bits = [];
     bits.push(`Tonal angle to build this one around: ${pick(GREETING_ANGLES)}.`);
-    if (hour !== null) bits.push(`It is roughly ${hour}:00 local time for them.`);
+    bits.push(`It is broadly ${dayPart} where they are. If you refer to the hour, use the {TIME} token and nothing else.`);
 
     if (session.scriptText) {
         bits.push(`ON FILE: ${session.scriptTitle || 'their script'}, draft ${session.drafts}, with ${session.coverage.length} pass${session.coverage.length === 1 ? '' : 'es'} of your coverage.`);
@@ -484,21 +528,15 @@ function endsCleanly(text) {
     return /[.!?…"'’”)\]]$/.test(text.trim());
 }
 
-async function handleGreeting(req, res, forcedMode) {
-    const body = req.body || {};
-    const mode = forcedMode || (body.mode === 'tv' ? 'tv' : 'feature');
-    const context = body.context === 'switch' ? 'switch' : 'arrival';
-    const hour = Number.isFinite(Number(body.hour)) ? Number(body.hour) : null;
-    const session = getSession(body.sessionId);
-
+async function generateGreetingText(session, mode, context, dayPart) {
     for (let attempt = 0; attempt < 2; attempt++) {
         try {
             const model = genAI.getGenerativeModel({
                 model: MODEL,
-                systemInstruction: greetingSystemPrompt(session, mode, context),
+                systemInstruction: greetingSystemPrompt(session, mode, context, dayPart),
                 generationConfig: { maxOutputTokens: GREETING_TOKENS, temperature: 1.15, topP: 0.95 }
             });
-            const result = await model.generateContent(greetingUserPrompt(session, mode, context, hour));
+            const result = await model.generateContent(greetingUserPrompt(session, mode, context, dayPart));
 
             const candidate = (result.response.candidates || [])[0];
             const finish = candidate && candidate.finishReason;
@@ -509,18 +547,59 @@ async function handleGreeting(req, res, forcedMode) {
             const text = result.response.text().replace(/[*_#`]/g, '').trim();
             if (!text) throw new Error('empty greeting');
             if (!endsCleanly(text)) throw new Error('greeting ended mid-sentence');
-
-            session.recentGreetings.push(text);
-            if (session.recentGreetings.length > GREETING_MEMORY) session.recentGreetings.shift();
-            saveStore();
-
-            return res.json({ message: text, generated: true });
+            return text;
         } catch (err) {
             console.warn("Greeting attempt " + (attempt + 1) + " failed:", err.message);
         }
     }
+    return null;
+}
 
-    res.json({ message: fallbackGreeting(mode, context), generated: false });
+async function handleGreeting(req, res, forcedMode) {
+    const body = req.body || {};
+    const mode = forcedMode || (body.mode === 'tv' ? 'tv' : 'feature');
+    const context = body.context === 'switch' ? 'switch' : 'arrival';
+    const hour = Number.isFinite(Number(body.hour)) ? Number(body.hour) : null;
+    const minute = Number.isFinite(Number(body.minute)) ? Number(body.minute) : 0;
+    const session = getSession(body.sessionId);
+
+    const dayPart = dayPartName(hour);
+    const phrase = timePhrase(hour, minute);
+
+    // A greeting written at the end of the last visit is served instantly here,
+    // which is what removes the wait before Frank starts talking. It is only
+    // reused if the part of the day still matches, so the sentiment stays true —
+    // the hour itself is filled in fresh, so it is never stale.
+    let raw = null;
+    const cached = session.nextGreeting;
+    if (context === 'arrival' && cached && cached.mode === mode && cached.dayPart === dayPart && cached.text) {
+        raw = cached.text;
+        session.nextGreeting = null;
+    }
+
+    if (!raw) raw = await generateGreetingText(session, mode, context, dayPart);
+
+    const generated = !!raw;
+    const message = fillTime(generated ? raw : fallbackGreeting(mode, context), phrase);
+
+    if (generated) {
+        session.recentGreetings.push(message);
+        if (session.recentGreetings.length > GREETING_MEMORY) session.recentGreetings.shift();
+    }
+    saveStore();
+    res.json({ message, generated });
+
+    // Write the next arrival greeting now, while nobody is waiting on it.
+    if (!session.nextGreeting) {
+        generateGreetingText(session, mode, 'arrival', dayPart)
+            .then(next => {
+                if (next) {
+                    session.nextGreeting = { text: next, mode, dayPart };
+                    saveStore();
+                }
+            })
+            .catch(() => {});
+    }
 }
 
 app.post('/greeting', (req, res) => handleGreeting(req, res, null));
