@@ -67,11 +67,12 @@ const COVERAGE_IN_PROMPT = 2;       // how many prior passes Frank re-reads on a
 const CHAT_TURNS_KEEP = 40;
 
 function blankSession() {
-    return { scriptText: '', scriptTitle: '', drafts: 0, mode: null, coverage: [], chat: [], updatedAt: Date.now() };
+    return { scriptText: '', scriptTitle: '', drafts: 0, mode: null, coverage: [], chat: [], recentGreetings: [], updatedAt: Date.now() };
 }
 function getSession(id) {
     const key = (id && String(id).slice(0, 64)) || 'default';
     if (!store[key]) store[key] = blankSession();
+    if (!store[key].recentGreetings) store[key].recentGreetings = []; // migrate older records
     return store[key];
 }
 function peekSession(id) {
@@ -196,6 +197,103 @@ FINAL REMINDER BEFORE YOU SPEAK: check the pages, not your notes. Plain text onl
 };
 
 /* ------------------------------------------------------------------
+   GREETINGS
+   Written fresh on every arrival and every flip of the switch, and
+   grounded in what Frank actually has on file for this writer. The
+   angle list and the recent-greeting memory are what keep him from
+   circling back to the same three jokes.
+------------------------------------------------------------------ */
+const GREETING_MEMORY = 8;
+
+const GREETING_ANGLES = [
+    "you are halfway through something else when they walk in",
+    "you were just on the phone with someone you decline to name",
+    "there is coffee involved and it is not good coffee",
+    "you gesture at the chair on the other side of the desk",
+    "you cannot find your reading glasses",
+    "you read something earlier today that disappointed you profoundly",
+    "you are eating something you have been told not to eat",
+    "you remark on the hour and what it says about a writer's habits",
+    "you were not expecting anyone and you are pleased anyway",
+    "a call with a network went badly and you are still recovering",
+    "you are suspicious of how confident they look walking in",
+    "the office is quiet and you have been enjoying that",
+    "you nod at the stack of unread pages in the corner",
+    "you are in an unusually generous mood and warn them it will not last",
+    "you have been thinking about how few writers survive their second draft",
+    "you make them wait a beat before you look up",
+    "you are pretending to be busier than you are",
+    "something outside the window has your attention"
+];
+
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+function greetingSystemPrompt(session, mode, context) {
+    const firstTime = !session.scriptText;
+    return `You are Frank — a legendary, flamboyant Studio Executive and elite Script Doctor. Sharp, witty, theatrically critical, warm underneath it but never gushing. A writer has just walked into your private office. Write what you say to them.
+
+RULES OF THE GREETING:
+Two to four sentences. Sixty words at the outside. Spoken aloud, so it must read as speech — no stage directions, no describing yourself in the third person, no asterisks, no markdown, no headings, no quotation marks around the whole thing.
+Be glad to see them without being saccharine. You do not do cheerleading, but you are not cruel to someone at the door either.
+Never open with "Ah — there you are." That line is retired. Vary your opening word and your rhythm every single time.
+Do not describe the office as a set. Do not explain who you are at length; they know who you are.
+${firstTime ? `They are new here, so somewhere in this greeting mention — in your own voice, not as a user manual — that the switch at the top of the office flips you between feature film coverage and TV series coverage, and that they should set it before they hand you pages. Then invite them to upload a script.` : `They have been here before. Do not re-introduce yourself and do not explain the interface. Talk to them like a returning client.`}
+${context === 'switch' ? (mode === 'tv'
+    ? 'They have just flipped the switch to TV SERIES. React to that specifically — you are now reading a pilot or an episode, not a feature, and that is a different animal with different demands.'
+    : 'They have just flipped the switch back to FEATURE FILM. React to that specifically — a whole story in one sitting, no season to hide behind.')
+    : (mode === 'tv' ? 'You are set to TV SERIES coverage.' : 'You are set to FEATURE FILM coverage.')}
+
+${session.recentGreetings.length ? `YOU HAVE ALREADY SAID ALL OF THE FOLLOWING TO THIS WRITER. Do not reuse these openings, images, jokes, or sentence shapes. Go somewhere new:\n${session.recentGreetings.map((g, i) => (i + 1) + '. ' + g).join('\n')}` : ''}
+
+ACCURACY: only reference details about their project that appear in the notes you are given below. Never invent a scene, a character, or a plot element. If you have nothing specific on file, keep it general rather than guessing.
+
+Plain text only. Write "Log line" as two words.`;
+}
+
+function greetingUserPrompt(session, mode, context, hour) {
+    const bits = [];
+    bits.push(`Tonal angle to build this one around: ${pick(GREETING_ANGLES)}.`);
+    if (hour !== null) bits.push(`It is roughly ${hour}:00 local time for them.`);
+
+    if (session.scriptText) {
+        bits.push(`ON FILE: ${session.scriptTitle || 'their script'}, draft ${session.drafts}, with ${session.coverage.length} pass${session.coverage.length === 1 ? '' : 'es'} of your coverage.`);
+        const last = session.coverage.slice(-1)[0];
+        if (last) {
+            bits.push(`The closing stretch of your most recent coverage, for your reference — you may glance off ONE concrete detail from it (a character, a scene, a fix you demanded), but only if it genuinely appears here:\n${last.text.slice(-1200)}`);
+        }
+    } else {
+        bits.push("ON FILE: nothing. No pages on your desk yet.");
+    }
+
+    bits.push("Now write the greeting. Output the spoken words only, nothing else.");
+    return bits.join('\n\n');
+}
+
+const FALLBACK_GREETINGS = {
+    'feature-arrival': [
+        "Come in, sit down. Features today, according to the switch up top — flip it if you meant television. Upload your pages and let's find out what you've got.",
+        "You caught me between disappointments. Set the switch for feature or series, hand me the script, and I'll tell you where the engine stalls.",
+        "Door's open. Pages first, small talk later — and mind the switch at the top if this is a pilot rather than a feature."
+    ],
+    'feature-switch': [
+        "Back to features, then. One story, one sitting, nowhere to hide. Let's see it.",
+        "Features it is. No season to bail you out this time — the whole thing has to land in one go."
+    ],
+    'tv-arrival': [
+        "Television, is it. Good — pilots are where the bodies are buried. Upload the episode and we'll see if it can sustain itself.",
+        "So we're doing series work. Hand me the pilot and let's find out whether there's a show under it or just a very good hour."
+    ],
+    'tv-switch': [
+        "Television. Fine. Different animal entirely — a pilot has to be a whole story and a promise at the same time. Let's see yours.",
+        "Series mode. Now I'm not just asking whether this works, I'm asking whether it can do it again next week."
+    ]
+};
+
+function fallbackGreeting(mode, context) {
+    return pick(FALLBACK_GREETINGS[mode + '-' + context] || FALLBACK_GREETINGS['feature-arrival']);
+}
+
+/* ------------------------------------------------------------------
    ROUTES
 ------------------------------------------------------------------ */
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
@@ -299,9 +397,36 @@ app.get('/session', (req, res) => {
     });
 });
 
-app.post('/tv-greeting', (req, res) => {
-    res.json({ message: "Oh, we're doing a TV pilot now? Fantastic!. Let's see if you've got something that can actually sustain itself—or if it collapses under its own ambition." });
-});
+async function handleGreeting(req, res, forcedMode) {
+    const body = req.body || {};
+    const mode = forcedMode || (body.mode === 'tv' ? 'tv' : 'feature');
+    const context = body.context === 'switch' ? 'switch' : 'arrival';
+    const hour = Number.isFinite(Number(body.hour)) ? Number(body.hour) : null;
+    const session = getSession(body.sessionId);
+
+    try {
+        const model = genAI.getGenerativeModel({
+            model: MODEL,
+            systemInstruction: greetingSystemPrompt(session, mode, context),
+            generationConfig: { maxOutputTokens: 400, temperature: 1.15, topP: 0.95 }
+        });
+        const result = await model.generateContent(greetingUserPrompt(session, mode, context, hour));
+        const text = result.response.text().replace(/[*_#`]/g, '').trim();
+        if (!text) throw new Error('empty greeting');
+
+        session.recentGreetings.push(text);
+        if (session.recentGreetings.length > GREETING_MEMORY) session.recentGreetings.shift();
+        saveStore();
+
+        res.json({ message: text, generated: true });
+    } catch (err) {
+        console.warn("Greeting fell back to canned line:", err.message);
+        res.json({ message: fallbackGreeting(mode, context), generated: false });
+    }
+}
+
+app.post('/greeting', (req, res) => handleGreeting(req, res, null));
+app.post('/tv-greeting', (req, res) => handleGreeting(req, res, 'tv')); // legacy path, still live
 
 app.post('/clear-memory', (req, res) => {
     const key = (req.body.sessionId && String(req.body.sessionId).slice(0, 64)) || 'default';
