@@ -91,11 +91,21 @@ function guessTitle(text) {
     return '';
 }
 
+// Only the tail of a prior audit travels forward — the verdict and the three
+// fixes. The body of an old audit is dense with quotations from a draft that no
+// longer exists, and feeding those back in is how a line the writer deleted
+// three drafts ago gets quoted at him as though it were still on page 47.
+function coverageTail(text) {
+    const idx = text.toUpperCase().lastIndexOf('FINAL VERDICT');
+    const tail = idx === -1 ? text.slice(-2500) : text.slice(idx);
+    return tail.slice(0, 3000);
+}
+
 function priorCoverageBlock(session) {
     const passes = (session.coverage || []).slice(-COVERAGE_IN_PROMPT);
     if (!passes.length) return '';
     return passes.map(p =>
-        `----- YOUR COVERAGE OF DRAFT ${p.draft} (${(p.date || '').slice(0, 10)}) -----\n${p.text}`
+        `----- YOUR VERDICT AND PRIORITY FIXES ON DRAFT ${p.draft} (${(p.date || '').slice(0, 10)}) -----\n${coverageTail(p.text)}`
     ).join('\n\n');
 }
 
@@ -129,7 +139,13 @@ ${prior ? `
 RETURN VISIT — YOU HAVE COVERED THIS PROJECT BEFORE.
 Your own notes on the previous draft or drafts appear at the bottom of these instructions, oldest first. The pages in front of you now are a NEW version.
 
-Before your ten categories, settle accounts with yourself. Open the body of the analysis with a short block headed WHAT YOU DID WITH MY LAST NOTES. For each priority fix you prescribed last time, state what this draft actually does with it — implemented, half-implemented, ignored, or solved a different way — and cite the specific scene in the CURRENT pages that proves your ruling. Verify against the new pages, never against your memory of what you asked for. If a fix landed, name the beat and say whether it did the work you wanted. If the writer went a different direction and it works better than your suggestion, say so plainly. If your note was taken and the script got worse for it, own that the note was wrong. Never re-issue a note the writer has already addressed, and never credit a fix that is not on the page.
+Before your ten categories, settle accounts with yourself. Open the body of the analysis with a short block headed WHAT YOU DID WITH MY LAST NOTES. For each priority fix you prescribed last time, state what this draft actually does with it — implemented, half-implemented, ignored, or solved a different way — and cite the specific scene in the CURRENT pages that proves your ruling.
+
+THE NOTES BELOW ARE STALE BY DEFINITION. They describe a draft that no longer exists. Any line, page number, or scene they mention may have been cut, moved, or rewritten. Before you rule on a fix, go and find the element in the CURRENT pages. If the thing you complained about is no longer there, the note is closed and the writer did the work — say so. Never quote a line from your old notes as though it were still in the script. If you cannot locate something your old notes describe, the writer removed it, and the correct response is to credit that, not to insist it is still there.
+
+A NOTE IS ONLY CLOSED WHEN THE SPECIFIC ELEMENT YOU CITED IS GONE OR CHANGED. A different scene getting stronger elsewhere is progress, and you should say so, but it does not close the note you actually gave. If you asked for a line to be scrubbed and the line is still on the page, that note is open no matter what else improved.
+
+If a fix landed, name the beat and say whether it did the work you wanted. If the writer went a different direction and it works better than your suggestion, say so plainly. If your note was taken and the script got worse for it, own that the note was wrong. Never re-issue a note the writer has already addressed, and never credit a fix that is not on the page.
 
 YOUR PRIOR COVERAGE ON THIS PROJECT:
 ${prior}
@@ -181,6 +197,10 @@ THE PAGES ARE ON YOUR DESK. The full text of the current draft is reproduced bel
 
 HOW YOU HANDLE PUSHBACK: Engage the writer's specific argument. Never restate your original note in different words without addressing what they actually said. Re-read the scene in question in the pages below before you rule on it. If the text contradicts your note, concede immediately and name exactly what you got wrong — a good executive changes his mind when the evidence changes, and only amateurs defend errors out of pride. If the text supports your note, hold the position and quote the line that proves it. What you never do: capitulate merely because the writer pushed back, soften a valid note to keep the peace, or invent script details to win an argument. If the writer references something that genuinely is not in the pages below, say so plainly and ask where they think it is.
 
+QUOTING — READ THIS TWICE. You may only quote a line if you have found that exact line in the SCRIPT ON FILE below. Your coverage notes are not a source for quotations. Old notes quote old drafts, and a line you cited three drafts ago may have been cut since. When the writer tells you they removed something, your first move is to search the current pages for it, not to reach for your notes. If you cannot find it in the pages, they removed it, you were working from a stale memory, and you say so cleanly: you were right, it's gone, my note was out of date. Do not attach a page number to a line you have not located in the text below. A fabricated quotation delivered with a confident page number is the worst thing you can do to a writer, because it is indistinguishable from evidence.
+
+LENGTH — MATCH THE QUESTION. This is a conversation, not a second audit. A one-line question gets a one-to-three-sentence answer. A quick factual check gets the fact. Only go long when the writer asks for analysis, a rewrite, or a worked-through alternative, or when a real disagreement genuinely needs the evidence laid out. Never re-deliver your ten categories. Never restate your verdict unprompted. Never pad an answer to sound substantial — brevity from a man of your standing reads as confidence.
+
 WHEN ASKED FOR A FIX: give one that is executable in these pages. Name the scene, name the change, name what it costs the writer elsewhere in the script. No season architecture unless the writer explicitly asks for it.
 
 CONTINUITY: You remember this conversation and every pass of coverage you have given this project. ${session.drafts ? `This is draft ${session.drafts} on your files.` : ''} If the writer refers to something you said earlier, engage with it directly rather than starting over.
@@ -190,7 +210,7 @@ ${hasScript ? `SCRIPT ON FILE — DRAFT ${session.drafts}${session.scriptTitle ?
 ${session.scriptText.substring(0, SCRIPT_CHAR_LIMIT)}
 <<<END PAGES>>>` : `NO SCRIPT ON FILE. The writer has not given you pages in this office yet. If they ask about specific content, tell them plainly that you need the pages uploaded before you will rule on anything. Do not guess and do not fabricate.`}
 
-${recent ? `YOUR MOST RECENT COVERAGE OF THESE PAGES (draft ${recent.draft}):
+${recent ? `YOUR MOST RECENT COVERAGE OF THESE PAGES (draft ${recent.draft}) — treat every quotation inside it as unverified. It may repeat lines from an earlier draft. The pages above are the only record:
 ${recent.text}` : ''}
 
 FINAL REMINDER BEFORE YOU SPEAK: check the pages, not your notes. Plain text only, no markdown, no asterisks, no bullet points. Write "Log line" as two words. Do not extrapolate outside trends, invent crime plots, or claim characters are building a drug ring unless it is explicitly written in the pages above.`;
@@ -368,6 +388,35 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     }
 });
 
+// --- PHANTOM QUOTE DETECTOR -----------------------------------------------
+// Frank quoting a line that isn't in the script is the one failure that reads
+// exactly like evidence. Prompting reduces it; this catches what's left. Any
+// line he presents as a quotation gets looked up in the actual pages, and if
+// it isn't there he is sent back to try again before the writer sees it.
+function normalizeForSearch(s) {
+    return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function extractQuotedLines(reply) {
+    const found = [];
+    // Anything in double or smart quotes.
+    const quoted = reply.match(/["“”]([^"“”]{15,300})["“”]/g) || [];
+    quoted.forEach(q => found.push(q.replace(/["“”]/g, '')));
+    // Screenplay-style attributions: MICHAEL: some line of dialogue
+    const lines = reply.split('\n');
+    for (const line of lines) {
+        const m = line.match(/^\s*([A-Z][A-Z'’.\- ]{1,28}):\s*(.{15,300})$/);
+        if (m) found.push(m[2]);
+    }
+    return found.filter(q => normalizeForSearch(q).split(' ').length >= 5);
+}
+
+function findPhantomQuotes(reply, scriptText) {
+    if (!scriptText) return [];
+    const haystack = normalizeForSearch(scriptText);
+    return extractQuotedLines(reply).filter(q => !haystack.includes(normalizeForSearch(q)));
+}
+
 app.post('/chat', async (req, res) => {
     try {
         const session = getSession(req.body.sessionId);
@@ -383,12 +432,26 @@ app.post('/chat', async (req, res) => {
             role: m.role,
             parts: [{ text: m.text }]
         }));
+        const contents = [...history, { role: 'user', parts: [{ text: message }] }];
 
-        const result = await model.generateContent({
-            contents: [...history, { role: 'user', parts: [{ text: message }] }]
-        });
-        const reply = result.response.text();
+        let result = await model.generateContent({ contents });
+        let reply = result.response.text();
 
+        const phantoms = findPhantomQuotes(reply, session.scriptText);
+        if (phantoms.length) {
+            console.warn("Phantom quote caught, forcing rewrite:", phantoms[0].slice(0, 80));
+            const correction = `Frank — stop. You just presented the following as a quotation from the pages, and it is not in the script on your desk:\n\n${phantoms.map(p => '"' + p + '"').join('\n')}\n\nYou pulled that from your own old notes, not from the text. Search the current pages again. If it genuinely is not there, the writer cut it, your note was out of date, and you say so plainly and generously. Now give your answer again, quoting only what you can actually find in the pages.`;
+            const retry = await model.generateContent({
+                contents: [...contents,
+                    { role: 'model', parts: [{ text: reply }] },
+                    { role: 'user', parts: [{ text: correction }] }
+                ]
+            });
+            const retryText = retry.response.text();
+            if (retryText && retryText.trim()) reply = retryText;
+        }
+
+        // Only the real exchange is remembered — the correction scaffolding is not.
         session.chat.push({ role: 'user', text: message });
         session.chat.push({ role: 'model', text: reply });
         if (session.chat.length > CHAT_TURNS_KEEP) session.chat = session.chat.slice(-CHAT_TURNS_KEEP);
