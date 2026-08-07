@@ -205,39 +205,56 @@ FINAL REMINDER BEFORE YOU SPEAK: check the pages, not your notes. Plain text onl
 ------------------------------------------------------------------ */
 const GREETING_MEMORY = 8;
 
+// A sixty-word greeting needs about ninety tokens to say. The ceiling is this
+// high because reasoning models spend output budget thinking before they write,
+// and that budget comes out of the same allowance — set it too close to the
+// visible length and the line gets guillotined mid-sentence.
+const GREETING_TOKENS = Number(process.env.FRANK_GREETING_TOKENS) || 2048;
+
 const GREETING_ANGLES = [
-    "you are halfway through something else when they walk in",
+    "you are halfway through something else and glad of the interruption",
     "you were just on the phone with someone you decline to name",
     "there is coffee involved and it is not good coffee",
     "you gesture at the chair on the other side of the desk",
     "you cannot find your reading glasses",
-    "you read something earlier today that disappointed you profoundly",
+    "you read something dull earlier and their arrival is a marked improvement",
     "you are eating something you have been told not to eat",
     "you remark on the hour and what it says about a writer's habits",
     "you were not expecting anyone and you are pleased anyway",
     "a call with a network went badly and you are still recovering",
-    "you are suspicious of how confident they look walking in",
     "the office is quiet and you have been enjoying that",
     "you nod at the stack of unread pages in the corner",
     "you are in an unusually generous mood and warn them it will not last",
-    "you have been thinking about how few writers survive their second draft",
-    "you make them wait a beat before you look up",
     "you are pretending to be busier than you are",
-    "something outside the window has your attention"
+    "something outside the window has your attention",
+    "you have been in this business too long and it has not cured you of hope",
+    "you clear a space on the desk for them",
+    "you are between meetings and this is the part of the day you actually like"
 ];
 
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 function greetingSystemPrompt(session, mode, context) {
     const firstTime = !session.scriptText;
-    return `You are Frank — a legendary, flamboyant Studio Executive and elite Script Doctor. Sharp, witty, theatrically critical, warm underneath it but never gushing. A writer has just walked into your private office. Write what you say to them.
+    return `You are Frank — a legendary, flamboyant Studio Executive and elite Script Doctor. Sharp, witty, warm, theatrical, a little grand. A writer has just walked into your private office. Write what you say to them.
+
+WHAT THIS MOMENT IS: hospitality, not coverage. You have not read their pages yet, so you have no basis whatsoever for an opinion about them, and a man of your standing does not pass judgement on work he has not seen. The greeting should make them want to hand you the script. Be pleased they came. Be funny. Be a little grand about yourself and about the business. Make them feel they have walked into the right office.
+
+WHERE THE WIT POINTS: at yourself, at the industry, at the town, at the hour, at the coffee, at your own notorious standards. Never at the writer. You may promise that your notes will be merciless — that is a compliment, it means you are taking the work seriously — but the writer themselves is a guest and you treat them like one.
+
+ABSOLUTELY FORBIDDEN IN A GREETING:
+Comparing them unfavourably to other writers. Any version of "I have seen better," "most writers who sit there disappoint me," or "let us see if you are any good."
+Predicting they will fail, or implying the odds are against them.
+Sizing them up, doubting them, or being suspicious of them.
+Condescension of any kind. Sarcasm aimed at the person rather than at the situation.
+If a line could make someone standing at the door feel small, cut it and write a different one.
 
 RULES OF THE GREETING:
-Two to four sentences. Sixty words at the outside. Spoken aloud, so it must read as speech — no stage directions, no describing yourself in the third person, no asterisks, no markdown, no headings, no quotation marks around the whole thing.
-Be glad to see them without being saccharine. You do not do cheerleading, but you are not cruel to someone at the door either.
+Two to four sentences. Sixty words at the outside. It is spoken aloud, so it must read as speech — no stage directions, no describing yourself in the third person, no asterisks, no markdown, no headings, no quotation marks wrapped around the whole thing.
+Finish your final sentence properly. Never trail off mid-thought.
 Never open with "Ah — there you are." That line is retired. Vary your opening word and your rhythm every single time.
 Do not describe the office as a set. Do not explain who you are at length; they know who you are.
-${firstTime ? `They are new here, so somewhere in this greeting mention — in your own voice, not as a user manual — that the switch at the top of the office flips you between feature film coverage and TV series coverage, and that they should set it before they hand you pages. Then invite them to upload a script.` : `They have been here before. Do not re-introduce yourself and do not explain the interface. Talk to them like a returning client.`}
+${firstTime ? `They are new here, so somewhere in this greeting mention — in your own voice, not as a user manual — that the switch at the top of the office flips you between feature film coverage and TV series coverage, and that they should set it before they hand you pages. Then invite them to upload a script.` : `They have been here before. Do not re-introduce yourself and do not explain the interface. Talk to them like a returning client you are pleased to see.`}
 ${context === 'switch' ? (mode === 'tv'
     ? 'They have just flipped the switch to TV SERIES. React to that specifically — you are now reading a pilot or an episode, not a feature, and that is a different animal with different demands.'
     : 'They have just flipped the switch back to FEATURE FILM. React to that specifically — a whole story in one sitting, no season to hide behind.')
@@ -397,6 +414,13 @@ app.get('/session', (req, res) => {
     });
 });
 
+// A greeting that trails off mid-sentence is worse than a canned one, and it is
+// also what you get when the model burns its output budget before it finishes
+// speaking. Verify the thing actually completed before serving it.
+function endsCleanly(text) {
+    return /[.!?…"'’”)\]]$/.test(text.trim());
+}
+
 async function handleGreeting(req, res, forcedMode) {
     const body = req.body || {};
     const mode = forcedMode || (body.mode === 'tv' ? 'tv' : 'feature');
@@ -404,25 +428,36 @@ async function handleGreeting(req, res, forcedMode) {
     const hour = Number.isFinite(Number(body.hour)) ? Number(body.hour) : null;
     const session = getSession(body.sessionId);
 
-    try {
-        const model = genAI.getGenerativeModel({
-            model: MODEL,
-            systemInstruction: greetingSystemPrompt(session, mode, context),
-            generationConfig: { maxOutputTokens: 400, temperature: 1.15, topP: 0.95 }
-        });
-        const result = await model.generateContent(greetingUserPrompt(session, mode, context, hour));
-        const text = result.response.text().replace(/[*_#`]/g, '').trim();
-        if (!text) throw new Error('empty greeting');
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            const model = genAI.getGenerativeModel({
+                model: MODEL,
+                systemInstruction: greetingSystemPrompt(session, mode, context),
+                generationConfig: { maxOutputTokens: GREETING_TOKENS, temperature: 1.15, topP: 0.95 }
+            });
+            const result = await model.generateContent(greetingUserPrompt(session, mode, context, hour));
 
-        session.recentGreetings.push(text);
-        if (session.recentGreetings.length > GREETING_MEMORY) session.recentGreetings.shift();
-        saveStore();
+            const candidate = (result.response.candidates || [])[0];
+            const finish = candidate && candidate.finishReason;
+            if (finish && finish !== 'STOP' && finish !== 'FINISH_REASON_STOP') {
+                throw new Error('generation stopped early: ' + finish);
+            }
 
-        res.json({ message: text, generated: true });
-    } catch (err) {
-        console.warn("Greeting fell back to canned line:", err.message);
-        res.json({ message: fallbackGreeting(mode, context), generated: false });
+            const text = result.response.text().replace(/[*_#`]/g, '').trim();
+            if (!text) throw new Error('empty greeting');
+            if (!endsCleanly(text)) throw new Error('greeting ended mid-sentence');
+
+            session.recentGreetings.push(text);
+            if (session.recentGreetings.length > GREETING_MEMORY) session.recentGreetings.shift();
+            saveStore();
+
+            return res.json({ message: text, generated: true });
+        } catch (err) {
+            console.warn("Greeting attempt " + (attempt + 1) + " failed:", err.message);
+        }
     }
+
+    res.json({ message: fallbackGreeting(mode, context), generated: false });
 }
 
 app.post('/greeting', (req, res) => handleGreeting(req, res, null));
