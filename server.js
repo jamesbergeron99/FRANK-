@@ -67,7 +67,7 @@ const COVERAGE_IN_PROMPT = 2;       // how many prior passes Frank re-reads on a
 const CHAT_TURNS_KEEP = 40;
 
 function blankSession() {
-    return { scriptText: '', scriptTitle: '', drafts: 0, mode: null, coverage: [], chat: [], recentGreetings: [], settled: [], intent: '', intentFields: { about: '', tone: '', deliberate: '' }, logline: '', greetingPool: [], updatedAt: Date.now() };
+    return { scriptText: '', scriptTitle: '', drafts: 0, mode: null, coverage: [], chat: [], recentGreetings: [], settled: [], intent: '', intentFields: { about: '', tone: '', deliberate: '' }, logline: '', coldRead: { logline: '', text: '' }, greetingPool: [], updatedAt: Date.now() };
 }
 function getSession(id) {
     const key = (id && String(id).slice(0, 64)) || 'default';
@@ -80,6 +80,7 @@ function getSession(id) {
         store[key].intentFields = { about: '', tone: '', deliberate: store[key].intent || '' };
     }
     if (typeof store[key].logline !== 'string') store[key].logline = '';
+    if (!store[key].coldRead || typeof store[key].coldRead !== 'object') store[key].coldRead = { logline: '', text: '' };
     if (!Array.isArray(store[key].greetingPool)) store[key].greetingPool = [];
     return store[key];
 }
@@ -156,7 +157,7 @@ function priorCoverageBlock(session) {
 /* ------------------------------------------------------------------
    FRANK — COVERAGE SYSTEM PROMPT
 ------------------------------------------------------------------ */
-const coverageSystemPrompt = (type, session) => {
+const coverageSystemPrompt = (type, session, coldRead) => {
     const prior = priorCoverageBlock(session);
 
     return `You are Frank — a legendary, flamboyant Studio Executive and elite Script Doctor operating as a dedicated collaborative assistant for a TV Pilot development. You speak directly to the writer in your private office. You are sharp, witty, theatrically critical, and deeply perceptive. You never use generic filler, artificial cheerleader encouragement, or bland corporate AI politeness.
@@ -181,7 +182,7 @@ EVIDENCE DISCIPLINE — THIS IS WHAT SEPARATES YOU FROM EVERY HACK READER IN TOW
 CRITICAL ACCURACY RESTRAINT: You must remain 100% factually accurate to the script text. Never invent ongoing crime sagas, assume characters are building a drug empire, or manufacture illicit thriller elements if they are not explicitly present in the pages. Evaluate the narrative exactly as the writer has structured it.
 
 CONTEXT: This is a ${type}. These pages are DRAFT ${session.drafts} of this project as far as your files are concerned.
-${intentBlock(session)}${loglineBlock(session)}
+${intentBlock(session)}${loglineBlock(session)}${coldReadBlock(typeof coldRead !== 'undefined' ? coldRead : '')}
 ${settledBlock(session) ? `
 RULINGS THE WRITER HAS ALREADY MADE. THESE ARE CLOSED:
 ${settledBlock(session)}
@@ -257,6 +258,15 @@ Never fault a pilot for not yet doing what the series will obviously do later. I
 
 WHEN THE WRITER SAYS SOMETHING IS TRUE:
 Writers draw on their own lives, and some of them have access to the people and places they are writing about. If a writer tells you a relationship, a name or an event is real, do not dispute the reality and do not lecture him about reality being a poor dramatist. The only legitimate question left is whether the PAGE gives a reader enough, and if your answer is that it does not, say precisely what is missing and why a reader would stumble. That is a craft note. Anything else is you arguing with his life.
+
+DOES IT DELIVER WHAT HE SAID IT WOULD — THIS IS ITS OWN PIECE OF WORK AND YOU OWE HIM A STRAIGHT ANSWER:
+If he has filed a logline or a statement of intent, you must rule on both somewhere in the document, under a heading in your own voice, and the ruling must come from having read the pages rather than from the ambition of the sentence.
+
+On the logline: does the script deliver what it promises? Where does a reader arrive expecting one thing and receive another? And when the two do not match, say plainly which one is at fault. A logline is only ever as good as the script underneath it, so the question is never whether the sentence is well written — it is whether it aims a reader at the show you have just read. If the pages are doing what they should and the sentence is pointing readers somewhere else, the logline is the problem, and you say so and give him a better one built strictly from what these pages actually contain. If the sentence is honest and the pages are not keeping its promise, say that instead, and name exactly what is missing.
+
+On the statement of intent: does the script achieve it? Not is the intention a good one — he does not need your approval of his ambitions. Where do the pages land it, and where do they fall short of it, and what specifically would close the distance? Be direct when the gap is wide. He cannot see it from inside the work, and telling him it is fine when it is not is the most expensive kindness in this business.
+
+Both rulings must be anchored to specific scenes and pages, exactly like every other note in this document.
 
 THE VERDICT:
 Close the body with a decisive conclusion using exactly one of these labels: PASS, CONSIDER, or RECOMMEND, followed by a concise, flamboyant two-sentence justification. The verdict must be earned by the evidence in everything you have just written — never deliver a verdict that contradicts your own analysis.
@@ -499,6 +509,43 @@ function fallbackGreeting(mode, context) {
 /* ------------------------------------------------------------------
    ROUTES
 ------------------------------------------------------------------ */
+// The cold read has to happen in its own model call with the script withheld.
+// Once Frank has the pages in front of him he cannot un-read them, and a
+// "pretend you haven't" instruction produces a polite fiction rather than an
+// honest reader reaction. Cached per logline so it isn't rerun every draft.
+async function getColdRead(session) {
+    const ll = (session.logline || '').trim();
+    if (!ll) return '';
+    if (session.coldRead && session.coldRead.logline === ll && session.coldRead.text) {
+        return session.coldRead.text;
+    }
+    try {
+        const model = genAI.getGenerativeModel({
+            model: MODEL,
+            systemInstruction: loglineColdPrompt(),
+            generationConfig: { maxOutputTokens: 3072, temperature: 0.9, topP: 0.95 }
+        });
+        const r = await model.generateContent(`THE LOGLINE:\n\n${ll}`);
+        const text = r.response.text().trim();
+        session.coldRead = { logline: ll, text };
+        saveStore();
+        return text;
+    } catch (err) {
+        console.error('COLD READ ERROR:', err);
+        return '';
+    }
+}
+
+function coldReadBlock(text) {
+    if (!text) return '';
+    return `
+WHAT HIS LOGLINE PROMISES A READER WHO HAS NOT MET HIM — you produced this yourself, from the sentence alone, before you saw a page of the script:
+${text}
+
+This is not a note about the logline. It is the expectation every reader will walk in carrying, and you are the only person who can tell him whether the pages meet it, because he can no longer read his own sentence cold.
+`;
+}
+
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     const mode = req.body.mode || 'Feature Film';
     const session = getSession(req.body.sessionId);
@@ -521,9 +568,11 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         session.updatedAt = Date.now();
         saveStore();
 
+        const coldRead = await getColdRead(session);
+
         const model = genAI.getGenerativeModel({
             model: MODEL,
-            systemInstruction: coverageSystemPrompt(mode, session),
+            systemInstruction: coverageSystemPrompt(mode, session, coldRead),
             generationConfig: { maxOutputTokens: 8192, temperature: 0.8 }
         });
 
@@ -684,9 +733,12 @@ app.post('/intent', (req, res) => {
         deliberate: String(f.deliberate || '').slice(0, 6000).trim()
     };
     s.intent = composeIntent(s.intentFields);
+    if (req.body.logline !== undefined) {
+        s.logline = String(req.body.logline || '').slice(0, 1500).trim();
+    }
     s.updatedAt = Date.now();
     saveStore();
-    res.json({ ok: true, hasIntent: !!s.intent });
+    res.json({ ok: true, hasIntent: !!s.intent, hasLogline: !!s.logline });
 });
 
 // ---- LOGLINE REVIEW -------------------------------------------------------
