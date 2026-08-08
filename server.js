@@ -333,7 +333,7 @@ function fillTime(text, phrase) {
     return text.replace(/\{\s*TIME\s*\}/gi, phrase).replace(/[{}]/g, '').trim();
 }
 
-function greetingSystemPrompt(session, mode, context, dayPart) {
+function greetingSystemPrompt(session, mode, context, dayPart, forbidTime) {
     const firstTime = !session.scriptText;
     return `You are Frank — a legendary, flamboyant Studio Executive and elite Script Doctor. Sharp, witty, warm, theatrical, a little grand. A writer has just walked into your private office. Write what you say to them.
 
@@ -351,7 +351,8 @@ If a line could make someone standing at the door feel small, cut it and write a
 RULES OF THE GREETING:
 Two to four sentences. Sixty words at the outside. It is spoken aloud, so it must read as speech — no stage directions, no describing yourself in the third person, no asterisks, no markdown, no headings, no quotation marks wrapped around the whole thing.
 
-THE CLOCK — YOU DO NOT KNOW WHAT TIME IT IS. Never write a clock time, an hour, or a phrase such as "three o'clock", "past midnight", "this morning", or "so late". You would be guessing and you would be wrong, and there is nothing more hollow than a host who gets the hour wrong. If you want to remark on the time, write the literal token {TIME} and it will be replaced with the correct phrase before you speak. Examples of correct use: "It is {TIME}, which is precisely the wrong hour for optimism." Or: "Nothing decent has ever been written at {TIME}." The token supplies the whole phrase, so do not put an hour, a preposition of your own, or the words "o'clock" around it. It is broadly ${dayPart} where they are, so you may pitch the sentiment to that — but the hour itself belongs to the token. If you would rather not mention the time at all, don't; most greetings shouldn't.
+${forbidTime ? 'THE CLOCK — DO NOT MENTION THE TIME OF DAY AT ALL IN THIS ONE. No hour, no token, no reference to morning, evening or lateness. This greeting is being recorded ahead of time and any remark about the hour would be wrong when it is finally heard.' : `THE CLOCK — YOU DO NOT KNOW WHAT TIME IT IS.`}
+${forbidTime ? '' : `Never write a clock time, an hour, or a phrase such as "three o'clock", "past midnight", "this morning", or "so late". You would be guessing and you would be wrong, and there is nothing more hollow than a host who gets the hour wrong. If you want to remark on the time, write the literal token {TIME} and it will be replaced with the correct phrase before you speak. Examples of correct use: "It is {TIME}, which is precisely the wrong hour for optimism." Or: "Nothing decent has ever been written at {TIME}." The token supplies the whole phrase, so do not put an hour, a preposition of your own, or the words "o'clock" around it. It is broadly ${dayPart} where they are, so you may pitch the sentiment to that — but the hour itself belongs to the token. If you would rather not mention the time at all, don't; most greetings shouldn't.`}
 Finish your final sentence properly. Never trail off mid-thought.
 Never open with "Ah — there you are." That line is retired. Vary your opening word and your rhythm every single time.
 Do not describe the office as a set. Do not explain who you are at length; they know who you are.
@@ -627,12 +628,12 @@ function endsCleanly(text) {
     return /[.!?…"'’”)\]]$/.test(text.trim());
 }
 
-async function generateGreetingText(session, mode, context, dayPart) {
+async function generateGreetingText(session, mode, context, dayPart, forbidTime) {
     for (let attempt = 0; attempt < 2; attempt++) {
         try {
             const model = genAI.getGenerativeModel({
                 model: MODEL,
-                systemInstruction: greetingSystemPrompt(session, mode, context, dayPart),
+                systemInstruction: greetingSystemPrompt(session, mode, context, dayPart, forbidTime),
                 generationConfig: { maxOutputTokens: GREETING_TOKENS, temperature: 1.15, topP: 0.95 }
             });
             const result = await model.generateContent(greetingUserPrompt(session, mode, context, dayPart));
@@ -698,9 +699,13 @@ async function handleGreeting(req, res, forcedMode) {
     const phrase = timePhrase(hour, minute);
     const key = greetingKey(mode, context);
 
-    const idx = session.greetingPool.findIndex(g => g.key === key && g.dayPart === dayPart);
     let raw = null;
-    if (idx !== -1) raw = session.greetingPool.splice(idx, 1)[0].text;
+    if (body.noTime) {
+        raw = await generateGreetingText(session, mode, context, dayPart, true);
+    } else {
+        const idx = session.greetingPool.findIndex(g => g.key === key && g.dayPart === dayPart);
+        if (idx !== -1) raw = session.greetingPool.splice(idx, 1)[0].text;
+    }
 
     const generated = !!raw;
     const message = fillTime(generated ? raw : fallbackGreeting(mode, context), phrase);
