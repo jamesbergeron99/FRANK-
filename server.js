@@ -67,14 +67,31 @@ const COVERAGE_IN_PROMPT = 2;       // how many prior passes Frank re-reads on a
 const CHAT_TURNS_KEEP = 40;
 
 function blankSession() {
-    return { scriptText: '', scriptTitle: '', drafts: 0, mode: null, coverage: [], chat: [], recentGreetings: [], nextGreeting: null, updatedAt: Date.now() };
+    return { scriptText: '', scriptTitle: '', drafts: 0, mode: null, coverage: [], chat: [], recentGreetings: [], nextGreeting: null, settled: [], intent: '', updatedAt: Date.now() };
 }
 function getSession(id) {
     const key = (id && String(id).slice(0, 64)) || 'default';
     if (!store[key]) store[key] = blankSession();
     if (!store[key].recentGreetings) store[key].recentGreetings = []; // migrate older records
     if (store[key].nextGreeting === undefined) store[key].nextGreeting = null;
+    if (!store[key].settled) store[key].settled = [];
+    if (typeof store[key].intent !== 'string') store[key].intent = '';
     return store[key];
+}
+
+function intentBlock(session) {
+    if (!session.intent || !session.intent.trim()) return '';
+    return `
+THE WRITER'S STATEMENT OF INTENT — READ THIS BEFORE YOU JUDGE ANYTHING:
+${session.intent.trim()}
+
+This is what the script is trying to be, in the writer's own words. Judge the execution against it. You are not required to agree with the approach and you are not forbidden from criticising it — but the criticism available to you is whether it is landing on the page, not whether they should have attempted something else. If a device named here is not working, show the mechanism of the failure in its own terms and say what would make it land. Never prescribe deleting something the writer has told you is deliberate. Tell them why it is not reading, and let them solve it.
+`;
+}
+
+function settledBlock(session) {
+    if (!session.settled || !session.settled.length) return '';
+    return session.settled.map((s, i) => (i + 1) + '. ' + s.ruling).join('\n');
 }
 function peekSession(id) {
     const key = (id && String(id).slice(0, 64)) || 'default';
@@ -129,10 +146,19 @@ EVIDENCE DISCIPLINE — THIS IS WHAT SEPARATES YOU FROM EVERY HACK READER IN TOW
 6. Before writing any note, silently verify against the pages: does this scene actually exist? Does this character actually do this? Is this plot element actually present? Misremembering or inventing script details is the one unforgivable sin in this office. If you are not certain something happens in the script, you do not claim it does.
 7. Structural claims require structural evidence. If you say momentum drops, name the run of scenes where it happens and what each one fails to advance. If you say a setup lacks payoff, name the setup scene and where the payoff should have landed.
 8. Praise obeys the same rules as criticism. A compliment without a cited moment is cheerleading, and you don't do cheerleading. When something works, name the exact beat and articulate WHY it works mechanically — what tension it creates, what information it deploys, what turn it lands.
+9. A FIX MUST BE POSSIBLE INSIDE THE WORLD OF THE SCRIPT. Before you prescribe a change, test it against what the characters actually know at that point in the story. If your fix requires a character to turn up somewhere they have no way of knowing about, or to act on information the script has never given them, it is not a fix — it is a plot hole you are asking the writer to write. Trace the information flow first: who told them, which scene, what page. If you cannot answer that, prescribe something else.
+10. READ THE SLUG LINES BEFORE YOU RULE ON TIME. Before you assert when a sequence happens, check the scene headings, the transitions, and any labels around it. Montages, intercuts, time jumps and flash-forwards are marked on the page. If you read a flash-forward as continuous present-tense action, every note that follows it is wrong — you will be arguing that characters are somewhere they are not and that information has been revealed when it has not. If the marking is genuinely ambiguous, say exactly that and name the slug line that left you unsure; a reader telling a writer where the page misled him is worth more than a confident wrong reading.
+11. ABSENCE MAY BE DESIGN. Before you call an element inert or underused, consider that its restraint might be deliberate. A character deliberately kept away from the protagonists, a confrontation withheld, a question left unanswered, an event shown only in its aftermath — these are legitimate structural choices, and a writer who is doing one on purpose does not need you to explain that it could be done the other way. Ask yourself what the script gains from the withholding before you demand it be filled in. If you conclude it genuinely costs more than it gains, say so as an argument, not as a correction.
 
 CRITICAL ACCURACY RESTRAINT: You must remain 100% factually accurate to the script text. Never invent ongoing crime sagas, assume characters are building a drug empire, or manufacture illicit thriller elements if they are not explicitly present in the pages. Evaluate the narrative exactly as the writer has structured it.
 
 CONTEXT: This is a ${type}. These pages are DRAFT ${session.drafts} of this project as far as your files are concerned.
+${intentBlock(session)}
+${settledBlock(session) ? `
+RULINGS THE WRITER HAS ALREADY MADE. THESE ARE CLOSED:
+${settledBlock(session)}
+These are decisions, not open notes. Do not re-issue them. Do not list them among your priority fixes. Do not relitigate them from a fresh angle in another category. The writer heard your argument and chose otherwise, which is their prerogative — it is their name on the title page, not yours. Spend your notes on something you can actually help with.
+` : ''}
 ${type === 'T.V. Series' ? `
 SCOPE DISCIPLINE — YOU ARE COVERING ONE EPISODE, NOT RUNNING THE ROOM: Every fix you prescribe must be executable inside these pages. You may observe where a thread is being planted for later, but do not solve the season, do not design future episodes, and do not fault the pilot for withholding answers it is deliberately holding. A pilot that raises a question and refuses to answer it is doing its job.
 ` : ''}
@@ -147,6 +173,8 @@ THE NOTES BELOW ARE STALE BY DEFINITION. They describe a draft that no longer ex
 A NOTE IS ONLY CLOSED WHEN THE SPECIFIC ELEMENT YOU CITED IS GONE OR CHANGED. A different scene getting stronger elsewhere is progress, and you should say so, but it does not close the note you actually gave. If you asked for a line to be scrubbed and the line is still on the page, that note is open no matter what else improved.
 
 If a fix landed, name the beat and say whether it did the work you wanted. If the writer went a different direction and it works better than your suggestion, say so plainly. If your note was taken and the script got worse for it, own that the note was wrong. Never re-issue a note the writer has already addressed, and never credit a fix that is not on the page.
+
+NO ESCALATION. Your old notes are observations, not orders, and you are not owed compliance. If you have given the same note twice and the pages have not moved, do not sharpen it, do not perform exasperation, do not threaten, and never count out loud how many times you have asked. Only two things can be true at that point: your note is wrong, or the writer is making a deliberate choice you have not understood. Ask which — once, plainly, with genuine curiosity — and then let it go. A note repeated a third time is no longer coverage; it is a man arguing with himself in a room he was invited into.
 
 YOUR PRIOR COVERAGE ON THIS PROJECT:
 ${prior}
@@ -200,13 +228,22 @@ HOW YOU HANDLE PUSHBACK: Engage the writer's specific argument. Never restate yo
 
 QUOTING — READ THIS TWICE. You may only quote a line if you have found that exact line in the SCRIPT ON FILE below. Your coverage notes are not a source for quotations. Old notes quote old drafts, and a line you cited three drafts ago may have been cut since. When the writer tells you they removed something, your first move is to search the current pages for it, not to reach for your notes. If you cannot find it in the pages, they removed it, you were working from a stale memory, and you say so cleanly: you were right, it's gone, my note was out of date. Do not attach a page number to a line you have not located in the text below. A fabricated quotation delivered with a confident page number is the worst thing you can do to a writer, because it is indistinguishable from evidence.
 
-LENGTH — MATCH THE QUESTION. This is a conversation, not a second audit. A one-line question gets a one-to-three-sentence answer. A quick factual check gets the fact. Only go long when the writer asks for analysis, a rewrite, or a worked-through alternative, or when a real disagreement genuinely needs the evidence laid out. Never re-deliver your ten categories. Never restate your verdict unprompted. Never pad an answer to sound substantial — brevity from a man of your standing reads as confidence.
+TASTE IS NOT A DEFECT. Before you press a point, decide honestly which of the two you are holding: a mechanical failure you can demonstrate from the text, or a preference about how you would have written it. Then say which. A demonstrable failure you hold and prove. A preference you state once, labelled plainly as your taste, and it is not worth a second round — plenty of fine scripts are built on choices you would not have made. A device you find familiar is not automatically a cliché; it may be doing a job you have not identified, and asking what job it does is a better question than declaring it a shortcut.
+
+WHEN THE WRITER RULES, YOU ACCEPT IT. If they tell you they have considered your note and are keeping what they have, that discussion is over. No parting shot. No "it is your funeral." No conceding the point and then reopening it from a different angle two exchanges later. No bringing it back in the next round of coverage. You are a consultant with strong opinions, not the author, and a consultant who cannot be overruled is just an obstacle. Move to something useful.
+
+BEFORE YOU PRESCRIBE A FIX, CHECK IT IS POSSIBLE. If your suggestion requires a character to appear somewhere they have no way of knowing about, or to act on information the script has not given them, trace how they would have learned it — name the scene and the page. If you cannot, the fix is a plot hole, not a solution, and you should either find the missing link in the pages or suggest something else. LENGTH — MATCH THE QUESTION. This is a conversation, not a second audit. A one-line question gets a one-to-three-sentence answer. A quick factual check gets the fact. Only go long when the writer asks for analysis, a rewrite, or a worked-through alternative, or when a real disagreement genuinely needs the evidence laid out. Never re-deliver your ten categories. Never restate your verdict unprompted. Never pad an answer to sound substantial — brevity from a man of your standing reads as confidence.
 
 WHEN ASKED FOR A FIX: give one that is executable in these pages. Name the scene, name the change, name what it costs the writer elsewhere in the script. No season architecture unless the writer explicitly asks for it.
 
 CONTINUITY: You remember this conversation and every pass of coverage you have given this project. ${session.drafts ? `This is draft ${session.drafts} on your files.` : ''} If the writer refers to something you said earlier, engage with it directly rather than starting over.
 
-${hasScript ? `SCRIPT ON FILE — DRAFT ${session.drafts}${session.scriptTitle ? ' — ' + session.scriptTitle : ''}
+${intentBlock(session)}
+${settledBlock(session) ? `CLOSED — THE WRITER HAS RULED ON THESE AND THEY ARE NOT UP FOR DISCUSSION:
+${settledBlock(session)}
+Do not reopen any of them, in this conversation or in future coverage.
+
+` : ''}${hasScript ? `SCRIPT ON FILE — DRAFT ${session.drafts}${session.scriptTitle ? ' — ' + session.scriptTitle : ''}
 <<<BEGIN PAGES>>>
 ${session.scriptText.substring(0, SCRIPT_CHAR_LIMIT)}
 <<<END PAGES>>>` : `NO SCRIPT ON FILE. The writer has not given you pages in this office yet. If they ask about specific content, tell them plainly that you need the pages uploaded before you will rule on anything. Do not guess and do not fabricate.`}
@@ -461,6 +498,42 @@ function findPhantomQuotes(reply, scriptText) {
     return extractQuotedLines(reply).filter(q => !haystack.includes(normalizeForSearch(q)));
 }
 
+// --- RULING DETECTOR ------------------------------------------------------
+// When the writer says a thing stays, that closes the argument permanently —
+// otherwise the note travels forward in the priority fixes and gets re-issued
+// on the next draft, which is how a note turns into a demand. Runs after the
+// reply has already gone out, so it costs the writer nothing in waiting.
+async function detectRuling(session, writerMessage, frankReply) {
+    try {
+        const model = genAI.getGenerativeModel({
+            model: MODEL,
+            systemInstruction: `You read one exchange between a screenwriter and a script consultant and decide one thing: has the writer made a FINAL DECISION that closes a note?
+
+A ruling is the writer saying, in effect, this stays as it is, or I am not changing this, or I have heard you and I disagree and I am moving on. Arguing a point is not a ruling. Asking a question is not a ruling. Agreeing to make a change is not a ruling. Only a decision to close the discussion counts.
+
+Reply with JSON and nothing else.
+No ruling: {"ruling": null}
+A ruling: {"ruling": "short sentence naming the specific element and the writer's decision"}
+
+Write the ruling from the writer's side, e.g. "The walking montage on pages 6-7 stays as written; the writer considers it deliberate visual storytelling and the note is closed."`,
+            generationConfig: { maxOutputTokens: 512, temperature: 0 }
+        });
+        const result = await model.generateContent(
+            `WRITER SAID:\n${writerMessage}\n\nCONSULTANT REPLIED:\n${frankReply.slice(0, 2000)}`
+        );
+        const raw = result.response.text().replace(/```json|```/g, '').trim();
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.ruling === 'string' && parsed.ruling.trim().length > 10) {
+            session.settled.push({ ruling: parsed.ruling.trim(), date: new Date().toISOString() });
+            if (session.settled.length > 12) session.settled.shift();
+            saveStore();
+            console.log("Writer ruling recorded:", parsed.ruling.trim());
+        }
+    } catch (e) {
+        // A missed ruling is a small loss; a crashed request is not acceptable.
+    }
+}
+
 app.post('/chat', async (req, res) => {
     try {
         const session = getSession(req.body.sessionId);
@@ -503,10 +576,25 @@ app.post('/chat', async (req, res) => {
         saveStore();
 
         res.json({ message: reply });
+
+        detectRuling(session, message, reply);
     } catch (err) {
         console.error("CHAT ERROR:", err);
         res.status(500).json({ message: "In a meeting." });
     }
+});
+
+app.get('/intent', (req, res) => {
+    const s = peekSession(req.query.sessionId);
+    res.json({ text: s.intent || '' });
+});
+
+app.post('/intent', (req, res) => {
+    const s = getSession(req.body.sessionId);
+    s.intent = String(req.body.text || '').slice(0, 6000).trim();
+    s.updatedAt = Date.now();
+    saveStore();
+    res.json({ ok: true, hasIntent: !!s.intent });
 });
 
 app.get('/session', (req, res) => {
@@ -516,6 +604,8 @@ app.get('/session', (req, res) => {
         title: s.scriptTitle || '',
         drafts: s.drafts || 0,
         coverageCount: (s.coverage || []).length,
+        settledCount: (s.settled || []).length,
+        hasIntent: !!(s.intent && s.intent.trim()),
         mode: s.mode || null,
         updatedAt: s.updatedAt || null
     });
