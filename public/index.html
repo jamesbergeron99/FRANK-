@@ -32,6 +32,22 @@
         .intent-btn { position: absolute; left: 20px; top: 25px; background: none; border: 1px solid var(--gold); color: var(--gold); padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.75rem; transition: 0.2s; }
         .intent-btn:hover { background: var(--gold); color: #111; }
         .intent-btn.set { background: rgba(212,175,55,0.15); }
+        .logline-btn { position: absolute; left: 160px; top: 25px; background: none; border: 1px solid var(--gold); color: var(--gold); padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.75rem; transition: 0.2s; }
+        .logline-btn:hover { background: var(--gold); color: #111; }
+        .modal-veil { position: fixed; inset: 0; background: rgba(0,0,0,0.82); display: none; align-items: center; justify-content: center; z-index: 90; padding: 20px; }
+        .modal-veil.open { display: flex; }
+        .modal { background: var(--card); border: 1px solid var(--gold); border-radius: 10px; width: min(720px, 100%); max-height: 88vh; overflow-y: auto; padding: 28px; }
+        .modal h2 { color: var(--gold); font-style: italic; margin: 0 0 6px; letter-spacing: 1px; font-size: 1.2rem; }
+        .modal .lede { color: #999; font-size: 0.85rem; line-height: 1.6; margin-bottom: 22px; }
+        .modal label { display: block; color: var(--gold); font-size: 0.72rem; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 6px; }
+        .modal .hint { color: #777; font-size: 0.78rem; margin: -2px 0 8px; line-height: 1.5; }
+        .modal textarea { width: 100%; box-sizing: border-box; background: #000; border: 1px solid #333; color: #eee; border-radius: 6px; padding: 12px; font-family: inherit; font-size: 0.95rem; line-height: 1.6; resize: vertical; outline: none; }
+        .modal textarea:focus { border-color: var(--gold); }
+        .modal .field { margin-bottom: 22px; }
+        .modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 6px; }
+        .modal-actions button { padding: 9px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 0.8rem; letter-spacing: 1px; }
+        .btn-file { background: var(--gold); border: 1px solid var(--gold); color: #111; }
+        .btn-ghost { background: none; border: 1px solid #444; color: #999; }
         .clear-btn { position: absolute; right: 20px; top: 25px; background: none; border: 1px solid #ff4444; color: #ff4444; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.75rem; transition: 0.2s; }
         .clear-btn:hover { background: #ff4444; color: #fff; }
     </style>
@@ -45,8 +61,50 @@
             <span>T.V. SERIES</span>
         </div>
         <div id="memoryStatus">Checking the filing cabinet...</div>
-        <button class="intent-btn" id="intentBtn" onclick="setIntent()"><i class="fas fa-pen-nib"></i> YOUR INTENT</button>
+        <button class="intent-btn" id="intentBtn" onclick="openIntent()"><i class="fas fa-pen-nib"></i> YOUR INTENT</button>
+        <button class="logline-btn" id="loglineBtn" onclick="openLogline()"><i class="fas fa-crosshairs"></i> LOGLINE</button>
         <button class="clear-btn" onclick="wipeMemory()"><i class="fas fa-trash-alt"></i> WIPEMEMORY</button>
+    </div>
+
+    <div class="modal-veil" id="intentVeil" onclick="if(event.target===this) closeIntent()">
+        <div class="modal">
+            <h2>Your statement of intent</h2>
+            <div class="lede">This is what you are aiming at. Frank reads it before he judges anything, and measures the pages against it instead of against his own assumptions of what the show should be. It is a target, not a shield — he will still tell you when the pages miss it. Stored with the script; it survives new drafts.</div>
+            <div class="field">
+                <label>What the show is about</label>
+                <div class="hint">Not the plot. What it is really about, who it belongs to, what you want an audience to walk away carrying.</div>
+                <textarea id="intentAbout" rows="6" placeholder="A found-family dramedy about..."></textarea>
+            </div>
+            <div class="field">
+                <label>Tone and comparables</label>
+                <div class="hint">The register you are writing in, and the shows it should sit beside on a shelf.</div>
+                <textarea id="intentTone" rows="3" placeholder="Warm, profane, propulsive. Sits beside..."></textarea>
+            </div>
+            <div class="field">
+                <label>What is deliberate</label>
+                <div class="hint">Devices and structural choices you do not want argued with — a montage that is a flash-forward, a character who never shares a scene with the leads. He will judge whether they land, not whether you should have done them.</div>
+                <textarea id="intentDeliberate" rows="6" placeholder="The closing montage is a flash-forward, not continuous action..."></textarea>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-ghost" onclick="closeIntent()">CANCEL</button>
+                <button class="btn-file" onclick="saveIntent()">FILE IT</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-veil" id="loglineVeil" onclick="if(event.target===this) closeLogline()">
+        <div class="modal">
+            <h2>Logline review</h2>
+            <div class="lede">Frank reads the sentence cold first — no script, no context — and tells you what a reader assumes from it alone. Then, if he has your pages on file, he measures that promise against what the script actually delivers. The gap between the two is the diagnostic.</div>
+            <div class="field">
+                <label>The logline</label>
+                <textarea id="loglineText" rows="4" placeholder="Two lifelong best friends try to save..."></textarea>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-ghost" onclick="closeLogline()">CANCEL</button>
+                <button class="btn-file" onclick="runLogline()">HAND IT TO HIM</button>
+            </div>
+        </div>
     </div>
     <div id="chat-window"></div>
     <div class="media-bar"><button class="media-btn" id="playPauseBtn" onclick="togglePlayback()"><i class="fas fa-pause"></i></button></div>
@@ -229,34 +287,80 @@
 
         // Tell Frank which choices are deliberate, once, and he stops guessing at
         // them on every pass. It is stored with the script and survives restarts.
-        async function setIntent() {
-            let current = '';
+        // Intent is now a structured statement rather than one blob: what the show
+        // is, the tone it is aiming at, and what is deliberate. Frank reads all three
+        // before he judges anything.
+        async function openIntent() {
             try {
                 const r = await fetch('/intent?sessionId=' + encodeURIComponent(SESSION_ID));
-                current = (await r.json()).text || '';
+                const d = await r.json();
+                const f = d.fields || {};
+                document.getElementById('intentAbout').value = f.about || '';
+                document.getElementById('intentTone').value = f.tone || '';
+                document.getElementById('intentDeliberate').value = f.deliberate || '';
             } catch (e) {}
+            document.getElementById('intentVeil').classList.add('open');
+            document.getElementById('intentAbout').focus();
+        }
+        function closeIntent() { document.getElementById('intentVeil').classList.remove('open'); }
 
-            const val = prompt(
-                "Tell Frank what is deliberate — structure, devices, tone, what a sequence is doing and why.\n\n" +
-                "He will judge whether it lands on the page, and he will stop suggesting you delete it.\n\n" +
-                "Leave this empty to clear it.",
-                current
-            );
-            if (val === null) return;
-
+        async function saveIntent() {
+            const fields = {
+                about: document.getElementById('intentAbout').value,
+                tone: document.getElementById('intentTone').value,
+                deliberate: document.getElementById('intentDeliberate').value
+            };
+            closeIntent();
             try {
-                await fetch('/intent', {
+                const r = await fetch('/intent', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sessionId: SESSION_ID, text: val })
+                    body: JSON.stringify({ sessionId: SESSION_ID, fields })
                 });
-                addMessage(val.trim()
-                    ? "Noted. Your intentions are on file, and I will judge the execution against them rather than against my own preferences."
+                const d = await r.json();
+                addMessage(d.hasIntent
+                    ? "Filed. I know what you are reaching for now, which means I can tell you whether the pages get there — and I will tell you when they do not."
                     : "Your statement of intent has been cleared.", false);
             } catch (e) {
                 addMessage("I could not file that. Try again in a moment.", false);
             }
             refreshStatus();
+        }
+
+        async function openLogline() {
+            try {
+                const r = await fetch('/intent?sessionId=' + encodeURIComponent(SESSION_ID));
+                const d = await r.json();
+                document.getElementById('loglineText').value = d.logline || '';
+            } catch (e) {}
+            document.getElementById('loglineVeil').classList.add('open');
+            document.getElementById('loglineText').focus();
+        }
+        function closeLogline() { document.getElementById('loglineVeil').classList.remove('open'); }
+
+        async function runLogline() {
+            const logline = document.getElementById('loglineText').value.trim();
+            if (!logline) return;
+            closeLogline();
+            addMessage(logline, true);
+            addMessage("Give me a moment with this...", false);
+            try {
+                const r = await fetch('/logline', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId: SESSION_ID, logline })
+                });
+                const d = await r.json();
+                if (d.error) { addMessage(d.error, false); return; }
+                addMessage("READING IT COLD\n\n" + d.cold, false);
+                if (d.gap) {
+                    addMessage("AGAINST THE PAGES\n\n" + d.gap, false);
+                } else if (!d.hasScript) {
+                    addMessage("That is the sentence on its own. Send me the script and I will tell you whether it keeps the promise.", false);
+                }
+            } catch (e) {
+                addMessage("Something went wrong on my end. Try me again.", false);
+            }
         }
 
         async function refreshStatus() {
