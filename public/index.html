@@ -96,6 +96,73 @@
 
         const LAST_RESORT_GREETING = "Come in, sit down. Set the switch up top for feature or series, then hand me your pages and we'll find out what you've got.";
 
+        // --- INSTANT OPENING --------------------------------------------------
+        // Nothing on page load may wait for a network call. These live in the
+        // page itself, so the first line is on screen the moment it renders. The
+        // personalised, freshly written greeting is fetched AND voiced during
+        // this visit and stored for the next one, so from the second visit on
+        // you get Frank's own words playing from cache with no round trip.
+        const LOCAL_GREETINGS = [
+            "Come in, sit down. Features today, according to the switch up top, so flip it if you meant television. Upload your pages and let's find out what you've got.",
+            "Door's open, and you've caught me in a generous mood. Mind the switch at the top if this is a pilot rather than a feature, then hand me the script.",
+            "Well, this is a pleasant development. Set that switch for feature or series, give me your pages, and I'll tell you where the engine sings and where it stalls.",
+            "Sit. I've cleared a space, which for me is practically a standing ovation. Feature or series, the switch up top decides, and then let me see it.",
+            "Someone with pages. My favourite kind of visitor. Check the switch at the top so I read it as the right animal, and we'll begin.",
+            "In you come. I was starting to think the whole industry had gone to voicemail. Set the switch, upload the script, and let's do some proper work."
+        ];
+
+        // --- CACHE FOR PRE-RECORDED GREETING AUDIO ----------------------------
+        // localStorage is too small for audio; IndexedDB holds it comfortably.
+        const IDB_NAME = 'frank-office';
+        const IDB_STORE = 'greeting';
+        const GREETING_TTL_MS = 21 * 24 * 60 * 60 * 1000;
+
+        function idbOpen() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(IDB_NAME, 1);
+                req.onupgradeneeded = () => {
+                    if (!req.result.objectStoreNames.contains(IDB_STORE)) req.result.createObjectStore(IDB_STORE);
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function idbGet(key) {
+            try {
+                const db = await idbOpen();
+                return await new Promise((resolve, reject) => {
+                    const r = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(key);
+                    r.onsuccess = () => resolve(r.result || null);
+                    r.onerror = () => reject(r.error);
+                });
+            } catch (e) { return null; }
+        }
+
+        async function idbSet(key, value) {
+            try {
+                const db = await idbOpen();
+                await new Promise((resolve, reject) => {
+                    const t = db.transaction(IDB_STORE, 'readwrite');
+                    t.objectStore(IDB_STORE).put(value, key);
+                    t.oncomplete = () => resolve();
+                    t.onerror = () => reject(t.error);
+                });
+            } catch (e) {}
+        }
+
+        async function idbDel(key) {
+            try {
+                const db = await idbOpen();
+                await new Promise(resolve => {
+                    const t = db.transaction(IDB_STORE, 'readwrite');
+                    t.objectStore(IDB_STORE).delete(key);
+                    t.oncomplete = resolve;
+                    t.onerror = resolve;
+                });
+            } catch (e) {}
+        }
+
         async function fetchGreeting(mode, context) {
             try {
                 const r = await fetch('/greeting', {
@@ -116,16 +183,49 @@
             }
         }
 
-        window.onload = async () => {
+        window.onload = () => {
             initSpeechRecognition();
+
+            // Nothing here awaits the network before something is on screen.
+            const cachedPromise = idbGet('nextArrival');
+            let settled = false;
+
+            // If IndexedDB is slow or empty, fall back almost immediately. The
+            // page must never sit blank waiting for storage either.
+            const useLocal = () => {
+                if (settled) return;
+                settled = true;
+                const text = LOCAL_GREETINGS[Math.floor(Math.random() * LOCAL_GREETINGS.length)];
+                addMessage(text);
+                preWarmGreeting(text, afterGreetingStarts);
+            };
+            const localTimer = setTimeout(useLocal, 250);
+
+            cachedPromise.then(cached => {
+                clearTimeout(localTimer);
+                if (settled) return;
+                const fresh = cached && cached.chunks && cached.chunks.length &&
+                              (Date.now() - (cached.savedAt || 0) < GREETING_TTL_MS);
+                if (!fresh) { useLocal(); return; }
+                settled = true;
+                addMessage(cached.text);
+                idbDel('nextArrival');                 // one-shot, so it never repeats
+                playCachedChunks(cached.chunks).then(afterGreetingStarts);
+            }).catch(useLocal);
+
             refreshStatus();
-            const holder = addMessage('Frank is looking up from his desk...');
-            const text = await fetchGreeting('feature', 'arrival');
-            holder.innerText = text;
-            chatWindow.scrollTop = chatWindow.scrollHeight;
-            preWarmGreeting(text);
-            prefetchGreeting('tv');
         };
+
+        // Everything that touches the network happens after Frank is already
+        // talking: the status line, the toggle's audio, and the recording of
+        // next visit's greeting.
+        let followUpDone = false;
+        function afterGreetingStarts() {
+            if (followUpDone) return;
+            followUpDone = true;
+            prefetchGreeting('tv');
+            setTimeout(recordNextVisitGreeting, 1500);
+        }
 
         // Tell Frank which choices are deliberate, once, and he stops guessing at
         // them on every pass. It is stored with the script and survives restarts.
@@ -236,7 +336,12 @@
         }
         // instead of leaving the slot empty forever. This is what stops playback from
         // hanging silently partway through.
-        async function fetchTTSAudio(text, settings, attempt = 0) {
+        function decodeBase64Audio(b64) {
+            return audioCtx.decodeAudioData(Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer);
+        }
+
+        // Returns the raw base64 so it can be both played now and stored for later.
+        async function fetchTTSBase64(text, settings, attempt = 0) {
             try {
                 const res = await fetch("https://api.inworld.ai/tts/v1/voice", {
                     method: "POST",
@@ -245,15 +350,23 @@
                 });
                 const data = await res.json();
                 if (!data.audioContent) throw new Error('No audioContent in TTS response');
-                return await audioCtx.decodeAudioData(
-                    Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0)).buffer
-                );
+                return data.audioContent;
             } catch (e) {
                 if (attempt < 3) {
                     await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
-                    return fetchTTSAudio(text, settings, attempt + 1);
+                    return fetchTTSBase64(text, settings, attempt + 1);
                 }
                 console.warn('TTS chunk failed after retries, skipping it:', e);
+                return 'FAILED';
+            }
+        }
+
+        async function fetchTTSAudio(text, settings) {
+            const b64 = await fetchTTSBase64(text, settings);
+            if (b64 === 'FAILED') return 'FAILED';
+            try {
+                return await decodeBase64Audio(b64);
+            } catch (e) {
                 return 'FAILED';
             }
         }
@@ -364,7 +477,54 @@
             prefetchGreeting(nextMode);
         });
 
-        async function preWarmGreeting(text) {
+        // Decode and play audio we already have. No network, no model, no TTS.
+        async function playCachedChunks(b64chunks) {
+            stopCurrentAudio();
+            audioBuffers = {};
+            nextToPlay = 0;
+            waitStartTime = null;
+            totalSections = b64chunks.length;
+            isSequenceActive = true;
+            for (let i = 0; i < b64chunks.length; i++) {
+                try {
+                    audioBuffers[i] = await decodeBase64Audio(b64chunks[i]);
+                } catch (e) {
+                    audioBuffers[i] = 'FAILED';
+                }
+                if (i === 0) audioCtx.resume().then(() => { if (!isPlaying) playSequentially(); });
+            }
+        }
+
+        // Record the next visit's greeting now, while nobody is waiting. Asks the
+        // server for a time-free line so the recording can't go stale.
+        async function recordNextVisitGreeting() {
+            try {
+                const r = await fetch('/greeting', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId: SESSION_ID, mode: 'feature', context: 'arrival', noTime: true })
+                });
+                const d = await r.json();
+                if (!d || !d.message || !d.generated) return;
+
+                const settings = await getVoiceSettings();
+                const chunks = splitIntoChunks(d.message);
+                const b64chunks = [];
+                for (const chunk of chunks) {
+                    const b64 = await fetchTTSBase64(chunk, settings);
+                    if (b64 === 'FAILED') return;
+                    b64chunks.push(b64);
+                }
+                await idbSet('nextArrival', { text: d.message, chunks: b64chunks, savedAt: Date.now() });
+            } catch (e) {}
+        }
+
+        async function preWarmGreeting(text, onSpeaking) {
+            let handedOff = false;
+            const handOff = () => { if (!handedOff) { handedOff = true; if (onSpeaking) onSpeaking(); } };
+            // Safety net: if the voice API is having a bad day, don't strand the
+            // follow-up work forever waiting on a chunk that never arrives.
+            setTimeout(handOff, 6000);
             try {
                 const settings = await getVoiceSettings();
                 const parts = splitIntoChunks(text);
@@ -374,8 +534,9 @@
                 isSequenceActive = true;
                 loadAudioChunks(parts, settings, audioBuffers, () => {
                     if (!isPlaying) audioCtx.resume().then(() => playSequentially());
+                    handOff();
                 });
-            } catch (e) {}
+            } catch (e) { handOff(); }
         }
 
         async function uploadFiles() {
