@@ -67,7 +67,7 @@ const COVERAGE_IN_PROMPT = 2;       // how many prior passes Frank re-reads on a
 const CHAT_TURNS_KEEP = 40;
 
 function blankSession() {
-    return { scriptText: '', scriptTitle: '', drafts: 0, mode: null, coverage: [], chat: [], recentGreetings: [], settled: [], intent: '', greetingPool: [], updatedAt: Date.now() };
+    return { scriptText: '', scriptTitle: '', drafts: 0, mode: null, coverage: [], chat: [], recentGreetings: [], settled: [], intent: '', intentFields: { about: '', tone: '', deliberate: '' }, logline: '', greetingPool: [], updatedAt: Date.now() };
 }
 function getSession(id) {
     const key = (id && String(id).slice(0, 64)) || 'default';
@@ -75,8 +75,22 @@ function getSession(id) {
     if (!store[key].recentGreetings) store[key].recentGreetings = []; // migrate older records
     if (!store[key].settled) store[key].settled = [];
     if (typeof store[key].intent !== 'string') store[key].intent = '';
+    if (!store[key].intentFields || typeof store[key].intentFields !== 'object') {
+        // Older records kept one free-form blob. Preserve it as the "deliberate" field.
+        store[key].intentFields = { about: '', tone: '', deliberate: store[key].intent || '' };
+    }
+    if (typeof store[key].logline !== 'string') store[key].logline = '';
     if (!Array.isArray(store[key].greetingPool)) store[key].greetingPool = [];
     return store[key];
+}
+
+function composeIntent(f) {
+    if (!f) return '';
+    const parts = [];
+    if (f.about && f.about.trim())      parts.push('WHAT THE SHOW IS ABOUT, IN THE WRITER\'S WORDS:\n' + f.about.trim());
+    if (f.tone && f.tone.trim())        parts.push('THE TONE HE IS AIMING AT, AND HIS COMPARABLES:\n' + f.tone.trim());
+    if (f.deliberate && f.deliberate.trim()) parts.push('CHOICES HE IS TELLING YOU ARE DELIBERATE:\n' + f.deliberate.trim());
+    return parts.join('\n\n');
 }
 
 function intentBlock(session) {
@@ -84,6 +98,8 @@ function intentBlock(session) {
     return `
 THE WRITER'S STATEMENT OF INTENT — READ THIS BEFORE YOU JUDGE ANYTHING:
 ${session.intent.trim()}
+
+THIS IS A TARGET, NOT A DEFENCE, AND THE DISTINCTION IS THE WHOLE POINT. Knowing what he was aiming at tells you what to measure the pages against. It tells you NOTHING about whether he hit it, and a statement of intent is not evidence that the script delivers on it. The most useful thing you can possibly do with this block is find the gap between what he says the show is and what a reader actually receives — and if that gap is wide, say so plainly, because he cannot see it from inside the work. A well-written statement of intention is the easiest way in the world to be charmed into a soft read. Do not be charmed. Grade the pages, not the ambition.
 
 This is what the script is trying to be, in the writer's own words. Judge the execution against it. You are not required to agree with the approach and you are not forbidden from criticising it — but the criticism available to you is whether it is landing on the page, not whether they should have attempted something else. If a device named here is not working, show the mechanism of the failure in its own terms and say what would make it land. Never prescribe deleting something the writer has told you is deliberate. Tell them why it is not reading, and let them solve it.
 `;
@@ -618,15 +634,124 @@ app.post('/chat', async (req, res) => {
 
 app.get('/intent', (req, res) => {
     const s = peekSession(req.query.sessionId);
-    res.json({ text: s.intent || '' });
+    const f = s.intentFields || { about: '', tone: '', deliberate: '' };
+    res.json({ text: s.intent || '', fields: f, logline: s.logline || '' });
 });
 
 app.post('/intent', (req, res) => {
     const s = getSession(req.body.sessionId);
-    s.intent = String(req.body.text || '').slice(0, 6000).trim();
+    const f = req.body.fields || {};
+    s.intentFields = {
+        about:      String(f.about || '').slice(0, 6000).trim(),
+        tone:       String(f.tone || '').slice(0, 3000).trim(),
+        deliberate: String(f.deliberate || '').slice(0, 6000).trim()
+    };
+    s.intent = composeIntent(s.intentFields);
     s.updatedAt = Date.now();
     saveStore();
     res.json({ ok: true, hasIntent: !!s.intent });
+});
+
+// ---- LOGLINE REVIEW -------------------------------------------------------
+// Two passes on purpose. The first is a cold read: what does one sentence
+// promise a reader who has never heard of this project? The second measures
+// that promise against the actual pages. The gap between them is the whole
+// diagnostic — a logline problem and a script problem look identical from
+// inside the work, and this is what tells them apart.
+
+const LOGLINE_VOICE = `You are Frank. Arch, epigrammatic, a development executive who has read ten thousand of these and can tell in one sentence what a reader is about to assume. The voice is not a garnish — a flat reply is a failed reply. But you are doing precise work here, so let the wit serve the diagnosis rather than replace it.`;
+
+function loglineColdPrompt() {
+    return `${LOGLINE_VOICE}
+
+You are being handed a logline COLD. You have not read the script and you must not pretend otherwise. Do not speculate about what the script probably contains. Your entire job is to report, honestly and specifically, what THIS SENTENCE does to a reader who knows nothing else.
+
+Cover, in fluid prose and without headings or numbered lists:
+
+The genre a reader will file this under, and the specific words in the logline that put it there. Be exact about which words are doing it — this is the most useful thing you can tell him.
+The show they now expect: the shape of the story, the register, the kind of scenes they are bracing for, the network or streamer they picture.
+Who they think the protagonist is and what they think that person wants.
+What the sentence promises that it may not be able to keep, and what it leaves conspicuously absent.
+Whether it actually works as a logline — clarity, engine, stakes, the hook — and where the construction is soft.
+
+Then give him a specific rewrite or two, and say what each one changes about the reader's assumption. Not a polish. A version that aims the reader somewhere different, so he can see the steering.
+
+Be concrete and quote the logline's own words back at him. Around six hundred words.`;
+}
+
+function loglineGapPrompt(session) {
+    return `${LOGLINE_VOICE}
+
+You have now read the full script, which follows. You previously read the logline cold and reported what it promised. Your job now is the gap.
+
+This is a measurement, not a second review of the script. Stay on the question: does the show in these pages match the show that sentence sold?
+
+Work through it in prose, no headings, no numbered lists:
+
+Where the pages DELIVER what the logline promised — and name the pages, so he can see the promise being kept.
+Where the pages DIVERGE. The promised element that is smaller than advertised, the thing the logline foregrounds that the script treats as background, the character the logline made the engine who is not driving. Cite specific scenes and page numbers.
+What the script actually IS that the logline never mentions — the material a reader would be surprised to find, the tone the sentence did not prepare them for, the relationships or threads that turn out to carry the show. This is usually where the real problem lives.
+Whether any misread a reader is likely to arrive with is caused by the logline or by the script. Rule on it. This is the question he is really asking, and a straight answer is worth more than a hedge: if the pages are doing what they should and the sentence is aiming readers wrong, say the logline is the fault and stop apologising for the script. If the sentence is honest and the pages are not delivering, say that instead — and name what is missing.
+
+Close with your recommendation: rewrite the logline to match the script, or change the script to keep the logline's promise. Pick one, argue it, and give him the specific first move.
+
+${intentBlock(session)}
+
+Around eight hundred to a thousand words. Every claim about the script anchored to a scene or a page. Never quote a line that is not in the pages in front of you.`;
+}
+
+app.post('/logline', async (req, res) => {
+    const session = getSession(req.body.sessionId);
+    const logline = String(req.body.logline || '').slice(0, 1500).trim();
+    if (!logline) return res.status(400).json({ error: 'No logline supplied.' });
+
+    session.logline = logline;
+    session.updatedAt = Date.now();
+
+    try {
+        const coldModel = genAI.getGenerativeModel({
+            model: MODEL,
+            systemInstruction: loglineColdPrompt(),
+            generationConfig: { maxOutputTokens: 4096, temperature: 0.9, topP: 0.95 }
+        });
+        const coldResult = await coldModel.generateContent(`THE LOGLINE:\n\n${logline}`);
+        const cold = coldResult.response.text().trim();
+
+        let gap = '';
+        if (session.scriptText) {
+            const gapModel = genAI.getGenerativeModel({
+                model: MODEL,
+                systemInstruction: loglineGapPrompt(session),
+                generationConfig: { maxOutputTokens: 6144, temperature: 0.85, topP: 0.95 }
+            });
+            const gapResult = await gapModel.generateContent(
+                `THE LOGLINE:\n\n${logline}\n\n---\n\nWHAT YOU SAID IT PROMISED, READING IT COLD:\n\n${cold}\n\n---\n\nTHE SCRIPT (${session.scriptTitle || 'untitled'}, draft ${session.drafts || 1}):\n\n${session.scriptText}`
+            );
+            gap = gapResult.response.text().trim();
+
+            // Frank citing lines that are not in the draft is the failure mode we
+            // already solved once. Same detector, same reason.
+            const phantoms = findPhantomQuotes(gap, session.scriptText);
+            if (phantoms.length) {
+                console.log('Phantom quote caught in logline gap analysis:', phantoms.length);
+                const fixModel = genAI.getGenerativeModel({
+                    model: MODEL,
+                    systemInstruction: loglineGapPrompt(session),
+                    generationConfig: { maxOutputTokens: 6144, temperature: 0.7, topP: 0.95 }
+                });
+                const fixed = await fixModel.generateContent(
+                    `You wrote the analysis below, but these quoted lines do not appear anywhere in the script: ${phantoms.map(q => JSON.stringify(q)).join(', ')}. They are from a draft that no longer exists or you invented them. Rewrite the analysis with those citations removed or replaced with lines that are genuinely in the pages. Change nothing else.\n\n${gap}`
+                );
+                gap = fixed.response.text().trim();
+            }
+        }
+
+        saveStore();
+        res.json({ cold, gap, hasScript: !!session.scriptText });
+    } catch (err) {
+        console.error('LOGLINE ERROR:', err);
+        res.status(500).json({ error: 'I could not get through it just now.' });
+    }
 });
 
 app.get('/session', (req, res) => {
