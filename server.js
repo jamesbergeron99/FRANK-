@@ -11,6 +11,12 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 const MODEL = process.env.FRANK_MODEL || "gemini-3-flash-preview";
 
+// The audit is the pass that has to be RIGHT, not fast or charming. It runs in
+// the background where nobody is waiting on it, so it can afford a heavier
+// model. Set FRANK_AUDIT_MODEL in Render to the pro variant; falls back to the
+// same model as everything else if unset.
+const AUDIT_MODEL = process.env.FRANK_AUDIT_MODEL || MODEL;
+
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -65,9 +71,10 @@ const SCRIPT_CHAR_LIMIT = 300000;   // ~180 pages. The old 85k cap was cutting a
 const COVERAGE_KEEP = 6;            // coverage passes retained per project
 const COVERAGE_IN_PROMPT = 2;       // how many prior passes Frank re-reads on a new draft
 const CHAT_TURNS_KEEP = 40;
+const AUDIT_KEEP = 6;               // structured audits retained per project
 
 function blankSession() {
-    return { scriptText: '', scriptTitle: '', drafts: 0, mode: null, coverage: [], chat: [], recentGreetings: [], nextGreeting: null, settled: [], intent: '', updatedAt: Date.now() };
+    return { scriptText: '', scriptTitle: '', drafts: 0, mode: null, coverage: [], audits: [], chat: [], recentGreetings: [], nextGreeting: null, settled: [], intent: '', updatedAt: Date.now() };
 }
 function getSession(id) {
     const key = (id && String(id).slice(0, 64)) || 'default';
@@ -75,6 +82,7 @@ function getSession(id) {
     if (!store[key].recentGreetings) store[key].recentGreetings = []; // migrate older records
     if (store[key].nextGreeting === undefined) store[key].nextGreeting = null;
     if (!store[key].settled) store[key].settled = [];
+    if (!store[key].audits) store[key].audits = [];
     if (typeof store[key].intent !== 'string') store[key].intent = '';
     return store[key];
 }
@@ -170,6 +178,8 @@ Before your ten categories, settle accounts with yourself. Open the body of the 
 
 THE NOTES BELOW ARE STALE BY DEFINITION. They describe a draft that no longer exists. Any line, page number, or scene they mention may have been cut, moved, or rewritten. Before you rule on a fix, go and find the element in the CURRENT pages. If the thing you complained about is no longer there, the note is closed and the writer did the work — say so. Never quote a line from your old notes as though it were still in the script. If you cannot locate something your old notes describe, the writer removed it, and the correct response is to credit that, not to insist it is still there.
 
+YOU MAY NOT CLOSE A NOTE USING THE SAME EVIDENCE YOU USED TO OPEN IT. If the quotation you cite as proof that a fix landed is a quotation that already appears in your old notes below, you have not checked the new pages — you have read your own homework back to yourself. Proof that something changed must be text you did not previously cite. If the only evidence available to you is evidence you already used, the note is still open and you say so.
+
 A NOTE IS ONLY CLOSED WHEN THE SPECIFIC ELEMENT YOU CITED IS GONE OR CHANGED. A different scene getting stronger elsewhere is progress, and you should say so, but it does not close the note you actually gave. If you asked for a line to be scrubbed and the line is still on the page, that note is open no matter what else improved.
 
 If a fix landed, name the beat and say whether it did the work you wanted. If the writer went a different direction and it works better than your suggestion, say so plainly. If your note was taken and the script got worse for it, own that the note was wrong. Never re-issue a note the writer has already addressed, and never credit a fix that is not on the page.
@@ -213,6 +223,189 @@ ABSOLUTE RULES: Plain text only. No markdown. No asterisks. No bullet points. Wr
 };
 
 /* ------------------------------------------------------------------
+   THE AUDIT PASS
+   A separate, deliberately charmless read of the same pages. No voice,
+   no verdict theatre, no fixed number of findings — just claims with
+   quotations attached, emitted as JSON so the quotations can be checked
+   against the actual text in code rather than taken on trust.
+
+   Charm is what makes a reader generous. This pass has none, on purpose.
+   Frank's voice is a delivery problem and it is solved elsewhere.
+------------------------------------------------------------------ */
+const TV_TERRITORIES = 'hook, opening, lead_character, relationship_engine, series_engine, antagonist_pressure, stakes, world, next_episode_hook, dialogue, structure';
+const FEATURE_TERRITORIES = 'hook, opening, protagonist, goal, antagonist_obstacle, stakes, structure_pacing, emotional_payoff, voice_marketability, dialogue';
+
+const auditSystemPrompt = (type, session) => {
+    const prior = priorCoverageBlock(session);
+    const territories = type === 'T.V. Series' ? TV_TERRITORIES : FEATURE_TERRITORIES;
+
+    return `You are a script analyst producing a structured internal audit. This document is never shown to the writer. Nobody is being charmed, encouraged, or entertained here. Write dry, flat, clinical prose. Do not perform.
+
+You output JSON and nothing else. No preamble, no markdown fences, no commentary.
+
+THE SCHEMA:
+{
+  "logline": "one sentence, the actual dramatic engine of these pages",
+  "synopsis": "one paragraph, strictly from the text",
+  "verdict": "PASS" | "CONSIDER" | "RECOMMEND",
+  "verdict_reason": "two sentences, plain",
+  "prior_note_rulings": [
+    {
+      "note": "the prior note, restated in one line",
+      "status": "resolved" | "partially_resolved" | "unresolved" | "solved_differently",
+      "new_evidence_quote": "verbatim line from the CURRENT pages proving the ruling, or null",
+      "reasoning": "one or two sentences"
+    }
+  ],
+  "findings": [
+    {
+      "territory": "one of: ${territories}",
+      "polarity": "strength" | "problem",
+      "claim": "one sentence, specific to this script",
+      "evidence": [ { "quote": "verbatim text copied character-for-character from the script", "context": "scene or character it belongs to" } ],
+      "mechanism": "why it works or fails, in terms of what the text does to the reader",
+      "suggestion": "executable inside these pages, or null for strengths",
+      "severity": 1,
+      "confidence": 1
+    }
+  ]
+}
+
+RULES THAT ARE NOT NEGOTIABLE:
+
+NO FINDING WITHOUT A VERBATIM QUOTE. Every finding carries at least one quotation copied exactly from the script text — same words, same spelling, same punctuation. Not a paraphrase, not a reconstruction from memory, not a tidied-up version. Your quotes are checked against the source text automatically after you finish, and a finding whose quotes cannot be located is discarded. If you cannot find a line to quote, you do not have a finding. Delete it.
+
+VARIABLE COUNT. There is no target number of findings. A strong draft may produce four; a broken one twenty. Never invent a finding to reach a number, and never suppress one to stay under a number. A finding you had to reach for is worse than no finding at all, because it displaces attention from the ones that matter.
+
+SEVERITY is how much damage this does to the script: 1 trivial, 3 noticeable, 5 the script does not work until this is solved. CONFIDENCE is how sure you are that you have read it correctly: 1 speculative, 5 demonstrable from the text. A high-severity low-confidence finding is legitimate and useful — say it and mark it honestly. Do not inflate confidence to sound authoritative.
+
+STRENGTHS OBEY THE SAME RULES. A strength without a quotation is cheerleading. Name the beat and say mechanically what it accomplishes.
+
+JUDGE THE SCRIPT AGAINST ITS OWN AMBITIONS. Identify what the writer is attempting before you grade it. Do not pattern-match it into an adjacent genre and mark it down for failing to be that other thing. Restraint may be deliberate: a withheld confrontation, a character kept off screen, an unanswered question. Consider what the script gains from the absence before calling it a gap.
+
+VERDICT CALIBRATION — YOUR SCALE HAS DRIFTED AND THIS IS THE CORRECTION.
+RECOMMEND means a reader would put their own professional standing behind this script today, as it stands, unchanged. In a real submission pile this is a small minority of scripts. It is not a grade for promise, ambition, or a strong draft that still has work in it.
+CONSIDER means real merit and real remaining problems. Most competent, promising, well-written drafts belong here. This is not an insult and it is not a soft PASS.
+PASS means the fundamentals are not working yet.
+If your findings list contains an unresolved problem at severity 4 or 5, you may not return RECOMMEND. The verdict must follow from the findings, not from how much you enjoyed reading.
+
+${type === 'T.V. Series' ? `SCOPE: this is one episode. Every suggestion must be executable inside these pages. Do not solve the season, do not design future episodes, do not fault a pilot for withholding answers it is deliberately holding.
+` : ''}${intentBlock(session)}
+${settledBlock(session) ? `CLOSED BY THE WRITER — do not raise these as findings, in any form or from any angle:
+${settledBlock(session)}
+` : ''}
+${prior ? `PRIOR NOTES ON THIS PROJECT. These describe a draft that no longer exists.
+
+Fill prior_note_rulings by locating each element in the CURRENT pages. The quotation you use as proof must come from the current text in front of you, and it MUST BE A DIFFERENT QUOTATION FROM ANY THAT APPEARS IN THE PRIOR NOTES BELOW. If the only evidence you can produce is evidence already quoted below, you have read your own notes instead of the script, and the correct status is unresolved. Set new_evidence_quote to null rather than reusing an old line.
+
+If an element is genuinely gone from the pages, that note is resolved and the writer did the work.
+
+${prior}
+` : 'FIRST PASS — no prior notes. Return prior_note_rulings as an empty array.'}
+
+Output the JSON object only.`;
+};
+
+// --- QUOTE VERIFICATION ---------------------------------------------------
+// The whole point of making the audit structured is that its evidence can be
+// checked mechanically instead of trusted. A quote that is not in the pages is
+// not evidence, however confident the sentence around it sounds.
+function normalizeForSearch(s) {
+    return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function verifyAudit(audit, scriptText) {
+    const haystack = normalizeForSearch(scriptText || '');
+    let checked = 0, failed = 0;
+
+    const checkQuote = (q) => {
+        if (!q || typeof q !== 'string') return null;
+        const needle = normalizeForSearch(q);
+        if (needle.split(' ').length < 4) return null;   // too short to verify meaningfully
+        checked++;
+        const ok = haystack.includes(needle);
+        if (!ok) failed++;
+        return ok;
+    };
+
+    (audit.findings || []).forEach(f => {
+        (f.evidence || []).forEach(e => { e.verified = checkQuote(e.quote); });
+        const verdicts = (f.evidence || []).map(e => e.verified).filter(v => v !== null);
+        f.evidenceVerified = verdicts.length ? verdicts.some(v => v === true) : null;
+    });
+
+    (audit.prior_note_rulings || []).forEach(r => {
+        r.evidenceVerified = checkQuote(r.new_evidence_quote);
+    });
+
+    audit.quoteCheck = { checked, failed, passRate: checked ? Math.round(100 * (checked - failed) / checked) : null };
+    return audit;
+}
+
+function parseAuditJSON(raw) {
+    let text = String(raw || '').replace(/```json|```/g, '').trim();
+    const first = text.indexOf('{');
+    const last = text.lastIndexOf('}');
+    if (first !== -1 && last !== -1 && last > first) text = text.slice(first, last + 1);
+    return JSON.parse(text);
+}
+
+async function runAudit(session, type) {
+    const model = genAI.getGenerativeModel({
+        model: AUDIT_MODEL,
+        systemInstruction: auditSystemPrompt(type, session),
+        generationConfig: {
+            maxOutputTokens: 8192,
+            temperature: 0.2,            // this pass is judgment, not voice
+            responseMimeType: "application/json"
+        }
+    });
+
+    const result = await model.generateContent(
+        `Audit these pages against the schema. Copy every quotation character-for-character from the text below.\n\nSCRIPT TEXT:\n\n${session.scriptText}`
+    );
+
+    const audit = parseAuditJSON(result.response.text());
+    verifyAudit(audit, session.scriptText);
+    return audit;
+}
+
+// Runs after the writer already has their coverage in hand, so it costs them
+// no waiting. Failure here is silent by design — a missing audit is a missing
+// diagnostic, not a broken product.
+function runAuditInBackground(session, type) {
+    runAudit(session, type)
+        .then(audit => {
+            const record = {
+                draft: session.drafts,
+                mode: type,
+                date: new Date().toISOString(),
+                audit
+            };
+            session.audits.push(record);
+            if (session.audits.length > AUDIT_KEEP) session.audits.shift();
+            session.updatedAt = Date.now();
+            saveStore();
+
+            const f = audit.findings || [];
+            const problems = f.filter(x => x.polarity === 'problem');
+            const severe = problems.filter(x => Number(x.severity) >= 4);
+            console.log(
+                `AUDIT draft ${session.drafts} — verdict ${audit.verdict} | ` +
+                `${f.length} findings (${problems.length} problems, ${severe.length} at severity 4+) | ` +
+                `quotes ${audit.quoteCheck.checked - audit.quoteCheck.failed}/${audit.quoteCheck.checked} verified` +
+                (audit.quoteCheck.failed ? ` | ${audit.quoteCheck.failed} PHANTOM` : '')
+            );
+            (f).forEach(x => {
+                if (x.evidenceVerified === false) {
+                    console.warn("  unverifiable finding:", String(x.claim).slice(0, 90));
+                }
+            });
+        })
+        .catch(err => console.error("AUDIT FAILED:", err.message));
+}
+
+/* ------------------------------------------------------------------
    FRANK — CHAT SYSTEM PROMPT
    The whole point: the pages travel with him into the conversation.
 ------------------------------------------------------------------ */
@@ -225,6 +418,8 @@ const chatSystemPrompt = (session) => {
 THE PAGES ARE ON YOUR DESK. The full text of the current draft is reproduced below. That text is the record. Your coverage notes are a summary you wrote about the record — they are not the record, and they are not evidence. When the writer challenges a note, asks you to be more specific, asks for an example, or asks for a suggested fix, you go back down to the SCRIPT ON FILE and read the relevant scene before you answer. Then you quote the actual line, name the actual scene heading, describe the actual staging. Never answer from your coverage summary when the script itself is sitting right there to be checked.
 
 HOW YOU HANDLE PUSHBACK: Engage the writer's specific argument. Never restate your original note in different words without addressing what they actually said. Re-read the scene in question in the pages below before you rule on it. If the text contradicts your note, concede immediately and name exactly what you got wrong — a good executive changes his mind when the evidence changes, and only amateurs defend errors out of pride. If the text supports your note, hold the position and quote the line that proves it. What you never do: capitulate merely because the writer pushed back, soften a valid note to keep the peace, or invent script details to win an argument. If the writer references something that genuinely is not in the pages below, say so plainly and ask where they think it is.
+
+WHAT MOVES YOU AND WHAT DOES NOT. You change position when the writer shows you text — a line, a scene, a page you misread or did not account for. That is the only thing that moves you. Volume does not move you. Frustration does not move you. Being told you are wrong, without a page attached, does not move you; it earns a courteous "show me where" and nothing else. And when they do show you the page and it goes against you, you fold immediately and completely, with no face-saving qualifier tacked on the end.
 
 QUOTING — READ THIS TWICE. You may only quote a line if you have found that exact line in the SCRIPT ON FILE below. Your coverage notes are not a source for quotations. Old notes quote old drafts, and a line you cited three drafts ago may have been cut since. When the writer tells you they removed something, your first move is to search the current pages for it, not to reach for your notes. If you cannot find it in the pages, they removed it, you were working from a stale memory, and you say so cleanly: you were right, it's gone, my note was out of date. Do not attach a page number to a line you have not located in the text below. A fabricated quotation delivered with a confident page number is the worst thing you can do to a writer, because it is indistinguishable from evidence.
 
@@ -427,6 +622,10 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             fullText += data.text + "\n";
         }
 
+        // The audit compares against the notes from the PREVIOUS pass, so it has
+        // to be built before this draft's coverage is pushed onto the pile.
+        const priorSnapshot = { coverage: (session.coverage || []).slice(), settled: session.settled, intent: session.intent };
+
         // Store the pages BEFORE the model call so they survive even if generation fails.
         session.scriptText = fullText.substring(0, SCRIPT_CHAR_LIMIT);
         session.scriptTitle = guessTitle(fullText) || session.scriptTitle;
@@ -463,6 +662,16 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             title: session.scriptTitle,
             coverageCount: session.coverage.length
         });
+
+        // Writer has their coverage; the audit runs on our time, not theirs.
+        runAuditInBackground({
+            scriptText: session.scriptText,
+            drafts: session.drafts,
+            coverage: priorSnapshot.coverage,
+            settled: session.settled,
+            intent: session.intent,
+            audits: session.audits
+        }, mode);
     } catch (err) {
         console.error("LOG ERROR:", err);
         res.status(500).json({ message: "Frank is indisposed, darling." });
@@ -474,10 +683,6 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 // exactly like evidence. Prompting reduces it; this catches what's left. Any
 // line he presents as a quotation gets looked up in the actual pages, and if
 // it isn't there he is sent back to try again before the writer sees it.
-function normalizeForSearch(s) {
-    return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-}
-
 function extractQuotedLines(reply) {
     const found = [];
     // Anything in double or smart quotes.
@@ -604,10 +809,48 @@ app.get('/session', (req, res) => {
         title: s.scriptTitle || '',
         drafts: s.drafts || 0,
         coverageCount: (s.coverage || []).length,
+        auditCount: (s.audits || []).length,
         settledCount: (s.settled || []).length,
         hasIntent: !!(s.intent && s.intent.trim()),
         mode: s.mode || null,
         updatedAt: s.updatedAt || null
+    });
+});
+
+// --- AUDIT INSPECTION -----------------------------------------------------
+// Open this in a browser after a run. With no sessionId it finds the most
+// recently active project on its own, so there is nothing to look up.
+app.get('/last-audit', (req, res) => {
+    let s;
+    if (req.query.sessionId) {
+        s = peekSession(req.query.sessionId);
+    } else {
+        const keys = Object.keys(store);
+        if (!keys.length) return res.json({ message: "Nothing on file yet." });
+        const newest = keys.sort((a, b) => (store[b].updatedAt || 0) - (store[a].updatedAt || 0))[0];
+        s = store[newest];
+    }
+    const last = (s.audits || []).slice(-1)[0];
+    if (!last) return res.json({ message: "No audit on file yet. Run a script through, wait about a minute, then reload this page." });
+
+    const a = last.audit || {};
+    const findings = a.findings || [];
+    res.json({
+        draft: last.draft,
+        date: last.date,
+        verdict: a.verdict,
+        verdict_reason: a.verdict_reason,
+        quoteCheck: a.quoteCheck,
+        counts: {
+            findings: findings.length,
+            problems: findings.filter(f => f.polarity === 'problem').length,
+            strengths: findings.filter(f => f.polarity === 'strength').length,
+            severity4plus: findings.filter(f => Number(f.severity) >= 4).length,
+            unverifiable: findings.filter(f => f.evidenceVerified === false).length
+        },
+        logline: a.logline,
+        prior_note_rulings: a.prior_note_rulings || [],
+        findings: findings.slice().sort((x, y) => (Number(y.severity) || 0) - (Number(x.severity) || 0))
     });
 });
 
