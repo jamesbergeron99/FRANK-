@@ -29,6 +29,9 @@
         .icon-btn { background: none; border: none; color: var(--gold); cursor: pointer; font-size: 1.4rem; }
         #micBtn.recording { color: #ff4444; }
         #micBtn.unavailable { color: #555; cursor: not-allowed; }
+        .intent-btn { position: absolute; left: 20px; top: 25px; background: none; border: 1px solid var(--gold); color: var(--gold); padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.75rem; transition: 0.2s; }
+        .intent-btn:hover { background: var(--gold); color: #111; }
+        .intent-btn.set { background: rgba(212,175,55,0.15); }
         .clear-btn { position: absolute; right: 20px; top: 25px; background: none; border: 1px solid #ff4444; color: #ff4444; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.75rem; transition: 0.2s; }
         .clear-btn:hover { background: #ff4444; color: #fff; }
     </style>
@@ -42,6 +45,7 @@
             <span>T.V. SERIES</span>
         </div>
         <div id="memoryStatus">Checking the filing cabinet...</div>
+        <button class="intent-btn" id="intentBtn" onclick="setIntent()"><i class="fas fa-pen-nib"></i> YOUR INTENT</button>
         <button class="clear-btn" onclick="wipeMemory()"><i class="fas fa-trash-alt"></i> WIPEMEMORY</button>
     </div>
     <div id="chat-window"></div>
@@ -123,18 +127,55 @@
             prefetchGreeting('tv');
         };
 
+        // Tell Frank which choices are deliberate, once, and he stops guessing at
+        // them on every pass. It is stored with the script and survives restarts.
+        async function setIntent() {
+            let current = '';
+            try {
+                const r = await fetch('/intent?sessionId=' + encodeURIComponent(SESSION_ID));
+                current = (await r.json()).text || '';
+            } catch (e) {}
+
+            const val = prompt(
+                "Tell Frank what is deliberate — structure, devices, tone, what a sequence is doing and why.\n\n" +
+                "He will judge whether it lands on the page, and he will stop suggesting you delete it.\n\n" +
+                "Leave this empty to clear it.",
+                current
+            );
+            if (val === null) return;
+
+            try {
+                await fetch('/intent', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId: SESSION_ID, text: val })
+                });
+                addMessage(val.trim()
+                    ? "Noted. Your intentions are on file, and I will judge the execution against them rather than against my own preferences."
+                    : "Your statement of intent has been cleared.", false);
+            } catch (e) {
+                addMessage("I could not file that. Try again in a moment.", false);
+            }
+            refreshStatus();
+        }
+
         async function refreshStatus() {
             const el = document.getElementById('memoryStatus');
             try {
                 const r = await fetch('/session?sessionId=' + encodeURIComponent(SESSION_ID));
                 const d = await r.json();
+                const ib = document.getElementById('intentBtn');
+                if (ib) ib.classList.toggle('set', !!d.hasIntent);
                 if (d.hasScript) {
                     el.classList.add('loaded');
-                    el.textContent = 'ON FILE: ' + (d.title || 'UNTITLED') + ' — DRAFT ' + d.drafts +
+                    let line = 'ON FILE: ' + (d.title || 'UNTITLED') + ' — DRAFT ' + d.drafts +
                         ' · ' + d.coverageCount + ' PASS' + (d.coverageCount === 1 ? '' : 'ES') + ' REMEMBERED';
+                    if (d.settledCount) line += ' · ' + d.settledCount + ' RULING' + (d.settledCount === 1 ? '' : 'S');
+                    if (d.hasIntent) line += ' · INTENT ON FILE';
+                    el.textContent = line;
                 } else {
                     el.classList.remove('loaded');
-                    el.textContent = 'No script on file';
+                    el.textContent = d.hasIntent ? 'No script on file · Intent on file' : 'No script on file';
                 }
                 return d;
             } catch (e) {
