@@ -21,12 +21,17 @@ const COVERAGE_MODEL = process.env.FRANK_COVERAGE_MODEL || "gemini-3-pro-preview
 
 // If the coverage model string is wrong or unavailable, fall back rather than
 // failing the whole request.
+let ACTIVE_COVERAGE_MODEL = COVERAGE_MODEL + ' (untested)';
+
 async function generateWithFallback(opts, prompt) {
     try {
         const m = genAI.getGenerativeModel({ ...opts, model: COVERAGE_MODEL });
-        return await m.generateContent(prompt);
+        const r = await m.generateContent(prompt);
+        ACTIVE_COVERAGE_MODEL = COVERAGE_MODEL;
+        return r;
     } catch (err) {
         console.warn(`Coverage model ${COVERAGE_MODEL} failed (${err.message}); falling back to ${MODEL}.`);
+        ACTIVE_COVERAGE_MODEL = MODEL + ' (FALLBACK — ' + COVERAGE_MODEL + ' unavailable)';
         const m = genAI.getGenerativeModel({ ...opts, model: MODEL });
         return await m.generateContent(prompt);
     }
@@ -593,10 +598,13 @@ Look specifically for:
 - Claims about what a character does, wants, says or feels that the script does not support, or that the script directly contradicts.
 - Claims about the plot, the plan, the stakes or the events that misstate what the pages establish. Pay very close attention to things the script states explicitly and the coverage gets backwards.
 - Descriptions of a scene's content that do not match the scene.
-- References to material that is not in the script at all.
+- References to material that is not in the script at all — institutions, characters, documents, deadlines or events the coverage treats as present when they are not.
+- Statements that the script fails to do something it in fact does, or lacks something it in fact contains. Search the pages before accepting any claim of absence.
 - Page or scene attributions pointing at the wrong place.
 
-Do NOT flag: opinions, judgements, suggestions, criticisms, predictions about future episodes, or anything about quality. A note saying something is weak is an opinion and is not your business. Only flag statements of FACT about what the script contains.
+CHECK THE PREMISES OF SUGGESTIONS, NOT JUST STANDALONE STATEMENTS. This is the most important part of your job and the easiest to get wrong. A suggestion built on a false premise is a factual error, and it is the most damaging kind, because it sends the writer off to fix a problem that does not exist. If the coverage says "I want to see the bank threatening to seize the house" and the script's problem is a lapsed insurance policy with no bank and no mortgage anywhere in it, that is a flagged error even though it is phrased as a suggestion. Read every recommendation for what it assumes about the script, and check the assumption.
+
+Do NOT flag: matters of taste or judgement about quality, or predictions about future episodes. A note saying something is weak, thin, on the nose or unconvincing is an opinion and is not your business — provided the thing it describes actually happens in the script. Only flag where the coverage is WRONG ABOUT WHAT IS ON THE PAGE, including where it is wrong inside a suggestion.
 
 Return ONLY a JSON array, no markdown fences, no preamble. Each element:
 {"claim": "<the exact sentence or phrase from the coverage>", "problem": "<what the script actually says, with the specific evidence>"}
@@ -760,22 +768,105 @@ Write the ruling from the writer's side, e.g. "The walking montage on pages 6-7 
     }
 }
 
+// Telling a model "do not capitulate" does not work, because when the writer
+// pushes back the cheapest available move is agreement, and no amount of prompt
+// text outranks that. So the hold-or-concede decision is taken away from Frank
+// and given to a separate, opinionless pass that reads the actual pages first.
+// He is then told what the evidence says and argues from it.
+
+const DISPUTE_CLASSIFIER = `Decide whether the writer's message disputes, challenges or pushes back on something the reader said about their script. Return ONLY JSON, no fences: {"isDispute": true|false, "claim": "<one sentence stating what the writer is asserting about their own script>"}. If it is not a dispute, claim is "".`;
+
+const ADJUDICATOR_PROMPT = `You are an impartial referee with no stake in this argument and no opinions about screenwriting. You will be given a script, a note a reader gave about it, and the writer's objection to that note.
+
+Decide, purely on the evidence in the script, who is correct about the FACTS.
+
+Return ONLY JSON, no fences:
+{"verdict": "writer" | "reader" | "mixed" | "taste",
+ "evidence": "<the specific pages, scenes, lines or absences that settle it>",
+ "survives": "<if any part of the reader's note stands regardless of the factual dispute, state it; otherwise empty>"}
+
+Use "writer" when the script supports the writer and the note was factually wrong.
+Use "reader" when the script does NOT support the writer's objection — when the thing they say is on the page is not there, or not there in the way they claim. Say so plainly. The writer being certain, forceful or angry is not evidence, and a writer explaining their intention does not make that intention present on the page.
+Use "mixed" when each is right about part of it.
+Use "taste" when nothing factual is in dispute and this is a difference of preference.
+
+Be strict and be specific. Cite what is actually in the pages.`;
+
+async function adjudicate(session, message) {
+    if (!session.scriptText || !session.chat || session.chat.length === 0) return null;
+    try {
+        const classifier = genAI.getGenerativeModel({
+            model: MODEL,
+            systemInstruction: DISPUTE_CLASSIFIER,
+            generationConfig: { maxOutputTokens: 256, temperature: 0 }
+        });
+        const lastFrank = [...session.chat].reverse().find(m => m.role === 'model');
+        const c = await classifier.generateContent(`READER SAID:\n${(lastFrank ? lastFrank.text : '').slice(0, 4000)}\n\nWRITER SAID:\n${message}`);
+        let ct = c.response.text().trim().replace(/^```(json)?/i, '').replace(/```$/, '').trim();
+        let parsed; try { parsed = JSON.parse(ct); } catch (e) { return null; }
+        if (!parsed || !parsed.isDispute) return null;
+
+        const judge = genAI.getGenerativeModel({
+            model: COVERAGE_MODEL,
+            systemInstruction: ADJUDICATOR_PROMPT,
+            generationConfig: { maxOutputTokens: 1024, temperature: 0 }
+        });
+        const j = await judge.generateContent(
+            `THE SCRIPT:\n\n${session.scriptText}\n\n---\n\nTHE READER'S NOTE:\n${(lastFrank ? lastFrank.text : '').slice(0, 6000)}\n\n---\n\nTHE WRITER'S OBJECTION:\n${message}`
+        );
+        let jt = j.response.text().trim().replace(/^```(json)?/i, '').replace(/```$/, '').trim();
+        try { return JSON.parse(jt); } catch (e) { return null; }
+    } catch (err) {
+        console.error('ADJUDICATE ERROR:', err);
+        return null;
+    }
+}
+
+function rulingInstruction(r) {
+    if (!r) return '';
+    const base = `\n\n[EVIDENCE CHECK — the pages have just been searched independently. This is what they show, and it decides whether you hold or give ground. Do not mention this check, do not refer to being checked, and do not quote this block.]\nEVIDENCE: ${r.evidence || '(none cited)'}\n`;
+    switch (r.verdict) {
+        case 'writer':
+            return base + `RULING: the writer is right and your note was factually wrong. Say so in one clean sentence, name what you got wrong, and do not grovel — no eating your hat, no lilies to his ego, no theatrical self-flagellation. Then, if something real survives, say what it is and give him the version that works. If nothing survives, drop it cleanly and move on.${r.survives ? ` WHAT SURVIVES: ${r.survives}` : ' NOTHING SURVIVES — do not resurrect it in a new costume.'}`;
+        case 'reader':
+            return base + `RULING: you were right and the writer's objection is not supported by the pages. HOLD YOUR POSITION. Do not concede, do not soften, do not split the difference to keep the peace. Show him the evidence above, calmly and specifically, and explain what a reader receives from those pages. He is entitled to disagree, and you are entitled to be right. Conceding here would be a failure of your only real job.`;
+        case 'mixed':
+            return base + `RULING: you are each right about part of this. Separate them explicitly. Name the part of your note that does not survive and let it go. Name the part that does and hold it, with the evidence.${r.survives ? ` WHAT SURVIVES: ${r.survives}` : ''}`;
+        default:
+            return base + `RULING: nothing factual is in dispute — this is taste. Say that plainly. His preference governs his script. State your own view once, without repeating it, and do not pretend to be persuaded when you are not.`;
+    }
+}
+
 app.post('/chat', async (req, res) => {
     try {
         const session = getSession(req.body.sessionId);
         const message = (req.body.message || '').toString();
 
-        const model = genAI.getGenerativeModel({
-            model: MODEL,
-            systemInstruction: chatSystemPrompt(session),
-            generationConfig: { maxOutputTokens: 4096, temperature: 0.95, topP: 0.95 }
-        });
+        // Arguments are where being right matters most, so chat runs on the
+        // stronger model too. Greetings stay on the fast one.
+        let model;
+        try {
+            model = genAI.getGenerativeModel({
+                model: COVERAGE_MODEL,
+                systemInstruction: chatSystemPrompt(session),
+                generationConfig: { maxOutputTokens: 4096, temperature: 0.9, topP: 0.95 }
+            });
+        } catch (e) {
+            model = genAI.getGenerativeModel({
+                model: MODEL,
+                systemInstruction: chatSystemPrompt(session),
+                generationConfig: { maxOutputTokens: 4096, temperature: 0.9, topP: 0.95 }
+            });
+        }
+
+        const ruling = await adjudicate(session, message);
+        if (ruling) console.log('Adjudicator verdict:', ruling.verdict);
 
         const history = (session.chat || []).slice(-16).map(m => ({
             role: m.role,
             parts: [{ text: m.text }]
         }));
-        const contents = [...history, { role: 'user', parts: [{ text: message }] }];
+        const contents = [...history, { role: 'user', parts: [{ text: message + rulingInstruction(ruling) }] }];
 
         let result = await model.generateContent({ contents });
         let reply = result.response.text();
@@ -949,6 +1040,7 @@ app.get('/session', (req, res) => {
         settledCount: (s.settled || []).length,
         hasIntent: !!(s.intent && s.intent.trim()),
         mode: s.mode || null,
+        model: ACTIVE_COVERAGE_MODEL,
         updatedAt: s.updatedAt || null
     });
 });
