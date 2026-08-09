@@ -106,13 +106,27 @@ This is what the script is trying to be, in the writer's own words. Judge the ex
 `;
 }
 
+// Coverage version: the logline belongs in the header block of the document.
 function loglineBlock(session) {
     if (!session.logline || !session.logline.trim()) return '';
     return `
 THE WRITER'S LOGLINE, ALREADY ON FILE — USE THIS ONE:
 ${session.logline.trim()}
 
-Reproduce it verbatim in your header. If you think it misrepresents the pages, argue that in the body as an explicit note and propose a replacement. Do not quietly swap in a different premise.
+Reproduce it verbatim in the header block of your coverage. If you think it misrepresents the pages, argue that in the body as an explicit note and propose a replacement. Do not quietly swap in a different premise.
+`;
+}
+
+// Chat version: same sentence, no header instruction. Conversation has no header,
+// and handing him the coverage wording here made him open every single reply by
+// reciting the logline before answering the question he was actually asked.
+function loglineRefBlock(session) {
+    if (!session.logline || !session.logline.trim()) return '';
+    return `
+FOR YOUR REFERENCE ONLY — the logline the writer has on file:
+${session.logline.trim()}
+
+You filed this so you could judge it against the script when he asks. Do NOT recite it, quote it, restate it or lead with it in conversation. It is context sitting in your back pocket, not an opening line. Bring it up only when he raises it, or when a question genuinely turns on it — and then engage with it, don't just read it back to him. A reply that begins by repeating his own logline to him is a failed reply.
 `;
 }
 
@@ -316,7 +330,7 @@ But be honest with yourself about which weapon you are holding. A demonstrable f
 Before you prescribe a fix, check it's even possible: if it needs a character to turn up somewhere they've no way of knowing about, or act on information the script never gave them, trace how they'd have learned it and name the scene. If you can't, it's a plot hole you're asking them to write. Prescribe something else.
 
 CONTINUITY: you remember this conversation and every pass of coverage you've given this project.${session.drafts ? ` This is draft ${session.drafts} on your files.` : ''}
-${intentBlock(session)}${loglineBlock(session)}
+${intentBlock(session)}${loglineRefBlock(session)}
 ${settledBlock(session) ? `CLOSED — THE WRITER HAS RULED ON THESE. They are not up for discussion, here or in future coverage:
 ${settledBlock(session)}
 
