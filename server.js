@@ -17,7 +17,15 @@ const MODEL = process.env.FRANK_MODEL || "gemini-3-flash-preview";
 // That is the source of the "he didn't read the whole script" errors — calling a
 // legal rave illegal, calling begging a complaint. Chat and greetings stay on the
 // fast model, where latency matters and the stakes are a sentence.
-const COVERAGE_MODEL = process.env.FRANK_COVERAGE_MODEL || "gemini-3-pro-preview";
+// DO NOT change this default. Every attempt to move Frank off the flash-preview
+// model has broken him, and this one broke chat outright: the pro string is not
+// available on this API key, so every /chat call threw and returned the error
+// fallback ("In a meeting."). Coverage only survived because it had a fallback
+// path and quietly ran on flash anyway. The verification passes below are worth
+// keeping regardless of tier — they run at temperature zero, where the job is
+// checking text rather than generating it. If a stronger model is ever wanted,
+// set FRANK_COVERAGE_MODEL in the environment and test chat before trusting it.
+const COVERAGE_MODEL = process.env.FRANK_COVERAGE_MODEL || MODEL;
 
 // If the coverage model string is wrong or unavailable, fall back rather than
 // failing the whole request.
@@ -614,14 +622,20 @@ If you find nothing, return []. Be strict but be sure: only flag something you c
 async function factCheckCoverage(feedback, session, coverageOpts) {
     if (!session.scriptText) return feedback;
     try {
-        const checker = genAI.getGenerativeModel({
-            model: COVERAGE_MODEL,
+        const checkCfg = {
             systemInstruction: FACT_CHECK_PROMPT,
             generationConfig: { maxOutputTokens: 4096, temperature: 0 }
-        });
-        const raw = await checker.generateContent(
-            `THE SCRIPT:\n\n${session.scriptText}\n\n---\n\nTHE COVERAGE TO CHECK:\n\n${feedback}`
-        );
+        };
+        let checker = genAI.getGenerativeModel({ ...checkCfg, model: COVERAGE_MODEL });
+        let raw;
+        const checkInput = `THE SCRIPT:\n\n${session.scriptText}\n\n---\n\nTHE COVERAGE TO CHECK:\n\n${feedback}`;
+        try {
+            raw = await checker.generateContent(checkInput);
+        } catch (err) {
+            checker = genAI.getGenerativeModel({ ...checkCfg, model: MODEL });
+            raw = await checker.generateContent(checkInput);
+        }
+
         let txt = raw.response.text().trim().replace(/^```(json)?/i, '').replace(/```$/, '').trim();
         let problems = [];
         try { problems = JSON.parse(txt); } catch (e) { return feedback; }
@@ -806,14 +820,22 @@ async function adjudicate(session, message) {
         let parsed; try { parsed = JSON.parse(ct); } catch (e) { return null; }
         if (!parsed || !parsed.isDispute) return null;
 
-        const judge = genAI.getGenerativeModel({
-            model: COVERAGE_MODEL,
+        const judgeCfg = {
             systemInstruction: ADJUDICATOR_PROMPT,
             generationConfig: { maxOutputTokens: 1024, temperature: 0 }
-        });
-        const j = await judge.generateContent(
+        };
+        let judge = genAI.getGenerativeModel({ ...judgeCfg, model: COVERAGE_MODEL });
+        let j;
+        try {
+            j = await judge.generateContent(
             `THE SCRIPT:\n\n${session.scriptText}\n\n---\n\nTHE READER'S NOTE:\n${(lastFrank ? lastFrank.text : '').slice(0, 6000)}\n\n---\n\nTHE WRITER'S OBJECTION:\n${message}`
-        );
+            );
+        } catch (err) {
+            judge = genAI.getGenerativeModel({ ...judgeCfg, model: MODEL });
+            j = await judge.generateContent(
+                `THE SCRIPT:\n\n${session.scriptText}\n\n---\n\nTHE READER'S NOTE:\n${(lastFrank ? lastFrank.text : '').slice(0, 6000)}\n\n---\n\nTHE WRITER'S OBJECTION:\n${message}`
+            );
+        }
         let jt = j.response.text().trim().replace(/^```(json)?/i, '').replace(/```$/, '').trim();
         try { return JSON.parse(jt); } catch (e) { return null; }
     } catch (err) {
@@ -844,19 +866,22 @@ app.post('/chat', async (req, res) => {
 
         // Arguments are where being right matters most, so chat runs on the
         // stronger model too. Greetings stay on the fast one.
-        let model;
-        try {
-            model = genAI.getGenerativeModel({
-                model: COVERAGE_MODEL,
-                systemInstruction: chatSystemPrompt(session),
-                generationConfig: { maxOutputTokens: 4096, temperature: 0.9, topP: 0.95 }
-            });
-        } catch (e) {
-            model = genAI.getGenerativeModel({
-                model: MODEL,
-                systemInstruction: chatSystemPrompt(session),
-                generationConfig: { maxOutputTokens: 4096, temperature: 0.9, topP: 0.95 }
-            });
+        const chatCfg = {
+            systemInstruction: chatSystemPrompt(session),
+            generationConfig: { maxOutputTokens: 4096, temperature: 0.95, topP: 0.95 }
+        };
+        const model = genAI.getGenerativeModel({ ...chatCfg, model: COVERAGE_MODEL });
+        const fallbackModel = genAI.getGenerativeModel({ ...chatCfg, model: MODEL });
+
+        // getGenerativeModel does not throw on a bad model name — generateContent
+        // does. That is why a wrong string killed chat instead of degrading it.
+        async function chatGenerate(payload) {
+            try {
+                return await model.generateContent(payload);
+            } catch (err) {
+                console.warn(`Chat model ${COVERAGE_MODEL} failed (${err.message}); using ${MODEL}.`);
+                return await fallbackModel.generateContent(payload);
+            }
         }
 
         const ruling = await adjudicate(session, message);
@@ -868,14 +893,14 @@ app.post('/chat', async (req, res) => {
         }));
         const contents = [...history, { role: 'user', parts: [{ text: message + rulingInstruction(ruling) }] }];
 
-        let result = await model.generateContent({ contents });
+        let result = await chatGenerate({ contents });
         let reply = result.response.text();
 
         const phantoms = findPhantomQuotes(reply, session.scriptText);
         if (phantoms.length) {
             console.warn("Phantom quote caught, forcing rewrite:", phantoms[0].slice(0, 80));
             const correction = `Frank — stop. You just presented the following as a quotation from the pages, and it is not in the script on your desk:\n\n${phantoms.map(p => '"' + p + '"').join('\n')}\n\nYou pulled that from your own old notes, not from the text. Search the current pages again. If it genuinely is not there, the writer cut it, your note was out of date, and you say so plainly and generously. Now give your answer again, quoting only what you can actually find in the pages.`;
-            const retry = await model.generateContent({
+            const retry = await chatGenerate({
                 contents: [...contents,
                     { role: 'model', parts: [{ text: reply }] },
                     { role: 'user', parts: [{ text: correction }] }
