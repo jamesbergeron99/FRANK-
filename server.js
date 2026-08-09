@@ -11,6 +11,27 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 const MODEL = process.env.FRANK_MODEL || "gemini-3-flash-preview";
 
+// Coverage is a close-reading task over a hundred thousand characters, and a
+// Flash-tier model is the wrong instrument for it: it is fast and cheap, but it
+// skims long context and fills the gaps with whatever the genre usually does.
+// That is the source of the "he didn't read the whole script" errors — calling a
+// legal rave illegal, calling begging a complaint. Chat and greetings stay on the
+// fast model, where latency matters and the stakes are a sentence.
+const COVERAGE_MODEL = process.env.FRANK_COVERAGE_MODEL || "gemini-3-pro-preview";
+
+// If the coverage model string is wrong or unavailable, fall back rather than
+// failing the whole request.
+async function generateWithFallback(opts, prompt) {
+    try {
+        const m = genAI.getGenerativeModel({ ...opts, model: COVERAGE_MODEL });
+        return await m.generateContent(prompt);
+    } catch (err) {
+        console.warn(`Coverage model ${COVERAGE_MODEL} failed (${err.message}); falling back to ${MODEL}.`);
+        const m = genAI.getGenerativeModel({ ...opts, model: MODEL });
+        return await m.generateContent(prompt);
+    }
+}
+
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -560,6 +581,60 @@ This is not a note about the logline. It is the expectation every reader will wa
 `;
 }
 
+// The phantom-quote detector only catches fabricated QUOTES. It cannot catch a
+// fabricated FACT — "a massive illegal rave" when page 48 says "a legit no alcohol
+// event", or "complaining about bartenders" when page 19 has her begging one to
+// come in. Those are the errors that destroy a writer's trust, because they prove
+// the reader was pattern-matching rather than reading. So: a separate verification
+// pass at temperature zero whose only job is to check assertions against the text.
+const FACT_CHECK_PROMPT = `You are a fact-checker with no opinions about screenwriting whatsoever. You will be given a script and a piece of coverage written about it. Your ONLY job is to find statements in the coverage that contradict, misstate or invent what is in the script.
+
+Look specifically for:
+- Claims about what a character does, wants, says or feels that the script does not support, or that the script directly contradicts.
+- Claims about the plot, the plan, the stakes or the events that misstate what the pages establish. Pay very close attention to things the script states explicitly and the coverage gets backwards.
+- Descriptions of a scene's content that do not match the scene.
+- References to material that is not in the script at all.
+- Page or scene attributions pointing at the wrong place.
+
+Do NOT flag: opinions, judgements, suggestions, criticisms, predictions about future episodes, or anything about quality. A note saying something is weak is an opinion and is not your business. Only flag statements of FACT about what the script contains.
+
+Return ONLY a JSON array, no markdown fences, no preamble. Each element:
+{"claim": "<the exact sentence or phrase from the coverage>", "problem": "<what the script actually says, with the specific evidence>"}
+
+If you find nothing, return []. Be strict but be sure: only flag something you can point to contradicting evidence for.`;
+
+async function factCheckCoverage(feedback, session, coverageOpts) {
+    if (!session.scriptText) return feedback;
+    try {
+        const checker = genAI.getGenerativeModel({
+            model: COVERAGE_MODEL,
+            systemInstruction: FACT_CHECK_PROMPT,
+            generationConfig: { maxOutputTokens: 4096, temperature: 0 }
+        });
+        const raw = await checker.generateContent(
+            `THE SCRIPT:\n\n${session.scriptText}\n\n---\n\nTHE COVERAGE TO CHECK:\n\n${feedback}`
+        );
+        let txt = raw.response.text().trim().replace(/^```(json)?/i, '').replace(/```$/, '').trim();
+        let problems = [];
+        try { problems = JSON.parse(txt); } catch (e) { return feedback; }
+        if (!Array.isArray(problems) || problems.length === 0) return feedback;
+
+        console.log(`Fact-check caught ${problems.length} contradicted claim(s) in coverage.`);
+
+        const list = problems.map((p, i) =>
+            `${i + 1}. You wrote: ${JSON.stringify(p.claim)}\n   The script actually says: ${p.problem}`
+        ).join('\n\n');
+
+        const fixed = await generateWithFallback(coverageOpts,
+            `Below is coverage you just wrote, followed by factual errors in it. Each one is a statement about the script that the script contradicts.\n\n${list}\n\nRewrite the coverage with every one of these corrected. Where a note was built on a wrong reading of the pages, do not simply soften it — either rebuild it on what the script actually says, or drop it, because a note resting on a misreading was never a real note. Change nothing else: keep the voice, the structure, the length and every note that was not listed above. Do not mention this correction, do not apologise, and do not refer to having been checked.\n\nTHE COVERAGE:\n\n${feedback}`
+        );
+        return fixed.response.text();
+    } catch (err) {
+        console.error('FACT CHECK ERROR:', err);
+        return feedback;
+    }
+}
+
 app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     const mode = req.body.mode || 'Feature Film';
     const session = getSession(req.body.sessionId);
@@ -584,16 +659,19 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 
         const coldRead = await getColdRead(session);
 
-        const model = genAI.getGenerativeModel({
-            model: MODEL,
+        const coverageOpts = {
             systemInstruction: coverageSystemPrompt(mode, session, coldRead),
-            generationConfig: { maxOutputTokens: 8192, temperature: 0.8 }
-        });
+            // Lower than chat on purpose. Coverage makes factual claims about a
+            // document; invention is a defect here, not flavour.
+            generationConfig: { maxOutputTokens: 8192, temperature: 0.45, topP: 0.9 }
+        };
 
         const prompt = `Perform the full analysis. Start with the premium personalized header block, your character opening line, log line, and synopsis.${session.coverage.length ? ' Then deal with your own last notes against these new pages, in prose.' : ''} Then talk the writer through the script as prose in your own voice — led by what these particular pages need, not by a template, with only the few authored headings a genuine change of subject earns. Every observation anchored to specific scenes, lines or beats per your evidence discipline. Close with your verdict, then the things worth doing next — as many as the script actually needs and no more.\n\nScript text:\n\n${session.scriptText}`;
 
-        const result = await model.generateContent(prompt);
-        const feedback = result.response.text();
+        const result = await generateWithFallback(coverageOpts, prompt);
+        let feedback = result.response.text();
+
+        feedback = await factCheckCoverage(feedback, session, coverageOpts);
 
         session.coverage.push({
             draft: session.drafts,
@@ -982,9 +1060,23 @@ app.post('/tv-greeting', (req, res) => handleGreeting(req, res, 'tv')); // legac
 
 app.post('/clear-memory', (req, res) => {
     const key = (req.body.sessionId && String(req.body.sessionId).slice(0, 64)) || 'default';
-    store[key] = blankSession();
+
+    // The brief is the writer's, not Frank's. Wiping his own notes should not
+    // silently delete the logline and statement of intent the writer typed in —
+    // losing them meant the next audit invented its own premise again.
+    const prior = store[key] || {};
+    const fresh = blankSession();
+    fresh.logline = prior.logline || '';
+    fresh.intentFields = prior.intentFields || { about: '', tone: '', deliberate: '' };
+    fresh.intent = composeIntent(fresh.intentFields);
+    fresh.coldRead = prior.coldRead || { logline: '', text: '' };
+    store[key] = fresh;
     saveStore();
-    res.json({ message: "Memory purged, darling. Pages off the desk, notes in the fire, complete blank slate. Upload again when you want me to start over." });
+
+    const kept = fresh.logline || fresh.intent;
+    res.json({ message: kept
+        ? "Memory purged, darling. Pages off the desk, notes in the fire. I have kept your brief — that is yours, not mine — so clear it yourself if you want it gone. Upload again when you want me to start over."
+        : "Memory purged, darling. Pages off the desk, notes in the fire, complete blank slate. Upload again when you want me to start over." });
 });
 
 app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
