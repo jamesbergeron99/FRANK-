@@ -18,6 +18,8 @@
         input:checked + .slider:before { transform: translateX(24px); }
         #memoryStatus { margin-top: 8px; font-size: 0.7rem; letter-spacing: 1.5px; color: #8a7327; text-transform: uppercase; }
         #memoryStatus.loaded { color: var(--gold); }
+        #seriesFile { margin-top: 4px; font-size: 0.7rem; letter-spacing: 1.5px; color: #bbb; text-transform: uppercase; }
+        #seriesFile:empty { display: none; }
         #chat-window { flex-grow: 1; overflow-y: auto; padding: 25px; display: flex; flex-direction: column; gap: 20px; background: #080808; }
         .msg { max-width: 90%; padding: 25px; border-radius: 10px; line-height: 1.8; font-size: 1.1rem; white-space: pre-wrap; background: var(--card); border-left: 4px solid var(--gold); }
         .user-msg { align-self: flex-end; border-left: none; border-right: 4px solid var(--gold); background: #222; }
@@ -34,6 +36,10 @@
         .intent-btn.set { background: rgba(212,175,55,0.15); }
         .logline-btn { position: absolute; left: 160px; top: 25px; background: none; border: 1px solid var(--gold); color: var(--gold); padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.75rem; transition: 0.2s; }
         .logline-btn:hover { background: var(--gold); color: #111; }
+        .next-ep-btn { position: absolute; right: 175px; top: 25px; background: none; border: 1px solid var(--gold); color: var(--gold); padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.75rem; transition: 0.2s; }
+        .next-ep-btn:hover { background: var(--gold); color: #111; }
+        .next-ep-btn.idle { border-color: #444; color: #666; }
+        .next-ep-btn.idle:hover { background: none; color: #666; }
         .modal-veil { position: fixed; inset: 0; background: rgba(0,0,0,0.82); display: none; align-items: center; justify-content: center; z-index: 90; padding: 20px; }
         .modal-veil.open { display: flex; }
         .modal { background: var(--card); border: 1px solid var(--gold); border-radius: 10px; width: min(720px, 100%); max-height: 88vh; overflow-y: auto; padding: 28px; }
@@ -61,7 +67,9 @@
             <span>T.V. SERIES</span>
         </div>
         <div id="memoryStatus">Checking the filing cabinet...</div>
+        <div id="seriesFile"></div>
         <button class="intent-btn" id="intentBtn" onclick="openBrief()"><i class="fas fa-file-signature"></i> THE BRIEF</button>
+        <button class="next-ep-btn idle" id="nextEpBtn" onclick="nextEpisode()"><i class="fas fa-forward"></i> NEXT EPISODE</button>
         <button class="clear-btn" onclick="wipeMemory()"><i class="fas fa-trash-alt"></i> WIPEMEMORY</button>
     </div>
 
@@ -325,21 +333,43 @@
 
         async function refreshStatus() {
             const el = document.getElementById('memoryStatus');
+            const seriesEl = document.getElementById('seriesFile');
+            const nextBtn = document.getElementById('nextEpBtn');
             try {
                 const r = await fetch('/session?sessionId=' + encodeURIComponent(SESSION_ID));
                 const d = await r.json();
                 const ib = document.getElementById('intentBtn');
                 if (ib) ib.classList.toggle('set', !!d.hasIntent);
+                const eps = d.episodes || [];
+                const inSeries = eps.length > 0;
+
                 if (d.hasScript) {
                     el.classList.add('loaded');
-                    let line = 'ON FILE: ' + (d.title || 'UNTITLED') + ' — DRAFT ' + d.drafts +
+                    let line = 'ON FILE: ' + (d.title || 'UNTITLED') +
+                        (inSeries ? ' — EPISODE ' + d.episodeNumber : '') +
+                        ' — DRAFT ' + d.drafts +
                         ' · ' + d.coverageCount + ' PASS' + (d.coverageCount === 1 ? '' : 'ES') + ' REMEMBERED';
                     if (d.settledCount) line += ' · ' + d.settledCount + ' RULING' + (d.settledCount === 1 ? '' : 'S');
                     if (d.hasIntent) line += ' · INTENT ON FILE';
                     el.textContent = line;
+                } else if (inSeries) {
+                    el.classList.add('loaded');
+                    el.textContent = 'READY FOR EPISODE ' + d.episodeNumber + ' — UPLOAD IT' + (d.hasIntent ? ' · INTENT ON FILE' : '');
                 } else {
                     el.classList.remove('loaded');
                     el.textContent = d.hasIntent ? 'No script on file · Intent on file' : 'No script on file';
+                }
+
+                // The list of locked episodes, so you can see what he is carrying.
+                seriesEl.textContent = inSeries
+                    ? 'IN THE DRAWER: ' + eps.map(e => 'EP ' + e.number + (e.title ? ' — ' + e.title : '')).join(' · ')
+                    : '';
+
+                if (nextBtn) {
+                    nextBtn.classList.toggle('idle', !d.hasScript);
+                    nextBtn.title = d.hasScript
+                        ? 'Lock this as episode ' + d.episodeNumber + ' and move on to episode ' + (d.episodeNumber + 1)
+                        : 'Upload an episode first';
                 }
                 return d;
             } catch (e) {
@@ -347,6 +377,40 @@
                 el.textContent = 'Memory unavailable';
                 return null;
             }
+        }
+
+        // --- NEXT EPISODE -----------------------------------------------------
+        // Locks the pages on the desk in as an earlier episode. Frank keeps the
+        // script text for every future read; his chat and coverage on it are
+        // put away so he starts the next episode fresh.
+        async function nextEpisode() {
+            const d = await refreshStatus();
+            if (!d || !d.hasScript) {
+                addMessage("There's nothing on the desk to file yet, darling. Upload the episode first.", false);
+                return;
+            }
+            const n = d.episodeNumber;
+            const ok = confirm(
+                'Lock "' + (d.title || 'this script') + '" in as EPISODE ' + n + '?\n\n' +
+                'Frank keeps its pages and reads them alongside every episode after it. ' +
+                'This conversation and his coverage of it are put away, so he starts episode ' + (n + 1) + ' fresh.\n\n' +
+                'Download the PDF of his notes first if you want to keep them.'
+            );
+            if (!ok) return;
+            stopCurrentAudio();
+            try {
+                const r = await fetch('/next-episode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId: SESSION_ID })
+                });
+                const data = await r.json();
+                addMessage(data.message, false);
+                speak(data.message);
+            } catch (e) {
+                addMessage("I couldn't get that into the drawer. Try again in a moment.", false);
+            }
+            refreshStatus();
         }
 
         function initAudio() {
@@ -693,7 +757,7 @@
         }
 
         async function wipeMemory() {
-            if (!confirm("This clears the script, all coverage, and this conversation from Frank's files. Continue?")) return;
+            if (!confirm("This clears the script, every locked episode, all coverage, and this conversation from Frank's files. Your brief is kept. Continue?")) return;
             stopCurrentAudio();
             audioBuffers = {};
             nextToPlay = 0;
