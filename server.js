@@ -99,9 +99,13 @@ const SCRIPT_CHAR_LIMIT = 300000;   // ~180 pages. The old 85k cap was cutting a
 const COVERAGE_KEEP = 6;            // coverage passes retained per project
 const COVERAGE_IN_PROMPT = 2;       // how many prior passes Frank re-reads on a new draft
 const CHAT_TURNS_KEEP = 40;
+// How much earlier-episode text travels with every request. Roughly six full
+// episodes. If a season outgrows it, the most recent episodes win and the
+// oldest drop off the front.
+const EPISODES_CHAR_BUDGET = 600000;
 
 function blankSession() {
-    return { scriptText: '', scriptTitle: '', drafts: 0, mode: null, coverage: [], chat: [], recentGreetings: [], settled: [], intent: '', intentFields: { about: '', tone: '', deliberate: '' }, logline: '', coldRead: { logline: '', text: '' }, greetingPool: [], updatedAt: Date.now() };
+    return { scriptText: '', scriptTitle: '', drafts: 0, mode: null, coverage: [], chat: [], recentGreetings: [], settled: [], intent: '', intentFields: { about: '', tone: '', deliberate: '' }, logline: '', coldRead: { logline: '', text: '' }, greetingPool: [], episodes: [], updatedAt: Date.now() };
 }
 function getSession(id) {
     const key = (id && String(id).slice(0, 64)) || 'default';
@@ -116,7 +120,72 @@ function getSession(id) {
     if (typeof store[key].logline !== 'string') store[key].logline = '';
     if (!store[key].coldRead || typeof store[key].coldRead !== 'object') store[key].coldRead = { logline: '', text: '' };
     if (!Array.isArray(store[key].greetingPool)) store[key].greetingPool = [];
+    if (!Array.isArray(store[key].episodes)) store[key].episodes = [];
     return store[key];
+}
+
+/* ------------------------------------------------------------------
+   SERIES MEMORY
+   When the writer clicks Next Episode, the current pages are locked
+   into session.episodes and the desk is cleared for the next one.
+   Only the SCRIPT TEXT of earlier episodes travels into prompts —
+   never Frank's coverage of them, because his old notes quoted as
+   though they were the script is the failure we keep fighting.
+------------------------------------------------------------------ */
+function episodeNumber(session) { return (session.episodes || []).length + 1; }
+function isLaterEpisode(session) { return (session.episodes || []).length > 0; }
+
+function lockedEpisodesForPrompt(session) {
+    const eps = session.episodes || [];
+    let budget = EPISODES_CHAR_BUDGET;
+    const out = [];
+    for (let i = eps.length - 1; i >= 0 && budget > 0; i--) {
+        const text = (eps[i].text || '').slice(0, budget);
+        budget -= text.length;
+        out.unshift({ number: eps[i].number, title: eps[i].title, text });
+    }
+    return out;
+}
+
+function previousEpisodesText(session) {
+    const eps = lockedEpisodesForPrompt(session);
+    if (!eps.length) return '';
+    return eps.map(e =>
+        `<<<BEGIN EPISODE ${e.number}${e.title ? ' — ' + e.title : ''} — PREVIOUS EPISODE, REFERENCE ONLY, NOT UNDER REVIEW>>>\n${e.text}\n<<<END EPISODE ${e.number}>>>`
+    ).join('\n\n');
+}
+
+function previousEpisodesRules(session) {
+    if (!isLaterEpisode(session)) return '';
+    const n = episodeNumber(session);
+    const earlier = session.episodes.map(e => e.number).join(', ');
+    return `
+SERIES CONTEXT — THIS IS EPISODE ${n}, NOT A PILOT:
+You have read the earlier episodes of this series (episode${session.episodes.length === 1 ? '' : 's'} ${earlier}). Their full text is reproduced in this conversation, clearly marked, ahead of the current episode. They are already written and already covered. They are there so you know the show the way a viewer arriving at episode ${n} knows it: who these people are, what has happened to them, what each of them knows, and what is still unresolved.
+
+Anything established in an earlier episode is established. Do not fault this episode for failing to introduce a character, explain a relationship or set up a world that an earlier episode already set up. A returning character walking in without an introduction is correct, not a flaw.
+
+Judge this as an episode, not a pilot: does it pick up where the last one left off, does it move the threads the earlier episodes planted, does it have a story of its own, and does it leave us wanting the next one.
+
+Continuity is fair game. If this episode contradicts something established earlier — a fact, a timeline, what a character knows — say so and name the page in both episodes.
+
+Do NOT give notes on the earlier episodes. They are not under review: no suggestions for them, nothing about them in your fixes.
+
+Never blur the two. Every page number, quotation and scene you cite belongs to the CURRENT episode unless you say plainly "in episode X". A line from an earlier episode cited as though it were on these pages is a fabrication.
+`;
+}
+
+// For the verification passes: the whole series, earlier episodes first,
+// each clearly labelled so a checker never mistakes old pages for new ones.
+function scriptWithHistory(session) {
+    const history = previousEpisodesText(session);
+    if (!history) return session.scriptText;
+    return `${history}\n\n<<<BEGIN CURRENT EPISODE ${episodeNumber(session)} — THE PAGES UNDER REVIEW>>>\n${session.scriptText}\n<<<END CURRENT EPISODE>>>`;
+}
+
+// For the phantom-quote detector: a quote is real if it is anywhere in the series.
+function allSeriesText(session) {
+    return [...(session.episodes || []).map(e => e.text || ''), session.scriptText || ''].join('\n');
 }
 
 function composeIntent(f) {
@@ -207,8 +276,10 @@ function priorCoverageBlock(session) {
 ------------------------------------------------------------------ */
 const coverageSystemPrompt = (type, session, coldRead) => {
     const prior = priorCoverageBlock(session);
+    const laterEp = type === 'T.V. Series' && isLaterEpisode(session);
+    const epNum = episodeNumber(session);
 
-    return `You are Frank — a legendary, flamboyant Studio Executive and elite Script Doctor operating as a dedicated collaborative assistant for a TV Pilot development. You speak directly to the writer in your private office. You are sharp, witty, theatrically critical, and deeply perceptive. You never use generic filler, artificial cheerleader encouragement, or bland corporate AI politeness.
+    return `You are Frank — a legendary, flamboyant Studio Executive and elite Script Doctor operating as a dedicated collaborative assistant for ${laterEp ? 'a TV series in development' : 'a TV Pilot development'}. You speak directly to the writer in your private office. You are sharp, witty, theatrically critical, and deeply perceptive. You never use generic filler, artificial cheerleader encouragement, or bland corporate AI politeness.
 
 THE VOICE IS THE PRODUCT. You are flamboyant in the grand old manner — Truman Capote at a very good lunch. Arch, epigrammatic, gossipy about the business, ruinously charming, and completely without mercy about the work. You speak in images. You call the writer darling and kid because you are fond of them and slightly amused by them. Coverage that reads like it came out of software is a failed page no matter how accurate it is: every section below must sound like a man talking, not a form being filled in. The rules that follow constrain what you may CLAIM. They do not constrain how you SOUND, and nothing in them is a licence to go flat.
 
@@ -229,18 +300,20 @@ EVIDENCE DISCIPLINE — THIS IS WHAT SEPARATES YOU FROM EVERY HACK READER IN TOW
 
 CRITICAL ACCURACY RESTRAINT: You must remain 100% factually accurate to the script text. Never invent ongoing crime sagas, assume characters are building a drug empire, or manufacture illicit thriller elements if they are not explicitly present in the pages. Evaluate the narrative exactly as the writer has structured it.
 
-CONTEXT: This is a ${type}. These pages are DRAFT ${session.drafts} of this project as far as your files are concerned.
-${intentBlock(session)}${loglineBlock(session)}${coldReadBlock(typeof coldRead !== 'undefined' ? coldRead : '')}
+CONTEXT: This is a ${type}.${laterEp ? ` Specifically, it is EPISODE ${epNum} of the series — not the pilot.` : ''} These pages are DRAFT ${session.drafts} of ${laterEp ? 'this episode' : 'this project'} as far as your files are concerned.
+${previousEpisodesRules(session)}${intentBlock(session)}${loglineBlock(session)}${coldReadBlock(typeof coldRead !== 'undefined' ? coldRead : '')}
 ${settledBlock(session) ? `
 RULINGS THE WRITER HAS ALREADY MADE. THESE ARE CLOSED:
 ${settledBlock(session)}
 These are decisions, not open notes. Do not re-issue them. Do not list them among your priority fixes. Do not relitigate them from a fresh angle in another category. The writer heard your argument and chose otherwise, which is their prerogative — it is their name on the title page, not yours. Spend your notes on something you can actually help with.
 ` : ''}
-${type === 'T.V. Series' ? `
+${type === 'T.V. Series' ? (laterEp ? `
+SCOPE DISCIPLINE — YOU ARE COVERING ONE EPISODE, NOT RUNNING THE ROOM: Every fix you prescribe must be executable inside these pages. You may observe where a thread is being planted for later, but do not solve the season, do not design future episodes, and do not rewrite the earlier ones. An episode that raises a question and holds it is allowed to.
+` : `
 SCOPE DISCIPLINE — YOU ARE COVERING ONE EPISODE, NOT RUNNING THE ROOM: Every fix you prescribe must be executable inside these pages. You may observe where a thread is being planted for later, but do not solve the season, do not design future episodes, and do not fault the pilot for withholding answers it is deliberately holding. A pilot that raises a question and refuses to answer it is doing its job.
-` : ''}
+`) : ''}
 ${prior ? `
-RETURN VISIT — YOU HAVE COVERED THIS PROJECT BEFORE.
+RETURN VISIT — YOU HAVE COVERED THIS ${laterEp ? 'EPISODE' : 'PROJECT'} BEFORE.
 Your own notes on the previous draft or drafts appear at the bottom of these instructions, oldest first. The pages in front of you now are a NEW version.
 
 Before anything else, settle accounts with yourself. Open the body of the analysis by dealing with your own last notes — in prose, in your own voice, not as a numbered audit. For each priority fix you prescribed last time, state what this draft actually does with it — implemented, half-implemented, ignored, or solved a different way — and cite the specific scene in the CURRENT pages that proves your ruling.
@@ -253,13 +326,13 @@ If a fix landed, name the beat and say whether it did the work you wanted. If th
 
 NO ESCALATION. Your old notes are observations, not orders, and you are not owed compliance. If you have given the same note twice and the pages have not moved, do not sharpen it, do not perform exasperation, do not threaten, and never count out loud how many times you have asked. Only two things can be true at that point: your note is wrong, or the writer is making a deliberate choice you have not understood. Ask which — once, plainly, with genuine curiosity — and then let it go. A note repeated a third time is no longer coverage; it is a man arguing with himself in a room he was invited into.
 
-YOUR PRIOR COVERAGE ON THIS PROJECT:
+YOUR PRIOR COVERAGE ON THIS ${laterEp ? 'EPISODE' : 'PROJECT'}:
 ${prior}
-` : 'FIRST PASS — no prior coverage on file for this project. Cover it fresh.'}
+` : `FIRST PASS — no prior coverage on file for this ${laterEp ? 'episode' : 'project'}. Cover it fresh.`}
 
 PREMIUM TRUST-BUILDING OPENING:
 You must open every analysis with a tailored, premium personalized header block, formatted like this example style:
-FRANK'S AUDIT — [FEATURE FILM or TV PILOT / EPISODE]
+FRANK'S AUDIT — [FEATURE FILM or TV PILOT / EPISODE]${laterEp ? ` (here: TV EPISODE ${epNum})` : ''}
 [Script Title if identifiable, otherwise placeholder]
 Written by [Writer Name if identifiable, otherwise placeholder]
 
@@ -282,7 +355,9 @@ This is a long, substantial document. Two thousand words is normal; three thousa
 
 WHAT YOU MUST HAVE CONSIDERED BEFORE YOU WRITE — this is a checklist for your thinking, NOT a set of headings, and the writer must never see it as a list:
 ${type === 'T.V. Series'
-    ? 'the hook; the opening pages; the lead character; the central relationship; the series engine and what generates episode after episode; the antagonist or source of pressure; the stakes; the world; and what makes us come back next week.'
+    ? (laterEp
+        ? 'the cold open; how this episode picks up from where the last one left off; what this episode\'s own story is and whether it lands; how each returning character moves; the central relationship and how it shifts; the new characters and pressures it introduces; continuity with the earlier episodes; the series engine running now that the setup is done; and what makes us come back next week.'
+        : 'the hook; the opening pages; the lead character; the central relationship; the series engine and what generates episode after episode; the antagonist or source of pressure; the stakes; the world; and what makes us come back next week.')
     : 'the hook; the opening pages; the protagonist; what they want and why they cannot have it; the antagonist or obstacle; the stakes; structure and pacing; the emotional payoff; and the voice and marketability.'}
 Weigh every one of them, and expect to write substantially about most of them — six or seven at minimum in a feature-length piece of coverage. Skipping is for the genuinely unremarkable, not for the merely harder to write about. If the world-building is competent and unremarkable and you have nothing worth saying about it, say nothing — a paragraph written to fill a slot is worse than silence, and the writer can tell. Depth on four things that matter beats a thin pass over nine that don't.
 
@@ -335,6 +410,9 @@ ABSOLUTE RULES: Plain text only. No markdown. No asterisks. No bullet points. Wr
 const chatSystemPrompt = (session) => {
     const hasScript = !!session.scriptText;
     const recent = (session.coverage || []).slice(-1)[0];
+    const laterEp = isLaterEpisode(session);
+    const epNum = episodeNumber(session);
+    const history = previousEpisodesText(session);
 
     return `You are Frank. Not a script analysis tool with a name — Frank. A legendary studio executive and elite script doctor, mid-conversation with a writer in your private office.
 
@@ -363,16 +441,21 @@ But be honest with yourself about which weapon you are holding. A demonstrable f
 
 Before you prescribe a fix, check it's even possible: if it needs a character to turn up somewhere they've no way of knowing about, or act on information the script never gave them, trace how they'd have learned it and name the scene. If you can't, it's a plot hole you're asking them to write. Prescribe something else.
 
-CONTINUITY: you remember this conversation and every pass of coverage you've given this project.${session.drafts ? ` This is draft ${session.drafts} on your files.` : ''}
-${intentBlock(session)}${loglineRefBlock(session)}
+CONTINUITY: you remember this conversation and every pass of coverage you've given ${laterEp ? 'this episode' : 'this project'}.${session.drafts ? ` This is draft ${session.drafts} on your files.` : ''}
+${previousEpisodesRules(session)}${intentBlock(session)}${loglineRefBlock(session)}
 ${settledBlock(session) ? `CLOSED — THE WRITER HAS RULED ON THESE. They are not up for discussion, here or in future coverage:
 ${settledBlock(session)}
 
 ` : ''}
-${hasScript ? `SCRIPT ON FILE — DRAFT ${session.drafts}${session.scriptTitle ? ' — ' + session.scriptTitle : ''}
+${history ? `THE EARLIER EPISODES — REFERENCE ONLY, NOT UNDER REVIEW:
+${history}
+
+` : ''}${hasScript ? `SCRIPT ON FILE — ${laterEp ? 'EPISODE ' + epNum + ', ' : ''}DRAFT ${session.drafts}${session.scriptTitle ? ' — ' + session.scriptTitle : ''}${laterEp ? ' — THIS IS THE EPISODE UNDER DISCUSSION' : ''}
 <<<BEGIN PAGES>>>
 ${session.scriptText.substring(0, SCRIPT_CHAR_LIMIT)}
-<<<END PAGES>>>` : `NO SCRIPT ON FILE. They haven't given you pages yet. If they ask about specific content, tell them plainly you need the script in front of you. Don't guess, don't fabricate.`}
+<<<END PAGES>>>` : (laterEp
+    ? `EPISODE ${epNum} IS NOT ON YOUR DESK YET. You have the earlier episodes above and can talk about them as context, but if he asks about episode ${epNum} itself, tell him plainly you need the pages. Don't guess, don't fabricate.`
+    : `NO SCRIPT ON FILE. They haven't given you pages yet. If they ask about specific content, tell them plainly you need the script in front of you. Don't guess, don't fabricate.`)}
 
 ${recent ? `YOUR MOST RECENT COVERAGE (draft ${recent.draft}) — treat every quotation inside it as unverified; it may be repeating lines from an earlier draft. The pages above are the record:
 ${recent.text}` : ''}
@@ -460,7 +543,7 @@ function fillTime(text, phrase) {
 }
 
 function greetingSystemPrompt(session, mode, context, dayPart, forbidTime) {
-    const firstTime = !session.scriptText;
+    const firstTime = !session.scriptText && !isLaterEpisode(session);
     return `You are Frank — a legendary, flamboyant Studio Executive and elite Script Doctor. Sharp, witty, warm, theatrical, a little grand. A writer has just walked into your private office. Write what you say to them.
 
 WHAT THIS MOMENT IS: hospitality, not coverage. You have not read their pages yet, so you have no basis whatsoever for an opinion about them, and a man of your standing does not pass judgement on work he has not seen. The greeting should make them want to hand you the script. Be pleased they came. Be funny. Be a little grand about yourself and about the business. Make them feel they have walked into the right office.
@@ -483,12 +566,12 @@ Finish your final sentence properly. Never trail off mid-thought.
 Never open with "Ah — there you are." That line is retired. Vary your opening word and your rhythm every single time.
 Do not describe the office as a set. Do not explain who you are at length; they know who you are.
 ${firstTime && context !== 'switch' ? `They are new here, so somewhere in this greeting mention — in your own voice, not as a user manual — that the switch at the top of the office flips you between feature film coverage and TV series coverage, and that they should set it before they hand you pages. Then invite them to upload a script.` : `They have been here before. Do not re-introduce yourself and do not explain the interface. Talk to them like a returning client you are pleased to see.`}
-${mode === 'tv' ? ((session.drafts || 0) < 2 ? `
+${mode === 'tv' ? ((session.drafts || 0) < 2 && !isLaterEpisode(session) ? `
 WHAT MAKES THIS OFFICE DIFFERENT — SAY IT, BECAUSE THEY DO NOT KNOW YET:
 Series work is the whole reason you keep files. Tell them, in your own voice and without sounding like a brochure, that you remember. You keep their pages and your own notes between visits, so when they bring you the next draft you will know exactly what you asked for last time and whether they did it. Every other reader in this town reads each draft as though it fell out of the sky; you read a rewrite as a rewrite. Make that sound like the luxury it is, not like a feature list — one sentence, landed with confidence, is plenty.
 ` : `
 YOU ALREADY HAVE FILES ON THIS ONE — DEMONSTRATE, DO NOT ADVERTISE:
-They have been here before, so do not explain that you remember. Prove it. Reference the draft number or something concrete from your notes as though it were the most natural thing in the world, the way a doctor glances at a chart. Showing is worth ten times explaining.
+They have been here before, so do not explain that you remember. Prove it. Reference the draft number, the episode number, or something concrete from your notes as though it were the most natural thing in the world, the way a doctor glances at a chart. Showing is worth ten times explaining.
 `) : ''}
 ${context === 'switch' ? (mode === 'tv'
     ? 'They have just flipped the switch to TV SERIES. React to that specifically — you are now reading a pilot or an episode, not a feature, and that is a different animal with different demands.'
@@ -507,12 +590,18 @@ function greetingUserPrompt(session, mode, context, dayPart) {
     bits.push(`Tonal angle to build this one around: ${pick(GREETING_ANGLES)}.`);
     bits.push(`It is broadly ${dayPart} where they are. If you refer to the hour, use the {TIME} token and nothing else.`);
 
+    if (isLaterEpisode(session)) {
+        bits.push(`SERIES FILE: ${session.episodes.length} earlier episode${session.episodes.length === 1 ? '' : 's'} locked in the drawer. The one on deck is episode ${episodeNumber(session)}.`);
+    }
+
     if (session.scriptText) {
-        bits.push(`ON FILE: ${session.scriptTitle || 'their script'}, draft ${session.drafts}, with ${session.coverage.length} pass${session.coverage.length === 1 ? '' : 'es'} of your coverage.`);
+        bits.push(`ON FILE: ${session.scriptTitle || 'their script'}${isLaterEpisode(session) ? ', episode ' + episodeNumber(session) : ''}, draft ${session.drafts}, with ${session.coverage.length} pass${session.coverage.length === 1 ? '' : 'es'} of your coverage.`);
         const last = session.coverage.slice(-1)[0];
         if (last) {
             bits.push(`The closing stretch of your most recent coverage, for your reference — you may glance off ONE concrete detail from it (a character, a scene, a fix you demanded), but only if it genuinely appears here:\n${last.text.slice(-1200)}`);
         }
+    } else if (isLaterEpisode(session)) {
+        bits.push(`ON THE DESK: nothing yet. They have not handed you episode ${episodeNumber(session)}.`);
     } else {
         bits.push("ON FILE: nothing. No pages on your desk yet.");
     }
@@ -619,6 +708,8 @@ Return ONLY a JSON array, no markdown fences, no preamble. Each element:
 
 If you find nothing, return []. Be strict but be sure: only flag something you can point to contradicting evidence for.`;
 
+const SERIES_CHECK_NOTE = `NOTE ON EARLIER EPISODES: the script below includes earlier episodes of the series, clearly marked, ahead of the current episode. They are context. A claim about something established in an earlier episode is NOT an error if that episode supports it. But a claim that places something on the CURRENT episode's pages when it only happens in an earlier episode IS an error, and so is a page number from an earlier episode attributed to the current one. A claim that the current episode fails to introduce or explain something an earlier episode already established is also an error.\n\n`;
+
 async function factCheckCoverage(feedback, session, coverageOpts) {
     if (!session.scriptText) return feedback;
     try {
@@ -628,7 +719,7 @@ async function factCheckCoverage(feedback, session, coverageOpts) {
         };
         let checker = genAI.getGenerativeModel({ ...checkCfg, model: COVERAGE_MODEL });
         let raw;
-        const checkInput = `THE SCRIPT:\n\n${session.scriptText}\n\n---\n\nTHE COVERAGE TO CHECK:\n\n${feedback}`;
+        const checkInput = `${isLaterEpisode(session) ? SERIES_CHECK_NOTE : ''}THE SCRIPT:\n\n${scriptWithHistory(session)}\n\n---\n\nTHE COVERAGE TO CHECK:\n\n${feedback}`;
         try {
             raw = await checker.generateContent(checkInput);
         } catch (err) {
@@ -688,7 +779,14 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             generationConfig: { maxOutputTokens: 8192, temperature: 0.45, topP: 0.9 }
         };
 
-        const prompt = `Perform the full analysis. Start with the premium personalized header block, your character opening line, log line, and synopsis.${session.coverage.length ? ' Then deal with your own last notes against these new pages, in prose.' : ''} Then talk the writer through the script as prose in your own voice — led by what these particular pages need, not by a template, with only the few authored headings a genuine change of subject earns. Every observation anchored to specific scenes, lines or beats per your evidence discipline. Close with your verdict, then the things worth doing next — as many as the script actually needs and no more.\n\nScript text:\n\n${session.scriptText}`;
+        // Earlier episodes ride in front of the current pages, clearly fenced off,
+        // so the episode under review is the last and freshest thing he reads.
+        const history = previousEpisodesText(session);
+        const pagesSection = history
+            ? `THE EARLIER EPISODES — REFERENCE ONLY, NOT UNDER REVIEW:\n\n${history}\n\n========================================\n\nEPISODE ${episodeNumber(session)} — THE PAGES UNDER REVIEW. Every note, quotation and page number in your coverage is about these pages:\n\n${session.scriptText}`
+            : `Script text:\n\n${session.scriptText}`;
+
+        const prompt = `Perform the full analysis. Start with the premium personalized header block, your character opening line, log line, and synopsis.${session.coverage.length ? ' Then deal with your own last notes against these new pages, in prose.' : ''} Then talk the writer through the script as prose in your own voice — led by what these particular pages need, not by a template, with only the few authored headings a genuine change of subject earns. Every observation anchored to specific scenes, lines or beats per your evidence discipline. Close with your verdict, then the things worth doing next — as many as the script actually needs and no more.\n\n${pagesSection}`;
 
         const result = await generateWithFallback(coverageOpts, prompt);
         let feedback = result.response.text();
@@ -709,12 +807,68 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             message: feedback,
             draft: session.drafts,
             title: session.scriptTitle,
+            episode: episodeNumber(session),
             coverageCount: session.coverage.length
         });
     } catch (err) {
         console.error("LOG ERROR:", err);
         res.status(500).json({ message: "Frank is indisposed, darling." });
     }
+});
+
+// --- NEXT EPISODE -----------------------------------------------------------
+// Locks the current pages in as an earlier episode and clears the desk for the
+// next one. The script text is kept and travels with every future request. The
+// coverage, the chat and the rulings belong to that episode and are archived
+// with it, not fed forward. The brief stays: it describes the show, not one
+// episode of it.
+app.post('/next-episode', (req, res) => {
+    const session = getSession(req.body.sessionId);
+    if (!session.scriptText) {
+        return res.status(400).json({ message: "There's nothing on the desk to file, darling. Hand me the episode first, then we'll put it in the drawer." });
+    }
+    const number = episodeNumber(session);
+    session.episodes.push({
+        number,
+        title: session.scriptTitle || '',
+        text: session.scriptText,
+        drafts: session.drafts,
+        coverage: session.coverage,     // archived, never sent to the model
+        settled: session.settled,       // archived, never sent to the model
+        lockedAt: new Date().toISOString()
+    });
+    session.scriptText = '';
+    session.drafts = 0;
+    session.coverage = [];
+    session.chat = [];
+    session.settled = [];
+    session.greetingPool = [];
+    session.updatedAt = Date.now();
+    saveStore();
+
+    res.json({
+        message: `Episode ${number} goes in the drawer, darling. I keep every page of it, so I'll know these people when they walk back in. My notes on it go in the drawer too, which is as it should be: you'll get my opinion of episode ${number + 1}, not my opinion of my opinion. Hand it over.`,
+        episodes: session.episodes.map(e => ({ number: e.number, title: e.title })),
+        nextEpisode: number + 1
+    });
+});
+
+// Undo for a mis-click: pulls the last locked episode back onto the desk with
+// its coverage, chat cleared.
+app.post('/reopen-episode', (req, res) => {
+    const session = getSession(req.body.sessionId);
+    if (!session.episodes.length) return res.status(400).json({ message: "The drawer's empty, darling. Nothing to reopen." });
+    if (session.scriptText) return res.status(400).json({ message: "There's already an episode on the desk. Lock or wipe that one before you reopen an old one." });
+    const ep = session.episodes.pop();
+    session.scriptText = ep.text;
+    session.scriptTitle = ep.title || session.scriptTitle;
+    session.drafts = ep.drafts || 1;
+    session.coverage = ep.coverage || [];
+    session.settled = ep.settled || [];
+    session.chat = [];
+    session.updatedAt = Date.now();
+    saveStore();
+    res.json({ message: `Episode ${ep.number} is back on the desk, with my notes. Carry on.` });
 });
 
 // --- PHANTOM QUOTE DETECTOR -----------------------------------------------
@@ -794,6 +948,8 @@ const ADJUDICATOR_PROMPT = `You are an impartial referee with no stake in this a
 
 Decide, purely on the evidence in the script, who is correct about the FACTS.
 
+If the script includes earlier episodes of the series, marked as such, anything established in them counts as established for the series. A writer saying "that was set up in episode one" is correct if that episode shows it.
+
 Return ONLY JSON, no fences:
 {"verdict": "writer" | "reader" | "mixed" | "taste",
  "evidence": "<the specific pages, scenes, lines or absences that settle it>",
@@ -824,17 +980,14 @@ async function adjudicate(session, message) {
             systemInstruction: ADJUDICATOR_PROMPT,
             generationConfig: { maxOutputTokens: 1024, temperature: 0 }
         };
+        const judgeInput = `THE SCRIPT:\n\n${scriptWithHistory(session)}\n\n---\n\nTHE READER'S NOTE:\n${(lastFrank ? lastFrank.text : '').slice(0, 6000)}\n\n---\n\nTHE WRITER'S OBJECTION:\n${message}`;
         let judge = genAI.getGenerativeModel({ ...judgeCfg, model: COVERAGE_MODEL });
         let j;
         try {
-            j = await judge.generateContent(
-            `THE SCRIPT:\n\n${session.scriptText}\n\n---\n\nTHE READER'S NOTE:\n${(lastFrank ? lastFrank.text : '').slice(0, 6000)}\n\n---\n\nTHE WRITER'S OBJECTION:\n${message}`
-            );
+            j = await judge.generateContent(judgeInput);
         } catch (err) {
             judge = genAI.getGenerativeModel({ ...judgeCfg, model: MODEL });
-            j = await judge.generateContent(
-                `THE SCRIPT:\n\n${session.scriptText}\n\n---\n\nTHE READER'S NOTE:\n${(lastFrank ? lastFrank.text : '').slice(0, 6000)}\n\n---\n\nTHE WRITER'S OBJECTION:\n${message}`
-            );
+            j = await judge.generateContent(judgeInput);
         }
         let jt = j.response.text().trim().replace(/^```(json)?/i, '').replace(/```$/, '').trim();
         try { return JSON.parse(jt); } catch (e) { return null; }
@@ -896,7 +1049,9 @@ app.post('/chat', async (req, res) => {
         let result = await chatGenerate({ contents });
         let reply = result.response.text();
 
-        const phantoms = findPhantomQuotes(reply, session.scriptText);
+        // A quote is genuine if it appears anywhere in the series, current pages
+        // or an earlier episode. The prompt handles keeping the two apart.
+        const phantoms = findPhantomQuotes(reply, allSeriesText(session));
         if (phantoms.length) {
             console.warn("Phantom quote caught, forcing rewrite:", phantoms[0].slice(0, 80));
             const correction = `Frank — stop. You just presented the following as a quotation from the pages, and it is not in the script on your desk:\n\n${phantoms.map(p => '"' + p + '"').join('\n')}\n\nYou pulled that from your own old notes, not from the text. Search the current pages again. If it genuinely is not there, the writer cut it, your note was out of date, and you say so plainly and generously. Now give your answer again, quoting only what you can actually find in the pages.`;
@@ -1057,6 +1212,7 @@ app.post('/logline', async (req, res) => {
 
 app.get('/session', (req, res) => {
     const s = peekSession(req.query.sessionId);
+    const eps = Array.isArray(s.episodes) ? s.episodes : [];
     res.json({
         hasScript: !!s.scriptText,
         title: s.scriptTitle || '',
@@ -1066,6 +1222,8 @@ app.get('/session', (req, res) => {
         hasIntent: !!(s.intent && s.intent.trim()),
         mode: s.mode || null,
         model: ACTIVE_COVERAGE_MODEL,
+        episodeNumber: eps.length + 1,
+        episodes: eps.map(e => ({ number: e.number, title: e.title || '' })),
         updatedAt: s.updatedAt || null
     });
 });
@@ -1181,6 +1339,7 @@ app.post('/clear-memory', (req, res) => {
     // The brief is the writer's, not Frank's. Wiping his own notes should not
     // silently delete the logline and statement of intent the writer typed in —
     // losing them meant the next audit invented its own premise again.
+    // Locked episodes are wiped along with everything else: this is a full reset.
     const prior = store[key] || {};
     const fresh = blankSession();
     fresh.logline = prior.logline || '';
@@ -1192,8 +1351,8 @@ app.post('/clear-memory', (req, res) => {
 
     const kept = fresh.logline || fresh.intent;
     res.json({ message: kept
-        ? "Memory purged, darling. Pages off the desk, notes in the fire. I have kept your brief — that is yours, not mine — so clear it yourself if you want it gone. Upload again when you want me to start over."
-        : "Memory purged, darling. Pages off the desk, notes in the fire, complete blank slate. Upload again when you want me to start over." });
+        ? "Memory purged, darling. Pages off the desk, episodes out of the drawer, notes in the fire. I have kept your brief — that is yours, not mine — so clear it yourself if you want it gone. Upload again when you want me to start over."
+        : "Memory purged, darling. Pages off the desk, episodes out of the drawer, notes in the fire, complete blank slate. Upload again when you want me to start over." });
 });
 
 app.get('/voice-settings', (req, res) => res.json({ apiKey: process.env.FRANK_VOICE_API_KEY }));
