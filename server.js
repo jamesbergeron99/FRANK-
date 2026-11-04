@@ -323,13 +323,14 @@ Whole or half numbers from 1 to 10. No overall score.`;
 async function scoreCard(session, coverageText, why) {
     if (!session.scriptText) return null;
     const cfg = { systemInstruction: GRADE_PROMPT, generationConfig: { maxOutputTokens: 8192, temperature: 0 } };
+    // One attempt only: a retry here would add a full read of the script to the wait.
     const input =
         `${isLaterEpisode(session) ? SERIES_CHECK_NOTE : ''}THE SCRIPT:\n\n${scriptWithHistory(session)}\n\n---\n\n` +
         (session.intent ? `THE WRITER'S BRIEF:\n${session.intent}\n\n---\n\n` : '') +
         (settledBlock(session) ? `RULINGS THE WRITER HAS MADE — CLOSED, AND THEY MAY NOT LOWER ANY GRADE:\n${settledBlock(session)}\n\n---\n\n` : '') +
         `THE COVERAGE — ARGUMENTS TO TEST AGAINST THE PAGES, NOT EVIDENCE:\n\n${stripScorecard(coverageText)}` +
         (why ? `\n\n---\n\nWHAT HAS HAPPENED SINCE THE LAST SCORECARD:\n${why}` : '');
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    for (let attempt = 1; attempt <= 1; attempt++) {
         try {
             let r;
             try {
@@ -799,7 +800,7 @@ CHECK THE PREMISES OF SUGGESTIONS, NOT JUST STANDALONE STATEMENTS. This is the m
 Do NOT flag: matters of taste or judgement about quality, or predictions about future episodes. A note saying something is weak, thin, on the nose or unconvincing is an opinion and is not your business — provided the thing it describes actually happens in the script. Only flag where the coverage is WRONG ABOUT WHAT IS ON THE PAGE, including where it is wrong inside a suggestion.
 
 Return ONLY a JSON array, no markdown fences, no preamble. Each element:
-{"claim": "<the exact sentence or phrase from the coverage>", "problem": "<what the script actually says, with the specific evidence>"}
+{"claim": "<the full sentence from the coverage, copied character for character so it can be found and replaced>", "problem": "<what the script actually says, with the specific evidence>", "fix": "<that sentence rewritten so it is true to the pages, in the same voice and style; or an empty string if the point cannot survive and the sentence should simply be cut>"}
 
 If you find nothing, return []. Be strict but be sure: only flag something you can point to contradicting evidence for.`;
 
@@ -812,7 +813,7 @@ const SERIES_CHECK_NOTE = `NOTE ON EARLIER EPISODES: the script below includes e
 // says so in the logs either way.
 async function runFactCheck(checkInput) {
     const checkCfg = { systemInstruction: FACT_CHECK_PROMPT, generationConfig: { maxOutputTokens: 16384, temperature: 0 } };
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    for (let attempt = 1; attempt <= 1; attempt++) {
         try {
             let raw;
             try {
@@ -850,14 +851,22 @@ async function factCheckCoverage(feedback, session, coverageOpts) {
         console.log(`Fact-check ran: ${problems.length} problem(s) found.`);
         if (problems.length === 0) return feedback;
 
-        const list = problems.map((p, i) =>
-            `${i + 1}. You wrote: ${JSON.stringify(p.claim)}\n   The script actually says: ${p.problem}`
-        ).join('\n\n');
-
-        const fixed = await generateWithFallback(coverageOpts,
-            `Below is coverage you just wrote, followed by factual errors in it. Each one is a statement about the script that the script contradicts.\n\n${list}\n\nRewrite the coverage with every one of these corrected. Where a note was built on a wrong reading of the pages, do not simply soften it — either rebuild it on what the script actually says, or drop it, because a note resting on a misreading was never a real note. Change nothing else: keep the voice, the structure, the length, the scorecard and every note that was not listed above. Do not mention this correction, do not apologise, and do not refer to having been checked.\n\nTHE COVERAGE:\n\n${feedback}`
-        );
-        return fixed.response.text();
+        // Swap each flagged sentence for its corrected version in place, instead
+        // of regenerating the entire coverage a second time.
+        let out = feedback;
+        let applied = 0;
+        for (const p of problems) {
+            if (!p || typeof p.claim !== 'string' || !p.claim.trim()) continue;
+            const fix = typeof p.fix === 'string' ? p.fix.trim() : '';
+            if (out.includes(p.claim)) {
+                out = out.replace(p.claim, fix);
+                applied++;
+            } else {
+                console.warn('FACT CHECK: could not locate flagged sentence:', p.claim.slice(0, 80));
+            }
+        }
+        console.log(`Fact-check fixed ${applied} of ${problems.length} problem(s) in place.`);
+        return out.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n');
     } catch (err) {
         console.error('FACT CHECK ERROR:', err);
         return feedback;
@@ -904,11 +913,16 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         const result = await generateWithFallback(coverageOpts, prompt);
         let feedback = result.response.text();
 
-        feedback = stripScorecard(await factCheckCoverage(feedback, session, coverageOpts));
+        feedback = stripScorecard(feedback);
 
-        // Grades come from their own pass at temperature zero, so the same
-        // pages get the same numbers instead of drifting with the prose.
-        const scored = await scoreCard(session, feedback, '');
+        // The fact-check and the grading each read the pages, and they do it at
+        // the same time rather than one after the other. Grades come from their
+        // own pass at temperature zero so the same pages get the same numbers.
+        const [checked, scored] = await Promise.all([
+            factCheckCoverage(feedback, session, coverageOpts),
+            scoreCard(session, feedback, '')
+        ]);
+        feedback = stripScorecard(checked);
         const card = scored ? { grades: scored.grades, average: scored.average } : { grades: null, average: null };
         if (scored) feedback = feedback + '\n\n' + scored.block;
 
