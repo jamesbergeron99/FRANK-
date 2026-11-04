@@ -686,8 +686,18 @@
             formData.append('mode', mode);
             formData.append('sessionId', SESSION_ID);
             formData.append('scripts', fileInput.files[0]);
-            const response = await fetch('/analyze', { method: 'POST', body: formData });
-            const data = await response.json();
+            let data;
+            try {
+                const response = await fetch('/analyze', { method: 'POST', body: formData });
+                data = await response.json();
+            } catch (e) {
+                data = null;
+            }
+            if (!data || !data.message) {
+                addMessage("Something broke on my end before I could finish, darling. Try the upload again.", false);
+                fileInput.value = '';
+                return;
+            }
             addMessage(data.message);
             if (data.scorecard) addScorecard(data.scorecard, 'The Scorecard');
             speak(data.message + (data.scorecard ? '\n' + scorecardForSpeech(data.scorecard) : ''));
