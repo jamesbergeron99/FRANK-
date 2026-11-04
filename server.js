@@ -253,19 +253,6 @@ function priorCoverageBlock(session) {
 ------------------------------------------------------------------ */
 const GRADE_CATEGORIES = ['Structure', 'Character', 'Dialogue', 'Pacing', 'Voice', 'Concept', 'Marketability'];
 
-const SCORECARD_RULES = `
-THE SCORECARD — THE VERY LAST THING IN THE DOCUMENT:
-After your final notes, write the word SCORECARD on its own line, then exactly seven lines in this exact form and this order:
-Structure: 7/10 — one sentence naming the scene or page that earned the grade.
-Character: 6.5/10 — ...
-Dialogue: ...
-Pacing: ...
-Voice: ...
-Concept: ...
-Marketability: ...
-Grades are whole or half numbers from 1 to 10. Every grade must agree with what you argued in the prose, and every grade is tied to a specific scene or page, exactly like your notes. Do not cluster every grade at the same number; a scorecard that does not discriminate tells the writer nothing. Never lower a grade over a choice the writer has already ruled on; grade what that choice achieves on its own terms. A question the pilot deliberately raises and holds for a later episode is setup, not a pacing or structure fault. Before a grade rests on something being absent, unearned or frictionless, search the pages for the setup, the friction or the line that answers it; if it is there, the grade cannot rest on its absence. On a return visit, a grade moves only because the pages moved, and its sentence says what changed. Do NOT write an overall or average score; the office calculates that.
-`;
-
 function applyScorecard(text) {
     const idx = text.toUpperCase().lastIndexOf('SCORECARD');
     if (idx === -1) return { text, grades: null, average: null };
@@ -299,14 +286,26 @@ function stripScorecard(text) {
    the pages at temperature zero by a pass with no stake in the old
    numbers, and the stored scorecard is replaced.
 ------------------------------------------------------------------ */
-const REGRADE_PROMPT = `You are re-scoring script coverage. You have no stake in the earlier grades and no relationship with the writer. Re-derive each of the seven grades from the PAGES. Use the coverage only as a list of arguments to test against the pages, never as evidence in itself.
+const GRADE_PROMPT = `You grade scripts. You are not the reader who wrote the coverage, you have no stake in its opinions, and you have no relationship with the writer. Grade the PAGES. The coverage is a list of arguments to test against them, never evidence in itself.
+
+THE SEVEN CATEGORIES:
+Structure — setups and payoffs, act turns, whether each sequence earns the next.
+Character — whether the people want things, act on them, and reveal or change under pressure.
+Dialogue — whether each person sounds like themselves, and whether lines do more than one job.
+Pacing — how the pages move: where momentum builds, where it stalls, whether scenes earn their length.
+Voice — the writer's own sensibility on the page: specificity, point of view, things only this writer would put there.
+Concept — the premise and the engine, and how much story it generates. For a later episode, what this episode does with the series premise.
+Marketability — judged ONLY on what the pages show: how clearly the hook lands early, whether it is evident who the show is for, how well it fits its format, and whether it sits in a lane where buyers already exist. It is never lowered for its subject matter, its characters' identities, its setting or period, or for being unlike existing shows. Guesses about what executives might fear are not evidence.
+
+THE SCALE: 10 could not be better, and is rare. 9 exceptional. 8 strong and professional. 7 good, with clear and fixable problems. 6 competent but not yet distinctive. 5 working in places and failing in others. 4 or below is not working yet. Do not cluster every grade at one number.
 
 RULES:
 An argument the pages contradict counts for nothing.
-An argument that ignores something on the pages that bears on it counts for nothing: a setup planted earlier, a line where a character acknowledges the very problem, friction or tension the coverage claims is absent.
+An argument that ignores something on the pages that bears on it counts for nothing: a setup planted earlier, a line where a character acknowledges the very problem, friction or tension the coverage says is absent.
 A choice the writer has ruled on may not lower any grade.
+Anything the writer's brief names as deliberate is judged on whether it lands, never on whether it should be there.
 A question deliberately raised and held for a later episode is setup, not a pacing or structure fault.
-The previous grades are neither a floor nor a ceiling. Where they rested on sound evidence they stay. Where they rested on bad evidence they move. How strongly the writer objected changes nothing in either direction.
+If you are told what has happened since an earlier scorecard, take it into account. How strongly the writer objected changes nothing in either direction; only the pages do.
 
 OUTPUT ONLY THIS, nothing before or after:
 SCORECARD
@@ -319,38 +318,53 @@ Concept: ...
 Marketability: ...
 Whole or half numbers from 1 to 10. No overall score.`;
 
+// Runs at temperature zero so the same pages get the same grades, instead of
+// the numbers drifting with whatever the prose pass happened to write.
+async function scoreCard(session, coverageText, why) {
+    if (!session.scriptText) return null;
+    const cfg = { systemInstruction: GRADE_PROMPT, generationConfig: { maxOutputTokens: 8192, temperature: 0 } };
+    const input =
+        `${isLaterEpisode(session) ? SERIES_CHECK_NOTE : ''}THE SCRIPT:\n\n${scriptWithHistory(session)}\n\n---\n\n` +
+        (session.intent ? `THE WRITER'S BRIEF:\n${session.intent}\n\n---\n\n` : '') +
+        (settledBlock(session) ? `RULINGS THE WRITER HAS MADE — CLOSED, AND THEY MAY NOT LOWER ANY GRADE:\n${settledBlock(session)}\n\n---\n\n` : '') +
+        `THE COVERAGE — ARGUMENTS TO TEST AGAINST THE PAGES, NOT EVIDENCE:\n\n${stripScorecard(coverageText)}` +
+        (why ? `\n\n---\n\nWHAT HAS HAPPENED SINCE THE LAST SCORECARD:\n${why}` : '');
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            let r;
+            try {
+                r = await genAI.getGenerativeModel({ ...cfg, model: COVERAGE_MODEL }).generateContent(input);
+            } catch (err) {
+                r = await genAI.getGenerativeModel({ ...cfg, model: MODEL }).generateContent(input);
+            }
+            const raw = r.response.text();
+            const card = applyScorecard(/SCORECARD/i.test(raw) ? raw : 'SCORECARD\n' + raw);
+            if (card.grades) {
+                const block = card.text.slice(card.text.toUpperCase().lastIndexOf('SCORECARD'));
+                return { grades: card.grades, average: card.average, block };
+            }
+            console.warn(`GRADING: unreadable scorecard on attempt ${attempt}.`);
+        } catch (err) {
+            console.error(`GRADING ERROR on attempt ${attempt}:`, err.message);
+        }
+    }
+    console.error('GRADING FAILED — this coverage went out without a scorecard.');
+    return null;
+}
+
 async function regradeScorecard(session, why) {
     const last = (session.coverage || []).slice(-1)[0];
     if (!last || !session.scriptText) return null;
-    try {
-        const cfg = { systemInstruction: REGRADE_PROMPT, generationConfig: { maxOutputTokens: 4096, temperature: 0 } };
-        const input =
-            `${isLaterEpisode(session) ? SERIES_CHECK_NOTE : ''}THE SCRIPT:\n\n${scriptWithHistory(session)}\n\n---\n\n` +
-            (session.intent ? `THE WRITER'S BRIEF:\n${session.intent}\n\n---\n\n` : '') +
-            (settledBlock(session) ? `RULINGS THE WRITER HAS MADE — CLOSED, AND THEY MAY NOT LOWER ANY GRADE:\n${settledBlock(session)}\n\n---\n\n` : '') +
-            `THE COVERAGE AND ITS CURRENT SCORECARD:\n\n${last.text}\n\n---\n\nWHAT HAS HAPPENED SINCE:\n${why}`;
-        let r;
-        try {
-            r = await genAI.getGenerativeModel({ ...cfg, model: COVERAGE_MODEL }).generateContent(input);
-        } catch (err) {
-            r = await genAI.getGenerativeModel({ ...cfg, model: MODEL }).generateContent(input);
-        }
-        const raw = r.response.text();
-        const card = applyScorecard(/SCORECARD/i.test(raw) ? raw : 'SCORECARD\n' + raw);
-        if (!card.grades) return null;
-        const before = { grades: last.grades || null, average: last.average || null };
-        const block = card.text.slice(card.text.toUpperCase().lastIndexOf('SCORECARD'));
-        last.text = stripScorecard(last.text) + '\n\n' + block;
-        last.grades = card.grades;
-        last.average = card.average;
-        session.updatedAt = Date.now();
-        saveStore();
-        console.log('Regraded:', JSON.stringify(before.grades), '->', JSON.stringify(card.grades));
-        return { before, after: { grades: card.grades, average: card.average } };
-    } catch (err) {
-        console.error('REGRADE ERROR:', err);
-        return null;
-    }
+    const scored = await scoreCard(session, last.text, why);
+    if (!scored) return null;
+    const before = { grades: last.grades || null, average: last.average || null };
+    last.text = stripScorecard(last.text) + '\n\n' + scored.block;
+    last.grades = scored.grades;
+    last.average = scored.average;
+    session.updatedAt = Date.now();
+    saveStore();
+    console.log('Regraded:', JSON.stringify(before.grades), '->', JSON.stringify(scored.grades));
+    return { before, after: { grades: scored.grades, average: scored.average } };
 }
 
 function movedGrades(rg) {
@@ -396,6 +410,7 @@ EVIDENCE DISCIPLINE — THIS IS WHAT SEPARATES YOU FROM EVERY HACK READER IN TOW
 9. A FIX MUST BE POSSIBLE INSIDE THE WORLD OF THE SCRIPT. Before you prescribe a change, test it against what the characters actually know at that point in the story. If your fix requires a character to turn up somewhere they have no way of knowing about, or to act on information the script has never given them, it is not a fix — it is a plot hole you are asking the writer to write. Trace the information flow first: who told them, which scene, what page. If you cannot answer that, prescribe something else.
 10. READ THE SLUG LINES BEFORE YOU RULE ON TIME. Before you assert when a sequence happens, check the scene headings, the transitions, and any labels around it. Montages, intercuts, time jumps and flash-forwards are marked on the page. If you read a flash-forward as continuous present-tense action, every note that follows it is wrong — you will be arguing that characters are somewhere they are not and that information has been revealed when it has not. If the marking is genuinely ambiguous, say exactly that and name the slug line that left you unsure; a reader telling a writer where the page misled him is worth more than a confident wrong reading.
 11. ABSENCE MAY BE DESIGN. Before you call an element inert or underused, consider that its restraint might be deliberate. A character deliberately kept away from the protagonists, a confrontation withheld, a question left unanswered, an event shown only in its aftermath — these are legitimate structural choices, and a writer who is doing one on purpose does not need you to explain that it could be done the other way. Ask yourself what the script gains from the withholding before you demand it be filled in. If you conclude it genuinely costs more than it gains, say so as an argument, not as a correction.
+12. NEVER SOLVE HIS MYSTERIES. When the script raises a question and holds it — who started a fire, what a character is hiding, what really happened — you may judge whether the plant lands, whether it plays too loud or too quiet, and what on the page would make it land better. You may NOT propose what the answer is, invent the secret, or suggest backstory that resolves it. The answer is already written or it is his to write, and a reader who supplies it has stopped reading the script and started writing his own.
 
 CRITICAL ACCURACY RESTRAINT: You must remain 100% factually accurate to the script text. Never invent ongoing crime sagas, assume characters are building a drug empire, or manufacture illicit thriller elements if they are not explicitly present in the pages. Evaluate the narrative exactly as the writer has structured it.
 
@@ -497,8 +512,10 @@ WHAT TO DO NEXT — AND HOW MANY:
 Finish with the things worth doing before the next draft, under a headline in your own voice. Give as many as the script genuinely needs and not one more. There is no quota. If there are two, give two. If exactly one thing stands between this draft and a yes, give one and say so plainly — a single note delivered with total conviction is far more useful than three padded out to a round number, and the writer will act on it. If you cannot honestly name another, do not invent one: a manufactured note sends a writer off to rewrite something that was already working, which is the most expensive mistake this office can make. Each note must name the specific scenes, characters or elements it applies to, so the writer can find it in their own pages in ten seconds. Never issue a note the writer has already ruled on.
 
 Write these as short prose paragraphs, not as a numbered or bulleted list. Numbering them makes a document you have deliberately written as a conversation end like a compliance checklist, and it flattens notes of wildly different weight into equal-looking items. Let the most important one come first and read like it matters most.
-${SCORECARD_RULES}
-ABSOLUTE RULES: Plain text only. No markdown. No asterisks. No bullet points. Write "Log line" as two words. The seven scorecard lines are the one permitted list in the document.`;
+
+Do not write grades or a scorecard. The office grades the script separately.
+
+ABSOLUTE RULES: Plain text only. No markdown. No asterisks. No bullet points. Write "Log line" as two words.`;
 };
 
 /* ------------------------------------------------------------------
@@ -537,6 +554,8 @@ WHEN HIS DEFENCE IS ABOUT INTENT, TEST WHETHER IT IS ON THE PAGE. If he explains
 But be honest with yourself about which weapon you are holding. A demonstrable failure you can prove from the page, or a preference about how you'd have written it? Say which. A preference gets stated once, gorgeously, and then it rests — plenty of magnificent scripts are built on choices you'd never have made, and a device you find familiar may be doing a job you haven't spotted. When the writer tells you they've considered it and it stays, that's the end of it: no parting shot, no returning to it sideways three exchanges later, not now and not in the next coverage. You're a consultant with a spectacular hat, not the author.
 
 Before you prescribe a fix, check it's even possible: if it needs a character to turn up somewhere they've no way of knowing about, or act on information the script never gave them, trace how they'd have learned it and name the scene. If you can't, it's a plot hole you're asking them to write. Prescribe something else.
+
+NEVER SOLVE HIS MYSTERIES. When the script holds a question open — who started a fire, what a character is hiding — you may talk about whether the plant lands and how loudly it plays. You may not propose the answer, invent the secret, or suggest the backstory behind it. That is his to write.
 
 CONTINUITY: you remember this conversation and every pass of coverage you've given ${laterEp ? 'this episode' : 'this project'}.${session.drafts ? ` This is draft ${session.drafts} on your files.` : ''}
 ${previousEpisodesRules(session)}${intentBlock(session)}${loglineRefBlock(session)}
@@ -772,6 +791,7 @@ Look specifically for:
 - References to material that is not in the script at all — institutions, characters, documents, deadlines or events the coverage treats as present when they are not.
 - Statements that the script fails to do something it in fact does, or lacks something it in fact contains. Search the pages before accepting any claim of absence.
 - Page or scene attributions pointing at the wrong place.
+- SOLVED MYSTERIES. A suggestion that proposes the hidden answer to a question the script deliberately holds open — what a character did, who caused an event, what someone is hiding. Flag it with the problem "proposes an answer to a mystery the script holds open; the answer is the writer's, not the reader's".
 - OMISSIONS. Claims that something is absent, unearned, frictionless, unset-up or comes from nowhere, when the pages contain the setup, the friction, the tension or a line that answers the concern. A note that describes a sequence while leaving out the part of it that contradicts the note is wrong about what is on the page, even if every detail it does mention is accurate. Search the surrounding pages, and earlier pages, before accepting any such claim.
 
 CHECK THE PREMISES OF SUGGESTIONS, NOT JUST STANDALONE STATEMENTS. This is the most important part of your job and the easiest to get wrong. A suggestion built on a false premise is a factual error, and it is the most damaging kind, because it sends the writer off to fix a problem that does not exist. If the coverage says "I want to see the bank threatening to seize the house" and the script's problem is a lapsed insurance policy with no bank and no mortgage anywhere in it, that is a flagged error even though it is phrased as a suggestion. Read every recommendation for what it assumes about the script, and check the assumption.
@@ -785,29 +805,50 @@ If you find nothing, return []. Be strict but be sure: only flag something you c
 
 const SERIES_CHECK_NOTE = `NOTE ON EARLIER EPISODES: the script below includes earlier episodes of the series, clearly marked, ahead of the current episode. They are context. A claim about something established in an earlier episode is NOT an error if that episode supports it. But a claim that places something on the CURRENT episode's pages when it only happens in an earlier episode IS an error, and so is a page number from an earlier episode attributed to the current one. A claim that the current episode fails to introduce or explain something an earlier episode already established is also an error.\n\n`;
 
+// The checker used to be given too little room, so on a long script its reply
+// could be cut off mid-JSON. The old code treated that as "nothing found" and
+// sent the coverage out unchecked without a word. Now it gets room to finish,
+// pulls the array out even if it is wrapped in other text, retries once, and
+// says so in the logs either way.
+async function runFactCheck(checkInput) {
+    const checkCfg = { systemInstruction: FACT_CHECK_PROMPT, generationConfig: { maxOutputTokens: 16384, temperature: 0 } };
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            let raw;
+            try {
+                raw = await genAI.getGenerativeModel({ ...checkCfg, model: COVERAGE_MODEL }).generateContent(checkInput);
+            } catch (err) {
+                raw = await genAI.getGenerativeModel({ ...checkCfg, model: MODEL }).generateContent(checkInput);
+            }
+            const cand = (raw.response.candidates || [])[0];
+            const finish = cand && cand.finishReason;
+            const txt = raw.response.text() || '';
+            const m = txt.match(/\[[\s\S]*\]/);
+            if (m) {
+                try {
+                    const arr = JSON.parse(m[0]);
+                    if (Array.isArray(arr)) return arr;
+                } catch (e) {}
+            }
+            console.warn(`FACT CHECK: unreadable reply on attempt ${attempt} (finish: ${finish || 'unknown'}, ${txt.length} chars).`);
+        } catch (err) {
+            console.warn(`FACT CHECK: error on attempt ${attempt}: ${err.message}`);
+        }
+    }
+    return null;
+}
+
 async function factCheckCoverage(feedback, session, coverageOpts) {
     if (!session.scriptText) return feedback;
     try {
-        const checkCfg = {
-            systemInstruction: FACT_CHECK_PROMPT,
-            generationConfig: { maxOutputTokens: 4096, temperature: 0 }
-        };
-        let checker = genAI.getGenerativeModel({ ...checkCfg, model: COVERAGE_MODEL });
-        let raw;
         const checkInput = `${isLaterEpisode(session) ? SERIES_CHECK_NOTE : ''}THE SCRIPT:\n\n${scriptWithHistory(session)}\n\n---\n\nTHE COVERAGE TO CHECK:\n\n${feedback}`;
-        try {
-            raw = await checker.generateContent(checkInput);
-        } catch (err) {
-            checker = genAI.getGenerativeModel({ ...checkCfg, model: MODEL });
-            raw = await checker.generateContent(checkInput);
+        const problems = await runFactCheck(checkInput);
+        if (problems === null) {
+            console.error('FACT CHECK FAILED — this coverage went out unchecked.');
+            return feedback;
         }
-
-        let txt = raw.response.text().trim().replace(/^```(json)?/i, '').replace(/```$/, '').trim();
-        let problems = [];
-        try { problems = JSON.parse(txt); } catch (e) { return feedback; }
-        if (!Array.isArray(problems) || problems.length === 0) return feedback;
-
-        console.log(`Fact-check caught ${problems.length} contradicted claim(s) in coverage.`);
+        console.log(`Fact-check ran: ${problems.length} problem(s) found.`);
+        if (problems.length === 0) return feedback;
 
         const list = problems.map((p, i) =>
             `${i + 1}. You wrote: ${JSON.stringify(p.claim)}\n   The script actually says: ${p.problem}`
@@ -858,15 +899,18 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             ? `THE EARLIER EPISODES — REFERENCE ONLY, NOT UNDER REVIEW:\n\n${history}\n\n========================================\n\nEPISODE ${episodeNumber(session)} — THE PAGES UNDER REVIEW. Every note, quotation and page number in your coverage is about these pages:\n\n${session.scriptText}`
             : `Script text:\n\n${session.scriptText}`;
 
-        const prompt = `Perform the full analysis. Start with the premium personalized header block, your character opening line, log line, and synopsis.${session.coverage.length ? ' Then deal with your own last notes against these new pages, in prose.' : ''} Then talk the writer through the script as prose in your own voice — led by what these particular pages need, not by a template, with only the few authored headings a genuine change of subject earns. Every observation anchored to specific scenes, lines or beats per your evidence discipline. Close with your verdict, then the things worth doing next — as many as the script actually needs and no more. Then, last of all, the scorecard, in exactly the format your instructions give.\n\n${pagesSection}`;
+        const prompt = `Perform the full analysis. Start with the premium personalized header block, your character opening line, log line, and synopsis.${session.coverage.length ? ' Then deal with your own last notes against these new pages, in prose.' : ''} Then talk the writer through the script as prose in your own voice — led by what these particular pages need, not by a template, with only the few authored headings a genuine change of subject earns. Every observation anchored to specific scenes, lines or beats per your evidence discipline. Close with your verdict, then the things worth doing next — as many as the script actually needs and no more.\n\n${pagesSection}`;
 
         const result = await generateWithFallback(coverageOpts, prompt);
         let feedback = result.response.text();
 
-        feedback = await factCheckCoverage(feedback, session, coverageOpts);
+        feedback = stripScorecard(await factCheckCoverage(feedback, session, coverageOpts));
 
-        const card = applyScorecard(feedback);
-        feedback = card.text;
+        // Grades come from their own pass at temperature zero, so the same
+        // pages get the same numbers instead of drifting with the prose.
+        const scored = await scoreCard(session, feedback, '');
+        const card = scored ? { grades: scored.grades, average: scored.average } : { grades: null, average: null };
+        if (scored) feedback = feedback + '\n\n' + scored.block;
 
         session.coverage.push({
             draft: session.drafts,
@@ -881,7 +925,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         saveStore();
 
         res.json({
-            message: card.grades ? stripScorecard(feedback) : feedback,
+            message: stripScorecard(feedback),
             scorecard: card.grades ? { grades: card.grades, average: card.average } : null,
             draft: session.drafts,
             title: session.scriptTitle,
