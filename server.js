@@ -54,11 +54,6 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 /* ------------------------------------------------------------------
    PERSISTENT STORE
-   One record per writer/project, keyed by a sessionId the browser
-   generates once and keeps in localStorage. Holds the actual script
-   text, every coverage pass, and the running chat transcript.
-   Writes to FRANK_DATA_DIR if it exists (mount a Render disk there),
-   otherwise falls back to the app directory.
 ------------------------------------------------------------------ */
 const DATA_DIR = process.env.FRANK_DATA_DIR || '/var/data';
 let STORE_PATH;
@@ -95,13 +90,10 @@ function flushStore() {
 process.on('SIGTERM', () => { flushStore(); process.exit(0); });
 process.on('SIGINT', () => { flushStore(); process.exit(0); });
 
-const SCRIPT_CHAR_LIMIT = 300000;   // ~180 pages. The old 85k cap was cutting act three off a pilot.
-const COVERAGE_KEEP = 6;            // coverage passes retained per project
-const COVERAGE_IN_PROMPT = 2;       // how many prior passes Frank re-reads on a new draft
+const SCRIPT_CHAR_LIMIT = 300000;
+const COVERAGE_KEEP = 6;
+const COVERAGE_IN_PROMPT = 2;
 const CHAT_TURNS_KEEP = 40;
-// How much earlier-episode text travels with every request. Roughly six full
-// episodes. If a season outgrows it, the most recent episodes win and the
-// oldest drop off the front.
 const EPISODES_CHAR_BUDGET = 600000;
 
 function blankSession() {
@@ -110,11 +102,10 @@ function blankSession() {
 function getSession(id) {
     const key = (id && String(id).slice(0, 64)) || 'default';
     if (!store[key]) store[key] = blankSession();
-    if (!store[key].recentGreetings) store[key].recentGreetings = []; // migrate older records
+    if (!store[key].recentGreetings) store[key].recentGreetings = [];
     if (!store[key].settled) store[key].settled = [];
     if (typeof store[key].intent !== 'string') store[key].intent = '';
     if (!store[key].intentFields || typeof store[key].intentFields !== 'object') {
-        // Older records kept one free-form blob. Preserve it as the "deliberate" field.
         store[key].intentFields = { about: '', tone: '', deliberate: store[key].intent || '' };
     }
     if (typeof store[key].logline !== 'string') store[key].logline = '';
@@ -126,11 +117,6 @@ function getSession(id) {
 
 /* ------------------------------------------------------------------
    SERIES MEMORY
-   When the writer clicks Next Episode, the current pages are locked
-   into session.episodes and the desk is cleared for the next one.
-   Only the SCRIPT TEXT of earlier episodes travels into prompts —
-   never Frank's coverage of them, because his old notes quoted as
-   though they were the script is the failure we keep fighting.
 ------------------------------------------------------------------ */
 function episodeNumber(session) { return (session.episodes || []).length + 1; }
 function isLaterEpisode(session) { return (session.episodes || []).length > 0; }
@@ -175,15 +161,12 @@ Never blur the two. Every page number, quotation and scene you cite belongs to t
 `;
 }
 
-// For the verification passes: the whole series, earlier episodes first,
-// each clearly labelled so a checker never mistakes old pages for new ones.
 function scriptWithHistory(session) {
     const history = previousEpisodesText(session);
     if (!history) return session.scriptText;
     return `${history}\n\n<<<BEGIN CURRENT EPISODE ${episodeNumber(session)} — THE PAGES UNDER REVIEW>>>\n${session.scriptText}\n<<<END CURRENT EPISODE>>>`;
 }
 
-// For the phantom-quote detector: a quote is real if it is anywhere in the series.
 function allSeriesText(session) {
     return [...(session.episodes || []).map(e => e.text || ''), session.scriptText || ''].join('\n');
 }
@@ -209,7 +192,6 @@ This is what the script is trying to be, in the writer's own words. Judge the ex
 `;
 }
 
-// Coverage version: the logline belongs in the header block of the document.
 function loglineBlock(session) {
     if (!session.logline || !session.logline.trim()) return '';
     return `
@@ -220,9 +202,6 @@ Reproduce it verbatim in the header block of your coverage. If you think it misr
 `;
 }
 
-// Chat version: same sentence, no header instruction. Conversation has no header,
-// and handing him the coverage wording here made him open every single reply by
-// reciting the logline before answering the question he was actually asked.
 function loglineRefBlock(session) {
     if (!session.logline || !session.logline.trim()) return '';
     return `
@@ -253,10 +232,6 @@ function guessTitle(text) {
     return '';
 }
 
-// Only the tail of a prior audit travels forward — the verdict and the three
-// fixes. The body of an old audit is dense with quotations from a draft that no
-// longer exists, and feeding those back in is how a line the writer deleted
-// three drafts ago gets quoted at him as though it were still on page 47.
 function coverageTail(text) {
     const idx = text.toUpperCase().lastIndexOf('FINAL VERDICT');
     const tail = idx === -1 ? text.slice(-2500) : text.slice(idx);
@@ -269,6 +244,42 @@ function priorCoverageBlock(session) {
     return passes.map(p =>
         `----- YOUR VERDICT AND PRIORITY FIXES ON DRAFT ${p.draft} (${(p.date || '').slice(0, 10)}) -----\n${coverageTail(p.text)}`
     ).join('\n\n');
+}
+
+/* ------------------------------------------------------------------
+   THE SCORECARD
+   Frank grades seven categories out of ten. The server does the
+   averaging, so the overall number is never invented or miscounted.
+------------------------------------------------------------------ */
+const GRADE_CATEGORIES = ['Structure', 'Character', 'Dialogue', 'Pacing', 'Voice', 'Concept', 'Marketability'];
+
+const SCORECARD_RULES = `
+THE SCORECARD — THE VERY LAST THING IN THE DOCUMENT:
+After your final notes, write the word SCORECARD on its own line, then exactly seven lines in this exact form and this order:
+Structure: 7/10 — one sentence naming the scene or page that earned the grade.
+Character: 6.5/10 — ...
+Dialogue: ...
+Pacing: ...
+Voice: ...
+Concept: ...
+Marketability: ...
+Grades are whole or half numbers from 1 to 10. Every grade must agree with what you argued in the prose, and every grade is tied to a specific scene or page, exactly like your notes. Do not cluster every grade at the same number; a scorecard that does not discriminate tells the writer nothing. Never lower a grade over a choice the writer has already ruled on; grade what that choice achieves on its own terms. On a return visit, a grade moves only because the pages moved, and its sentence says what changed. Do NOT write an overall or average score; the office calculates that.
+`;
+
+function applyScorecard(text) {
+    const idx = text.toUpperCase().lastIndexOf('SCORECARD');
+    if (idx === -1) return { text, grades: null, average: null };
+    const block = text.slice(idx);
+    const grades = {};
+    for (const cat of GRADE_CATEGORIES) {
+        const m = block.match(new RegExp(cat + '\\s*:\\s*(\\d+(?:\\.\\d+)?)\\s*/\\s*10', 'i'));
+        if (m) grades[cat] = Math.min(10, Math.max(0, parseFloat(m[1])));
+    }
+    const vals = Object.values(grades);
+    if (vals.length !== GRADE_CATEGORIES.length) return { text, grades: null, average: null };
+    const average = Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
+    const cleaned = text.replace(/\n\s*(Overall|Average)[^\n]*\s*$/i, '').trimEnd();
+    return { text: cleaned + `\nOverall: ${average}/10`, grades, average };
 }
 
 /* ------------------------------------------------------------------
@@ -398,14 +409,12 @@ WHAT TO DO NEXT — AND HOW MANY:
 Finish with the things worth doing before the next draft, under a headline in your own voice. Give as many as the script genuinely needs and not one more. There is no quota. If there are two, give two. If exactly one thing stands between this draft and a yes, give one and say so plainly — a single note delivered with total conviction is far more useful than three padded out to a round number, and the writer will act on it. If you cannot honestly name another, do not invent one: a manufactured note sends a writer off to rewrite something that was already working, which is the most expensive mistake this office can make. Each note must name the specific scenes, characters or elements it applies to, so the writer can find it in their own pages in ten seconds. Never issue a note the writer has already ruled on.
 
 Write these as short prose paragraphs, not as a numbered or bulleted list. Numbering them makes a document you have deliberately written as a conversation end like a compliance checklist, and it flattens notes of wildly different weight into equal-looking items. Let the most important one come first and read like it matters most.
-
-
-ABSOLUTE RULES: Plain text only. No markdown. No asterisks. No bullet points. Write "Log line" as two words.`;
+${SCORECARD_RULES}
+ABSOLUTE RULES: Plain text only. No markdown. No asterisks. No bullet points. Write "Log line" as two words. The seven scorecard lines are the one permitted list in the document.`;
 };
 
 /* ------------------------------------------------------------------
    FRANK — CHAT SYSTEM PROMPT
-   The whole point: the pages travel with him into the conversation.
 ------------------------------------------------------------------ */
 const chatSystemPrompt = (session) => {
     const hasScript = !!session.scriptText;
@@ -459,23 +468,16 @@ ${session.scriptText.substring(0, SCRIPT_CHAR_LIMIT)}
 
 ${recent ? `YOUR MOST RECENT COVERAGE (draft ${recent.draft}) — treat every quotation inside it as unverified; it may be repeating lines from an earlier draft. The pages above are the record:
 ${recent.text}` : ''}
-
+${recent && recent.grades ? `
+YOUR SCORECARD ON THAT DRAFT is at the end of the coverage above. If he asks about a grade, defend it from the pages like any other note. A grade moves only when he shows you something on the page you weighed wrongly — never because he pushed. Say grades aloud as "seven out of ten", not "7/10".
+` : ''}
 BEFORE YOU SPEAK: check the pages, not your notes. Then read your answer back and ask whether Frank said it or whether a machine did. If it's the machine, write it again. Plain text only, no markdown, no asterisks, no bullet points. Write "Log line" as two words. Don't invent crime plots, drug empires, or thriller elements that aren't explicitly in the pages above.`;
 };
 
 /* ------------------------------------------------------------------
    GREETINGS
-   Written fresh on every arrival and every flip of the switch, and
-   grounded in what Frank actually has on file for this writer. The
-   angle list and the recent-greeting memory are what keep him from
-   circling back to the same three jokes.
 ------------------------------------------------------------------ */
 const GREETING_MEMORY = 8;
-
-// A sixty-word greeting needs about ninety tokens to say. The ceiling is this
-// high because reasoning models spend output budget thinking before they write,
-// and that budget comes out of the same allowance — set it too close to the
-// visible length and the line gets guillotined mid-sentence.
 const GREETING_TOKENS = Number(process.env.FRANK_GREETING_TOKENS) || 2048;
 
 const GREETING_ANGLES = [
@@ -501,12 +503,6 @@ const GREETING_ANGLES = [
 
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
-// --- THE CLOCK ------------------------------------------------------------
-// The model is never told the hour, because it will cheerfully invent one and
-// "three o'clock" is a phrase it reaches for whether or not it is three. It
-// writes the token {TIME} instead and the server fills in the real phrase at
-// the moment the greeting is served. That also means a greeting can be written
-// in advance and still be accurate about the time when it is finally spoken.
 const HOUR_WORDS = ['twelve', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven'];
 
 function dayPartName(hour) {
@@ -646,10 +642,6 @@ function fallbackGreeting(mode, context) {
 /* ------------------------------------------------------------------
    ROUTES
 ------------------------------------------------------------------ */
-// The cold read has to happen in its own model call with the script withheld.
-// Once Frank has the pages in front of him he cannot un-read them, and a
-// "pretend you haven't" instruction produces a polite fiction rather than an
-// honest reader reaction. Cached per logline so it isn't rerun every draft.
 async function getColdRead(session) {
     const ll = (session.logline || '').trim();
     if (!ll) return '';
@@ -683,12 +675,6 @@ This is not a note about the logline. It is the expectation every reader will wa
 `;
 }
 
-// The phantom-quote detector only catches fabricated QUOTES. It cannot catch a
-// fabricated FACT — "a massive illegal rave" when page 48 says "a legit no alcohol
-// event", or "complaining about bartenders" when page 19 has her begging one to
-// come in. Those are the errors that destroy a writer's trust, because they prove
-// the reader was pattern-matching rather than reading. So: a separate verification
-// pass at temperature zero whose only job is to check assertions against the text.
 const FACT_CHECK_PROMPT = `You are a fact-checker with no opinions about screenwriting whatsoever. You will be given a script and a piece of coverage written about it. Your ONLY job is to find statements in the coverage that contradict, misstate or invent what is in the script.
 
 Look specifically for:
@@ -739,7 +725,7 @@ async function factCheckCoverage(feedback, session, coverageOpts) {
         ).join('\n\n');
 
         const fixed = await generateWithFallback(coverageOpts,
-            `Below is coverage you just wrote, followed by factual errors in it. Each one is a statement about the script that the script contradicts.\n\n${list}\n\nRewrite the coverage with every one of these corrected. Where a note was built on a wrong reading of the pages, do not simply soften it — either rebuild it on what the script actually says, or drop it, because a note resting on a misreading was never a real note. Change nothing else: keep the voice, the structure, the length and every note that was not listed above. Do not mention this correction, do not apologise, and do not refer to having been checked.\n\nTHE COVERAGE:\n\n${feedback}`
+            `Below is coverage you just wrote, followed by factual errors in it. Each one is a statement about the script that the script contradicts.\n\n${list}\n\nRewrite the coverage with every one of these corrected. Where a note was built on a wrong reading of the pages, do not simply soften it — either rebuild it on what the script actually says, or drop it, because a note resting on a misreading was never a real note. Change nothing else: keep the voice, the structure, the length, the scorecard and every note that was not listed above. Do not mention this correction, do not apologise, and do not refer to having been checked.\n\nTHE COVERAGE:\n\n${feedback}`
         );
         return fixed.response.text();
     } catch (err) {
@@ -761,12 +747,11 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
             fullText += data.text + "\n";
         }
 
-        // Store the pages BEFORE the model call so they survive even if generation fails.
         session.scriptText = fullText.substring(0, SCRIPT_CHAR_LIMIT);
         session.scriptTitle = guessTitle(fullText) || session.scriptTitle;
         session.drafts = (session.drafts || 0) + 1;
         session.mode = mode;
-        session.chat = [];              // new draft, old arguments are stale
+        session.chat = [];
         session.updatedAt = Date.now();
         saveStore();
 
@@ -774,30 +759,33 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 
         const coverageOpts = {
             systemInstruction: coverageSystemPrompt(mode, session, coldRead),
-            // Lower than chat on purpose. Coverage makes factual claims about a
-            // document; invention is a defect here, not flavour.
-            generationConfig: { maxOutputTokens: 8192, temperature: 0.45, topP: 0.9 }
+            // Extra headroom: the scorecard is written last, so it is the first
+            // thing a cut-off reply would lose.
+            generationConfig: { maxOutputTokens: 12288, temperature: 0.45, topP: 0.9 }
         };
 
-        // Earlier episodes ride in front of the current pages, clearly fenced off,
-        // so the episode under review is the last and freshest thing he reads.
         const history = previousEpisodesText(session);
         const pagesSection = history
             ? `THE EARLIER EPISODES — REFERENCE ONLY, NOT UNDER REVIEW:\n\n${history}\n\n========================================\n\nEPISODE ${episodeNumber(session)} — THE PAGES UNDER REVIEW. Every note, quotation and page number in your coverage is about these pages:\n\n${session.scriptText}`
             : `Script text:\n\n${session.scriptText}`;
 
-        const prompt = `Perform the full analysis. Start with the premium personalized header block, your character opening line, log line, and synopsis.${session.coverage.length ? ' Then deal with your own last notes against these new pages, in prose.' : ''} Then talk the writer through the script as prose in your own voice — led by what these particular pages need, not by a template, with only the few authored headings a genuine change of subject earns. Every observation anchored to specific scenes, lines or beats per your evidence discipline. Close with your verdict, then the things worth doing next — as many as the script actually needs and no more.\n\n${pagesSection}`;
+        const prompt = `Perform the full analysis. Start with the premium personalized header block, your character opening line, log line, and synopsis.${session.coverage.length ? ' Then deal with your own last notes against these new pages, in prose.' : ''} Then talk the writer through the script as prose in your own voice — led by what these particular pages need, not by a template, with only the few authored headings a genuine change of subject earns. Every observation anchored to specific scenes, lines or beats per your evidence discipline. Close with your verdict, then the things worth doing next — as many as the script actually needs and no more. Then, last of all, the scorecard, in exactly the format your instructions give.\n\n${pagesSection}`;
 
         const result = await generateWithFallback(coverageOpts, prompt);
         let feedback = result.response.text();
 
         feedback = await factCheckCoverage(feedback, session, coverageOpts);
 
+        const card = applyScorecard(feedback);
+        feedback = card.text;
+
         session.coverage.push({
             draft: session.drafts,
             mode,
             date: new Date().toISOString(),
-            text: feedback
+            text: feedback,
+            grades: card.grades,
+            average: card.average
         });
         if (session.coverage.length > COVERAGE_KEEP) session.coverage.shift();
         session.updatedAt = Date.now();
@@ -805,6 +793,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
 
         res.json({
             message: feedback,
+            scorecard: card.grades ? { grades: card.grades, average: card.average } : null,
             draft: session.drafts,
             title: session.scriptTitle,
             episode: episodeNumber(session),
@@ -816,12 +805,6 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
     }
 });
 
-// --- NEXT EPISODE -----------------------------------------------------------
-// Locks the current pages in as an earlier episode and clears the desk for the
-// next one. The script text is kept and travels with every future request. The
-// coverage, the chat and the rulings belong to that episode and are archived
-// with it, not fed forward. The brief stays: it describes the show, not one
-// episode of it.
 app.post('/next-episode', (req, res) => {
     const session = getSession(req.body.sessionId);
     if (!session.scriptText) {
@@ -833,8 +816,8 @@ app.post('/next-episode', (req, res) => {
         title: session.scriptTitle || '',
         text: session.scriptText,
         drafts: session.drafts,
-        coverage: session.coverage,     // archived, never sent to the model
-        settled: session.settled,       // archived, never sent to the model
+        coverage: session.coverage,
+        settled: session.settled,
         lockedAt: new Date().toISOString()
     });
     session.scriptText = '';
@@ -853,8 +836,6 @@ app.post('/next-episode', (req, res) => {
     });
 });
 
-// Undo for a mis-click: pulls the last locked episode back onto the desk with
-// its coverage, chat cleared.
 app.post('/reopen-episode', (req, res) => {
     const session = getSession(req.body.sessionId);
     if (!session.episodes.length) return res.status(400).json({ message: "The drawer's empty, darling. Nothing to reopen." });
@@ -872,20 +853,14 @@ app.post('/reopen-episode', (req, res) => {
 });
 
 // --- PHANTOM QUOTE DETECTOR -----------------------------------------------
-// Frank quoting a line that isn't in the script is the one failure that reads
-// exactly like evidence. Prompting reduces it; this catches what's left. Any
-// line he presents as a quotation gets looked up in the actual pages, and if
-// it isn't there he is sent back to try again before the writer sees it.
 function normalizeForSearch(s) {
     return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
 function extractQuotedLines(reply) {
     const found = [];
-    // Anything in double or smart quotes.
     const quoted = reply.match(/["“”]([^"“”]{15,300})["“”]/g) || [];
     quoted.forEach(q => found.push(q.replace(/["“”]/g, '')));
-    // Screenplay-style attributions: MICHAEL: some line of dialogue
     const lines = reply.split('\n');
     for (const line of lines) {
         const m = line.match(/^\s*([A-Z][A-Z'’.\- ]{1,28}):\s*(.{15,300})$/);
@@ -901,10 +876,6 @@ function findPhantomQuotes(reply, scriptText) {
 }
 
 // --- RULING DETECTOR ------------------------------------------------------
-// When the writer says a thing stays, that closes the argument permanently —
-// otherwise the note travels forward in the priority fixes and gets re-issued
-// on the next draft, which is how a note turns into a demand. Runs after the
-// reply has already gone out, so it costs the writer nothing in waiting.
 async function detectRuling(session, writerMessage, frankReply) {
     try {
         const model = genAI.getGenerativeModel({
@@ -935,12 +906,6 @@ Write the ruling from the writer's side, e.g. "The walking montage on pages 6-7 
         // A missed ruling is a small loss; a crashed request is not acceptable.
     }
 }
-
-// Telling a model "do not capitulate" does not work, because when the writer
-// pushes back the cheapest available move is agreement, and no amount of prompt
-// text outranks that. So the hold-or-concede decision is taken away from Frank
-// and given to a separate, opinionless pass that reads the actual pages first.
-// He is then told what the evidence says and argues from it.
 
 const DISPUTE_CLASSIFIER = `Decide whether the writer's message disputes, challenges or pushes back on something the reader said about their script. Return ONLY JSON, no fences: {"isDispute": true|false, "claim": "<one sentence stating what the writer is asserting about their own script>"}. If it is not a dispute, claim is "".`;
 
@@ -1017,8 +982,6 @@ app.post('/chat', async (req, res) => {
         const session = getSession(req.body.sessionId);
         const message = (req.body.message || '').toString();
 
-        // Arguments are where being right matters most, so chat runs on the
-        // stronger model too. Greetings stay on the fast one.
         const chatCfg = {
             systemInstruction: chatSystemPrompt(session),
             generationConfig: { maxOutputTokens: 4096, temperature: 0.95, topP: 0.95 }
@@ -1026,8 +989,6 @@ app.post('/chat', async (req, res) => {
         const model = genAI.getGenerativeModel({ ...chatCfg, model: COVERAGE_MODEL });
         const fallbackModel = genAI.getGenerativeModel({ ...chatCfg, model: MODEL });
 
-        // getGenerativeModel does not throw on a bad model name — generateContent
-        // does. That is why a wrong string killed chat instead of degrading it.
         async function chatGenerate(payload) {
             try {
                 return await model.generateContent(payload);
@@ -1049,8 +1010,6 @@ app.post('/chat', async (req, res) => {
         let result = await chatGenerate({ contents });
         let reply = result.response.text();
 
-        // A quote is genuine if it appears anywhere in the series, current pages
-        // or an earlier episode. The prompt handles keeping the two apart.
         const phantoms = findPhantomQuotes(reply, allSeriesText(session));
         if (phantoms.length) {
             console.warn("Phantom quote caught, forcing rewrite:", phantoms[0].slice(0, 80));
@@ -1065,7 +1024,6 @@ app.post('/chat', async (req, res) => {
             if (retryText && retryText.trim()) reply = retryText;
         }
 
-        // Only the real exchange is remembered — the correction scaffolding is not.
         session.chat.push({ role: 'user', text: message });
         session.chat.push({ role: 'model', text: reply });
         if (session.chat.length > CHAT_TURNS_KEEP) session.chat = session.chat.slice(-CHAT_TURNS_KEEP);
@@ -1105,12 +1063,6 @@ app.post('/intent', (req, res) => {
 });
 
 // ---- LOGLINE REVIEW -------------------------------------------------------
-// Two passes on purpose. The first is a cold read: what does one sentence
-// promise a reader who has never heard of this project? The second measures
-// that promise against the actual pages. The gap between them is the whole
-// diagnostic — a logline problem and a script problem look identical from
-// inside the work, and this is what tells them apart.
-
 const LOGLINE_VOICE = `You are Frank. Arch, epigrammatic, a development executive who has read ten thousand of these and can tell in one sentence what a reader is about to assume. The voice is not a garnish — a flat reply is a failed reply. But you are doing precise work here, so let the wit serve the diagnosis rather than replace it.`;
 
 function loglineColdPrompt() {
@@ -1185,8 +1137,6 @@ app.post('/logline', async (req, res) => {
             );
             gap = gapResult.response.text().trim();
 
-            // Frank citing lines that are not in the draft is the failure mode we
-            // already solved once. Same detector, same reason.
             const phantoms = findPhantomQuotes(gap, session.scriptText);
             if (phantoms.length) {
                 console.log('Phantom quote caught in logline gap analysis:', phantoms.length);
@@ -1228,9 +1178,6 @@ app.get('/session', (req, res) => {
     });
 });
 
-// A greeting that trails off mid-sentence is worse than a canned one, and it is
-// also what you get when the model burns its output budget before it finishes
-// speaking. Verify the thing actually completed before serving it.
 function endsCleanly(text) {
     return /[.!?…"'’”)\]]$/.test(text.trim());
 }
@@ -1267,7 +1214,6 @@ function greetingKey(mode, context) { return mode + '-' + context; }
 const GREETING_POOL_TARGET = 2;
 const inFlightGreetings = new Set();
 
-// Top the pool up in the background. Never awaited by a request.
 function replenishGreetings(session, sessionKey, mode, context, dayPart) {
     const key = greetingKey(mode, context);
     const lock = sessionKey + ':' + key + ':' + dayPart;
@@ -1289,10 +1235,6 @@ function replenishGreetings(session, sessionKey, mode, context, dayPart) {
         .finally(() => inFlightGreetings.delete(lock));
 }
 
-// This handler never waits on the model. It serves whatever is already written
-// — a pooled greeting if one matches, a canned line if not — and then quietly
-// writes more for next time. Waiting ten seconds for a better hello is a bad
-// trade, and the pool fills within a visit or two.
 async function handleGreeting(req, res, forcedMode) {
     const body = req.body || {};
     const mode = forcedMode || (body.mode === 'tv' ? 'tv' : 'feature');
@@ -1325,21 +1267,15 @@ async function handleGreeting(req, res, forcedMode) {
     res.json({ message, generated });
 
     replenishGreetings(session, sessionKey, mode, context, dayPart);
-    // Also warm the other side of the switch, so flipping it is instant too.
     const otherMode = mode === 'tv' ? 'feature' : 'tv';
     replenishGreetings(session, sessionKey, otherMode, 'switch', dayPart);
 }
 
 app.post('/greeting', (req, res) => handleGreeting(req, res, null));
-app.post('/tv-greeting', (req, res) => handleGreeting(req, res, 'tv')); // legacy path, still live
+app.post('/tv-greeting', (req, res) => handleGreeting(req, res, 'tv'));
 
 app.post('/clear-memory', (req, res) => {
     const key = (req.body.sessionId && String(req.body.sessionId).slice(0, 64)) || 'default';
-
-    // The brief is the writer's, not Frank's. Wiping his own notes should not
-    // silently delete the logline and statement of intent the writer typed in —
-    // losing them meant the next audit invented its own premise again.
-    // Locked episodes are wiped along with everything else: this is a full reset.
     const prior = store[key] || {};
     const fresh = blankSession();
     fresh.logline = prior.logline || '';
