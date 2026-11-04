@@ -263,7 +263,7 @@ Pacing: ...
 Voice: ...
 Concept: ...
 Marketability: ...
-Grades are whole or half numbers from 1 to 10. Every grade must agree with what you argued in the prose, and every grade is tied to a specific scene or page, exactly like your notes. Do not cluster every grade at the same number; a scorecard that does not discriminate tells the writer nothing. Never lower a grade over a choice the writer has already ruled on; grade what that choice achieves on its own terms. On a return visit, a grade moves only because the pages moved, and its sentence says what changed. Do NOT write an overall or average score; the office calculates that.
+Grades are whole or half numbers from 1 to 10. Every grade must agree with what you argued in the prose, and every grade is tied to a specific scene or page, exactly like your notes. Do not cluster every grade at the same number; a scorecard that does not discriminate tells the writer nothing. Never lower a grade over a choice the writer has already ruled on; grade what that choice achieves on its own terms. A question the pilot deliberately raises and holds for a later episode is setup, not a pacing or structure fault. Before a grade rests on something being absent, unearned or frictionless, search the pages for the setup, the friction or the line that answers it; if it is there, the grade cannot rest on its absence. On a return visit, a grade moves only because the pages moved, and its sentence says what changed. Do NOT write an overall or average score; the office calculates that.
 `;
 
 function applyScorecard(text) {
@@ -280,6 +280,94 @@ function applyScorecard(text) {
     const average = Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
     const cleaned = text.replace(/\n\s*(Overall|Average)[^\n]*\s*$/i, '').trimEnd();
     return { text: cleaned + `\nOverall: ${average}/10`, grades, average };
+}
+
+// Everything before the scorecard block. The writer sees the grades in the
+// gold box, so the prose he is shown does not repeat them.
+function stripScorecard(text) {
+    const re = /(^|\n)[ \t]*SCORECARD[ \t]*(?=\n|$)/g;
+    let m, last = -1;
+    while ((m = re.exec(text)) !== null) last = m.index;
+    return last === -1 ? text : text.slice(0, last).trimEnd();
+}
+
+/* ------------------------------------------------------------------
+   REGRADE
+   A grade that survives after the note under it has been retired, or
+   after the pages have been shown to contradict it, is a grade resting
+   on nothing. When either happens, the seven grades are re-derived from
+   the pages at temperature zero by a pass with no stake in the old
+   numbers, and the stored scorecard is replaced.
+------------------------------------------------------------------ */
+const REGRADE_PROMPT = `You are re-scoring script coverage. You have no stake in the earlier grades and no relationship with the writer. Re-derive each of the seven grades from the PAGES. Use the coverage only as a list of arguments to test against the pages, never as evidence in itself.
+
+RULES:
+An argument the pages contradict counts for nothing.
+An argument that ignores something on the pages that bears on it counts for nothing: a setup planted earlier, a line where a character acknowledges the very problem, friction or tension the coverage claims is absent.
+A choice the writer has ruled on may not lower any grade.
+A question deliberately raised and held for a later episode is setup, not a pacing or structure fault.
+The previous grades are neither a floor nor a ceiling. Where they rested on sound evidence they stay. Where they rested on bad evidence they move. How strongly the writer objected changes nothing in either direction.
+
+OUTPUT ONLY THIS, nothing before or after:
+SCORECARD
+Structure: 7/10 — one sentence naming the page that decides it.
+Character: ...
+Dialogue: ...
+Pacing: ...
+Voice: ...
+Concept: ...
+Marketability: ...
+Whole or half numbers from 1 to 10. No overall score.`;
+
+async function regradeScorecard(session, why) {
+    const last = (session.coverage || []).slice(-1)[0];
+    if (!last || !session.scriptText) return null;
+    try {
+        const cfg = { systemInstruction: REGRADE_PROMPT, generationConfig: { maxOutputTokens: 4096, temperature: 0 } };
+        const input =
+            `${isLaterEpisode(session) ? SERIES_CHECK_NOTE : ''}THE SCRIPT:\n\n${scriptWithHistory(session)}\n\n---\n\n` +
+            (session.intent ? `THE WRITER'S BRIEF:\n${session.intent}\n\n---\n\n` : '') +
+            (settledBlock(session) ? `RULINGS THE WRITER HAS MADE — CLOSED, AND THEY MAY NOT LOWER ANY GRADE:\n${settledBlock(session)}\n\n---\n\n` : '') +
+            `THE COVERAGE AND ITS CURRENT SCORECARD:\n\n${last.text}\n\n---\n\nWHAT HAS HAPPENED SINCE:\n${why}`;
+        let r;
+        try {
+            r = await genAI.getGenerativeModel({ ...cfg, model: COVERAGE_MODEL }).generateContent(input);
+        } catch (err) {
+            r = await genAI.getGenerativeModel({ ...cfg, model: MODEL }).generateContent(input);
+        }
+        const raw = r.response.text();
+        const card = applyScorecard(/SCORECARD/i.test(raw) ? raw : 'SCORECARD\n' + raw);
+        if (!card.grades) return null;
+        const before = { grades: last.grades || null, average: last.average || null };
+        const block = card.text.slice(card.text.toUpperCase().lastIndexOf('SCORECARD'));
+        last.text = stripScorecard(last.text) + '\n\n' + block;
+        last.grades = card.grades;
+        last.average = card.average;
+        session.updatedAt = Date.now();
+        saveStore();
+        console.log('Regraded:', JSON.stringify(before.grades), '->', JSON.stringify(card.grades));
+        return { before, after: { grades: card.grades, average: card.average } };
+    } catch (err) {
+        console.error('REGRADE ERROR:', err);
+        return null;
+    }
+}
+
+function movedGrades(rg) {
+    if (!rg || !rg.before.grades) return [];
+    return GRADE_CATEGORIES.filter(c => rg.before.grades[c] !== rg.after.grades[c]);
+}
+
+function scorecardUpdateInstruction(rg) {
+    if (!rg) return '';
+    const moved = movedGrades(rg);
+    if (rg.before.grades && !moved.length) {
+        return `\n\n[SCORECARD — the grades have just been re-scored against the pages and none moved. If the grades come up, say so plainly and name the page that holds them. Do not mention this note or any check.]`;
+    }
+    const list = moved.length
+        ? moved.map(c => `${c} ${rg.before.grades[c]} to ${rg.after.grades[c]}`).join(', ')
+        : GRADE_CATEGORIES.map(c => `${c} ${rg.after.grades[c]}`).join(', ');
+    return `\n\n[SCORECARD — the grades have just been re-scored against the pages. ${moved.length ? 'These moved' : 'The new grades'}: ${list}. Overall is now ${rg.after.average} out of 10. Tell him which grades moved and why, in a sentence or two in your own voice, saying the numbers as words. No apology, no ceremony, and never call a grade locked. Do not mention this note or any check.]`;
 }
 
 /* ------------------------------------------------------------------
@@ -469,7 +557,7 @@ ${session.scriptText.substring(0, SCRIPT_CHAR_LIMIT)}
 ${recent ? `YOUR MOST RECENT COVERAGE (draft ${recent.draft}) — treat every quotation inside it as unverified; it may be repeating lines from an earlier draft. The pages above are the record:
 ${recent.text}` : ''}
 ${recent && recent.grades ? `
-YOUR SCORECARD ON THAT DRAFT is at the end of the coverage above. If he asks about a grade, defend it from the pages like any other note. A grade moves only when he shows you something on the page you weighed wrongly — never because he pushed. Say grades aloud as "seven out of ten", not "7/10".
+YOUR SCORECARD ON THAT DRAFT is at the end of the coverage above. If he asks about a grade, defend it from the pages like any other note. Grades are re-scored against the pages whenever he closes a note or the pages show you missed something; when that happens you are told in his message, and you report the new numbers plainly. Never call a grade locked or say it stands on your files after you have retired the note it rested on. Volume never moves a grade, and evidence always can. Say grades aloud as "seven out of ten", not "7/10".
 ` : ''}
 BEFORE YOU SPEAK: check the pages, not your notes. Then read your answer back and ask whether Frank said it or whether a machine did. If it's the machine, write it again. Plain text only, no markdown, no asterisks, no bullet points. Write "Log line" as two words. Don't invent crime plots, drug empires, or thriller elements that aren't explicitly in the pages above.`;
 };
@@ -684,6 +772,7 @@ Look specifically for:
 - References to material that is not in the script at all — institutions, characters, documents, deadlines or events the coverage treats as present when they are not.
 - Statements that the script fails to do something it in fact does, or lacks something it in fact contains. Search the pages before accepting any claim of absence.
 - Page or scene attributions pointing at the wrong place.
+- OMISSIONS. Claims that something is absent, unearned, frictionless, unset-up or comes from nowhere, when the pages contain the setup, the friction, the tension or a line that answers the concern. A note that describes a sequence while leaving out the part of it that contradicts the note is wrong about what is on the page, even if every detail it does mention is accurate. Search the surrounding pages, and earlier pages, before accepting any such claim.
 
 CHECK THE PREMISES OF SUGGESTIONS, NOT JUST STANDALONE STATEMENTS. This is the most important part of your job and the easiest to get wrong. A suggestion built on a false premise is a factual error, and it is the most damaging kind, because it sends the writer off to fix a problem that does not exist. If the coverage says "I want to see the bank threatening to seize the house" and the script's problem is a lapsed insurance policy with no bank and no mortgage anywhere in it, that is a flagged error even though it is phrased as a suggestion. Read every recommendation for what it assumes about the script, and check the assumption.
 
@@ -792,7 +881,7 @@ app.post('/analyze', upload.array('scripts', 10), async (req, res) => {
         saveStore();
 
         res.json({
-            message: feedback,
+            message: card.grades ? stripScorecard(feedback) : feedback,
             scorecard: card.grades ? { grades: card.grades, average: card.average } : null,
             draft: session.drafts,
             title: session.scriptTitle,
@@ -876,7 +965,7 @@ function findPhantomQuotes(reply, scriptText) {
 }
 
 // --- RULING DETECTOR ------------------------------------------------------
-async function detectRuling(session, writerMessage, frankReply) {
+async function detectRuling(session, writerMessage, frankText) {
     try {
         const model = genAI.getGenerativeModel({
             model: MODEL,
@@ -892,7 +981,7 @@ Write the ruling from the writer's side, e.g. "The walking montage on pages 6-7 
             generationConfig: { maxOutputTokens: 512, temperature: 0 }
         });
         const result = await model.generateContent(
-            `WRITER SAID:\n${writerMessage}\n\nCONSULTANT REPLIED:\n${frankReply.slice(0, 2000)}`
+            `CONSULTANT SAID:\n${(frankText || '').slice(0, 2000)}\n\nWRITER REPLIED:\n${writerMessage}`
         );
         const raw = result.response.text().replace(/```json|```/g, '').trim();
         const parsed = JSON.parse(raw);
@@ -901,10 +990,12 @@ Write the ruling from the writer's side, e.g. "The walking montage on pages 6-7 
             if (session.settled.length > 12) session.settled.shift();
             saveStore();
             console.log("Writer ruling recorded:", parsed.ruling.trim());
+            return parsed.ruling.trim();
         }
     } catch (e) {
         // A missed ruling is a small loss; a crashed request is not acceptable.
     }
+    return null;
 }
 
 const DISPUTE_CLASSIFIER = `Decide whether the writer's message disputes, challenges or pushes back on something the reader said about their script. Return ONLY JSON, no fences: {"isDispute": true|false, "claim": "<one sentence stating what the writer is asserting about their own script>"}. If it is not a dispute, claim is "".`;
@@ -924,6 +1015,8 @@ Use "writer" when the script supports the writer and the note was factually wron
 Use "reader" when the script does NOT support the writer's objection — when the thing they say is on the page is not there, or not there in the way they claim. Say so plainly. The writer being certain, forceful or angry is not evidence, and a writer explaining their intention does not make that intention present on the page.
 Use "mixed" when each is right about part of it.
 Use "taste" when nothing factual is in dispute and this is a difference of preference.
+It is NOT taste when the reader's note left out something on the pages that bears on it — a setup planted earlier, a line acknowledging the issue, friction the note says is absent. That is a factual question; rule "writer" or "mixed".
+It is NOT taste when the reader penalised a question the script deliberately raises and holds for later, and the writer says it pays off in a later episode. Raising a question and holding it is setup; rule "writer" or "mixed" on whether it counts against the script.
 
 Be strict and be specific. Cite what is actually in the pages.`;
 
@@ -998,14 +1091,32 @@ app.post('/chat', async (req, res) => {
             }
         }
 
-        const ruling = await adjudicate(session, message);
+        // The evidence check and the ruling check run side by side, before Frank
+        // speaks, so a retired note or a misread page can move the grades in
+        // time for him to say so in this reply.
+        const lastFrank = [...(session.chat || [])].reverse().find(m => m.role === 'model');
+        const [ruling, writerRuling] = await Promise.all([
+            adjudicate(session, message),
+            lastFrank ? detectRuling(session, message, lastFrank.text) : Promise.resolve(null)
+        ]);
         if (ruling) console.log('Adjudicator verdict:', ruling.verdict);
+
+        let regrade = null;
+        const lastCoverage = (session.coverage || []).slice(-1)[0];
+        const why = [];
+        if (writerRuling) why.push('The writer has closed a note: ' + writerRuling);
+        if (ruling && (ruling.verdict === 'writer' || ruling.verdict === 'mixed')) {
+            why.push(`An independent check of the pages found the reader's note ${ruling.verdict === 'writer' ? 'was wrong' : 'was partly wrong'}. Evidence: ${ruling.evidence || ''}${ruling.survives ? ' What survives: ' + ruling.survives : ''}`);
+        }
+        if (why.length && lastCoverage && lastCoverage.grades) {
+            regrade = await regradeScorecard(session, why.join('\n') + '\n\nThe writer said: ' + message);
+        }
 
         const history = (session.chat || []).slice(-16).map(m => ({
             role: m.role,
             parts: [{ text: m.text }]
         }));
-        const contents = [...history, { role: 'user', parts: [{ text: message + rulingInstruction(ruling) }] }];
+        const contents = [...history, { role: 'user', parts: [{ text: message + rulingInstruction(ruling) + scorecardUpdateInstruction(regrade) }] }];
 
         let result = await chatGenerate({ contents });
         let reply = result.response.text();
@@ -1030,9 +1141,7 @@ app.post('/chat', async (req, res) => {
         session.updatedAt = Date.now();
         saveStore();
 
-        res.json({ message: reply });
-
-        detectRuling(session, message, reply);
+        res.json({ message: reply, scorecard: (regrade && (movedGrades(regrade).length || !regrade.before.grades)) ? regrade.after : null });
     } catch (err) {
         console.error("CHAT ERROR:", err);
         res.status(500).json({ message: "In a meeting." });
