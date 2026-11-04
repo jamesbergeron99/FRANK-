@@ -689,8 +689,8 @@
             const response = await fetch('/analyze', { method: 'POST', body: formData });
             const data = await response.json();
             addMessage(data.message);
-            if (data.scorecard) addScorecard(data.scorecard);
-            speak(data.message);
+            if (data.scorecard) addScorecard(data.scorecard, 'The Scorecard');
+            speak(data.message + (data.scorecard ? '\n' + scorecardForSpeech(data.scorecard) : ''));
             refreshStatus();
             fileInput.value = '';
         }
@@ -802,7 +802,11 @@
                 body: JSON.stringify({ message: val, sessionId: SESSION_ID })
             })
                 .then(r => r.json())
-                .then(data => { addMessage(data.message); speak(data.message); });
+                .then(data => {
+                    addMessage(data.message);
+                    if (data.scorecard) addScorecard(data.scorecard, 'Revised Scorecard');
+                    speak(data.message);
+                });
         }
 
         function addMessage(text, user = false) {
@@ -816,13 +820,20 @@
 
         // The gold scorecard box under Frank's coverage. Numbers and bar length
         // carry the meaning, so nothing depends on telling colours apart.
-        function addScorecard(card) {
-            const fmt = n => Number.isInteger(n) ? String(n) : n.toFixed(1);
+        function fmtGrade(n) { return Number.isInteger(n) ? String(n) : n.toFixed(1); }
+
+        function scorecardForSpeech(card) {
+            return 'The scorecard. ' + Object.entries(card.grades).map(([k, v]) => k + ', ' + fmtGrade(v) + '.').join(' ') +
+                ' Overall, ' + card.average.toFixed(1) + ' out of 10.';
+        }
+
+        function addScorecard(card, heading) {
+            const fmt = fmtGrade;
             const box = document.createElement('div');
             box.className = 'msg scorecard';
             const title = document.createElement('div');
             title.className = 'scorecard-title';
-            title.textContent = 'The Scorecard';
+            title.textContent = heading || 'The Scorecard';
             box.appendChild(title);
             const lines = [];
             Object.entries(card.grades).forEach(([name, score]) => {
@@ -842,7 +853,7 @@
             const big = document.createElement('span'); big.className = 'big'; big.textContent = card.average.toFixed(1) + ' / 10';
             overall.appendChild(big);
             box.appendChild(overall);
-            box.dataset.pdf = 'THE SCORECARD\n\n' + lines.join('\n') + '\n\nOVERALL: ' + card.average.toFixed(1) + '/10';
+            box.dataset.pdf = (heading || 'The Scorecard').toUpperCase() + '\n\n' + lines.join('\n') + '\n\nOVERALL: ' + card.average.toFixed(1) + '/10';
             chatWindow.appendChild(box);
             chatWindow.scrollTop = chatWindow.scrollHeight;
         }
