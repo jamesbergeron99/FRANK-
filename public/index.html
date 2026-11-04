@@ -56,6 +56,15 @@
         .btn-ghost { background: none; border: 1px solid #444; color: #999; }
         .clear-btn { position: absolute; right: 20px; top: 25px; background: none; border: 1px solid #ff4444; color: #ff4444; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.75rem; transition: 0.2s; }
         .clear-btn:hover { background: #ff4444; color: #fff; }
+        .scorecard { white-space: normal; min-width: 300px; }
+        .scorecard-title { color: var(--gold); font-style: italic; letter-spacing: 2px; font-size: 1.2rem; margin-bottom: 14px; }
+        .grade-row { display: grid; grid-template-columns: 130px 1fr 60px; align-items: center; gap: 14px; padding: 6px 0; }
+        .grade-name { color: var(--gold); font-size: 0.75rem; letter-spacing: 1.5px; text-transform: uppercase; font-weight: bold; }
+        .grade-bar { height: 8px; background: #2a2a2a; border-radius: 4px; overflow: hidden; }
+        .grade-fill { height: 100%; background: var(--gold); }
+        .grade-num { text-align: right; font-weight: bold; }
+        .grade-overall { display: flex; justify-content: space-between; align-items: baseline; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--gold); color: var(--gold); font-weight: bold; letter-spacing: 2px; }
+        .grade-overall .big { font-size: 1.8rem; letter-spacing: 0; }
     </style>
 </head>
 <body onclick="initAudio()">
@@ -446,6 +455,7 @@
         function textForSpeech(text) {
             return text
                 .replace(/Logline/gi, 'Log line')
+                .replace(/(\d+(?:\.\d+)?)\s*\/\s*10\b/g, '$1 out of 10')
                 .replace(/\s*[—–]\s*/g, ', ')          // em dashes read as an abrupt stop
                 .replace(/\s+\/\s+/g, ' or ')          // "TV PILOT / EPISODE"
                 .replace(/\b[A-Z][A-Z'’]*[A-Z]\b/g, w => {
@@ -679,6 +689,7 @@
             const response = await fetch('/analyze', { method: 'POST', body: formData });
             const data = await response.json();
             addMessage(data.message);
+            if (data.scorecard) addScorecard(data.scorecard);
             speak(data.message);
             refreshStatus();
             fileInput.value = '';
@@ -803,12 +814,45 @@
             return div;
         }
 
+        // The gold scorecard box under Frank's coverage. Numbers and bar length
+        // carry the meaning, so nothing depends on telling colours apart.
+        function addScorecard(card) {
+            const fmt = n => Number.isInteger(n) ? String(n) : n.toFixed(1);
+            const box = document.createElement('div');
+            box.className = 'msg scorecard';
+            const title = document.createElement('div');
+            title.className = 'scorecard-title';
+            title.textContent = 'The Scorecard';
+            box.appendChild(title);
+            const lines = [];
+            Object.entries(card.grades).forEach(([name, score]) => {
+                const row = document.createElement('div'); row.className = 'grade-row';
+                const n = document.createElement('div'); n.className = 'grade-name'; n.textContent = name;
+                const bar = document.createElement('div'); bar.className = 'grade-bar';
+                const fill = document.createElement('div'); fill.className = 'grade-fill'; fill.style.width = (score * 10) + '%';
+                bar.appendChild(fill);
+                const num = document.createElement('div'); num.className = 'grade-num'; num.textContent = fmt(score) + ' / 10';
+                row.append(n, bar, num);
+                box.appendChild(row);
+                lines.push(name + ': ' + fmt(score) + '/10');
+            });
+            const overall = document.createElement('div');
+            overall.className = 'grade-overall';
+            overall.innerHTML = '<span>OVERALL</span>';
+            const big = document.createElement('span'); big.className = 'big'; big.textContent = card.average.toFixed(1) + ' / 10';
+            overall.appendChild(big);
+            box.appendChild(overall);
+            box.dataset.pdf = 'THE SCORECARD\n\n' + lines.join('\n') + '\n\nOVERALL: ' + card.average.toFixed(1) + '/10';
+            chatWindow.appendChild(box);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
         function downloadPDF() {
             const element = document.createElement('div');
             element.innerHTML = `<div style="padding:40px; background:#000; color:#fff; font-family:serif; line-height:1.6;">
                 <h1 style="color:#d4af37; border-bottom:2px solid #d4af37;">FRANK'S PRIVATE AUDIT</h1>
                 ${Array.from(document.querySelectorAll('.msg:not(.user-msg)')).map(m =>
-                    `<p style="margin-bottom:20px; white-space:pre-wrap; border-left:3px solid #d4af37; padding-left:15px;">${m.innerText}</p>`
+                    `<p style="margin-bottom:20px; white-space:pre-wrap; border-left:3px solid #d4af37; padding-left:15px;">${m.dataset.pdf || m.innerText}</p>`
                 ).join('')}
             </div>`;
             html2pdf().from(element).save('Frank_Audit.pdf');
